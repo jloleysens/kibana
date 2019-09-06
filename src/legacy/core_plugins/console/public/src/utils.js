@@ -71,8 +71,8 @@ utils.expandLiteralStrings = function (data) {
     // expand things with two slashes or more
     if (string.split(/\\./).length > 2) {
       string = JSON.parse(string)
-        .replace('^s*\n', '')
-        .replace('\ns*^', '');
+        .replace('^\s*\n', '')
+        .replace('\n\s*^', '');
       return '"""' + string + '"""';
     } else {
       return string;
