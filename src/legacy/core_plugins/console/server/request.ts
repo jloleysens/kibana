@@ -17,34 +17,7 @@
  * under the License.
  */
 
-import { Duplex } from 'stream';
+import requestLib from 'request';
 
-let headers;
-export function readLastHeaders() {
-  return headers;
-}
-
-export function createResponseStub(response) {
-  return (_, cb) => {
-    const stream = new Duplex();
-    const httpInfo = {
-      statusCode: 200,
-      statusMessage: 'OK',
-      headers: {
-        'content-type': 'text/plain',
-        'content-length': String(response ? response.length : 0)
-      }
-    };
-
-    stream.statusCode = httpInfo.statusCode;
-    stream.statusMessage = httpInfo.statusMessage;
-    stream.headers = httpInfo.headers;
-
-    stream.on('pipe', (src) => {
-      headers = src.headers;
-      cb(null, { ...httpInfo, body: response });
-    });
-
-    return stream;
-  };
-}
+// We consume this version of request to ease testing.
+export const request = requestLib;
