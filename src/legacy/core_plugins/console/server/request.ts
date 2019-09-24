@@ -18,6 +18,12 @@
  */
 
 import requestLib from 'request';
+import util from 'util';
 
-// We consume this version of request to ease testing.
-export const request = requestLib;
+// Separate module for easier mocking during testing.
+
+// We use the request library because Hapi, Axios, and Superagent don't support GET requests
+// with bodies, but ES APIs do. Similarly with DELETE requests with bodies. If we need to
+// deprecate use of this library, we can also solve this issue with Node's http library.
+// See #39170 for details.
+export const request = util.promisify(requestLib);
