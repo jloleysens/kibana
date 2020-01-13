@@ -17,10 +17,4 @@
  * under the License.
  */
 
-export * from './split_panel';
 export { StatusBar } from './status_bar';
-export { TopNavMenuItem, TopNavMenu } from './top_nav_menu';
-export { ConsoleMenu } from './console_menu';
-export { WelcomePanel } from './welcome_panel';
-export { AutocompleteOptions, DevToolsSettingsModal } from './settings_modal';
-export { HelpPanel } from './help_panel';

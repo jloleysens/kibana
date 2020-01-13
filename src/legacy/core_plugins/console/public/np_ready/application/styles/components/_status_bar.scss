@@ -1,0 +1,19 @@
+
+.conStatusBar {
+  --backgroundColor: rgb(44, 49, 60);
+  --backgroundColorPrimaryAction: rgb(80, 176, 164);
+
+  background-color: var(--backgroundColor);
+  min-height: 30px;
+
+  &__primaryAction {
+    display: flex;
+    justify-content: center;
+    text-align: center;
+    background-color: var(--backgroundColorPrimaryAction);
+    color: white;
+
+    padding: 5px 25px;
+    min-width: 40px;
+  }
+}

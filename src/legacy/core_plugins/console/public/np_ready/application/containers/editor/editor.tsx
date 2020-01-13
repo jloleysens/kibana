@@ -18,9 +18,11 @@
  */
 
 import React, { useCallback } from 'react';
+import { EuiFlexGroup, EuiFlexItem } from '@elastic/eui';
 import { debounce } from 'lodash';
 
 import { Panel, PanelsContainer } from '../../components/split_panel';
+import { StatusBar } from '../../components';
 import { Editor as EditorUI, EditorOutput } from './legacy/console_editor';
 import { StorageKeys } from '../../../services';
 import { useServicesContext } from '../../contexts';
@@ -46,19 +48,26 @@ export const Editor = () => {
   );
 
   return (
-    <PanelsContainer onPanelWidthChange={onPanelWidthChange}>
-      <Panel
-        style={{ height: '100%', position: 'relative', minWidth: PANEL_MIN_WIDTH }}
-        initialWidth={firstPanelWidth + '%'}
-      >
-        <EditorUI />
-      </Panel>
-      <Panel
-        style={{ height: '100%', position: 'relative', minWidth: PANEL_MIN_WIDTH }}
-        initialWidth={secondPanelWidth + '%'}
-      >
-        <EditorOutput />
-      </Panel>
-    </PanelsContainer>
+    <EuiFlexGroup gutterSize="none" responsive={false} direction="column">
+      <EuiFlexItem grow={1}>
+        <PanelsContainer onPanelWidthChange={onPanelWidthChange}>
+          <Panel
+            style={{ height: '100%', position: 'relative', minWidth: PANEL_MIN_WIDTH }}
+            initialWidth={firstPanelWidth + '%'}
+          >
+            <EditorUI />
+          </Panel>
+          <Panel
+            style={{ height: '100%', position: 'relative', minWidth: PANEL_MIN_WIDTH }}
+            initialWidth={secondPanelWidth + '%'}
+          >
+            <EditorOutput />
+          </Panel>
+        </PanelsContainer>
+      </EuiFlexItem>
+      <EuiFlexItem grow={false}>
+        <StatusBar onRunActionClick={() => {}} />
+      </EuiFlexItem>
+    </EuiFlexGroup>
   );
 };
