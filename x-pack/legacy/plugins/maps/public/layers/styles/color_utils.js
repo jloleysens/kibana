@@ -105,7 +105,7 @@ export function getColorPalette(paletteId) {
 }
 
 export const COLOR_PALETTES = COLOR_PALETTES_CONFIGS.map(palette => {
-  const paletteDisplay = palette.colors.map(color => {
+  const paletteDisplay = palette.colors.map((color, idx) => {
     const style = {
       backgroundColor: color,
       width: '10%',
@@ -113,7 +113,11 @@ export const COLOR_PALETTES = COLOR_PALETTES_CONFIGS.map(palette => {
       height: '100%',
       display: 'inline-block',
     };
-    return <div style={style}>&nbsp;</div>;
+    return (
+      <div key={idx} style={style}>
+        &nbsp;
+      </div>
+    );
   });
   return {
     value: palette.id,
