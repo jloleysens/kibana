@@ -82,7 +82,9 @@ export function Main() {
             })}
           />
         </EuiFlexItem>
+
         {showingHistory ? <EuiFlexItem grow={false}>{renderConsoleHistory()}</EuiFlexItem> : null}
+
         <EuiFlexItem>
           <EuiFlexGroup
             responsive={false}

@@ -31,6 +31,6 @@ export const FileSaveErrorIcon: FunctionComponent<Props> = ({ errorMessage }) =>
       values: { errorMessage },
     })}
   >
-    <EuiIcon type="alert" color="warning" />
+    <EuiIcon type="alert" color="danger" />
   </EuiToolTip>
 );

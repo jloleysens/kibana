@@ -18,4 +18,3 @@
  */
 
 export { FileSaveErrorIcon } from './save_error';
-export { FileSavedIcon } from './saved';
