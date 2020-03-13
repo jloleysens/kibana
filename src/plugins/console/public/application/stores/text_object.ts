@@ -41,6 +41,7 @@ export interface Store {
   currentTextObjectId: string;
   textObjects: Record<string, TextObjectWithoutText>;
   textObjectsSaveError: Record<string, string>;
+  isCreateFileModalVisible: boolean;
 }
 
 export const initialValue: Store = {
@@ -48,6 +49,7 @@ export const initialValue: Store = {
   currentTextObjectId: '',
   textObjects: {},
   textObjectsSaveError: {},
+  isCreateFileModalVisible: false,
 };
 
 type TextObjectUpsertPayload = Partial<TextObjectWithoutText> & IdObject;
@@ -60,12 +62,18 @@ export type Action =
   | { type: 'upsertAndSetCurrent'; payload: TextObjectUpsertPayload }
   | { type: 'delete'; payload: string }
   | { type: 'saveError'; payload: { textObjectId: string; error: Error | string } }
-  | { type: 'clearSaveError'; payload: { textObjectId: string } };
+  | { type: 'clearSaveError'; payload: { textObjectId: string } }
+  | { type: 'setCreateFileModalVisible'; payload: boolean };
 
 export const reducer: Reducer<Store, Action> = (state, action) =>
   produce<Store>(
     state,
     draft => {
+      if (action.type === 'setCreateFileModalVisible') {
+        draft.isCreateFileModalVisible = action.payload;
+        return;
+      }
+
       if (action.type === 'setSavingTextObject') {
         draft.persistingTextObjectWithId = action.payload;
         return;

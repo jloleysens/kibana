@@ -34,7 +34,6 @@ import { useTextObjectsCRUD } from '../../hooks/text_objects';
 import { useTextObjectsReadContext } from '../../contexts';
 import { DeleteFileModal, FileSaveErrorIcon } from '../../components';
 
-import { addDefaultValues } from '../file_tree/file_tree';
 import { Editor as EditorUI } from './legacy/console_editor';
 
 interface Props {
@@ -97,7 +96,7 @@ export const RequestPanel = memo<Props>(({ initialWidth, minWidth, initialTextVa
             <EuiFlexItem>
               <EuiFlexGroup gutterSize="s" alignItems="center">
                 <EuiFlexItem grow={false}>
-                  <EuiText size="s">{addDefaultValues([currentTextObject])[0].name}</EuiText>
+                  <EuiText size="s">{currentTextObject.name}</EuiText>
                 </EuiFlexItem>
 
                 <EuiFlexItem grow={false}>

@@ -15,6 +15,30 @@
   flex: 1 1 auto;
 }
 
+.conApp__menuBar {
+  padding: $euiSizeXS 0;
+  border-bottom: $euiBorderThin;
+  // Lay on top of the resizer
+  z-index: $euiZLevel2;
+}
+
+.conApp__fileListContainer {
+  min-width: 120px;
+}
+
+.conApp__fileList {
+  @include euiYScrollWithShadows;
+  max-height: 280px;
+
+  // Override EuiListGroup styles.
+  padding-left: 0;
+  padding-right: 0;
+
+  .euiListGroupItem {
+    margin-top: 0;
+  }
+}
+
 .conAppContainer {
   position: relative;
   display: flex;

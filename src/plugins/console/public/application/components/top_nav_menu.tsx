@@ -17,38 +17,91 @@
  * under the License.
  */
 
-import React, { FunctionComponent } from 'react';
-import { EuiTabs, EuiTab } from '@elastic/eui';
+import React, { useState, FunctionComponent } from 'react';
+import { EuiFlexGroup, EuiFlexItem, EuiButtonEmpty, EuiPopover } from '@elastic/eui';
+import { i18n } from '@kbn/i18n';
 
-export interface TopNavMenuItem {
-  id: string;
-  label: string;
-  description: string;
-  onClick: () => void;
-  testId: string;
-}
+import { FilesPopover } from './files_popover';
 
 interface Props {
-  disabled?: boolean;
-  items: TopNavMenuItem[];
+  onClickHistory: () => void;
+  onClickSettings: () => void;
+  onClickHelp: () => void;
 }
 
-export const TopNavMenu: FunctionComponent<Props> = ({ items, disabled }) => {
+export const TopNavMenu: FunctionComponent<Props> = ({
+  onClickHistory,
+  onClickSettings,
+  onClickHelp,
+}) => {
+  const [isFileTreeOpen, setFileTreeOpen] = useState(false);
+
   return (
-    <EuiTabs size="s">
-      {items.map((item, idx) => {
-        return (
-          <EuiTab
-            key={idx}
-            disabled={disabled}
-            onClick={item.onClick}
-            title={item.label}
-            data-test-subj={item.testId}
+    <>
+      <EuiFlexGroup gutterSize="none" className="conApp__menuBar">
+        <EuiFlexItem grow={false}>
+          <EuiPopover
+            id="popover"
+            button={
+              <EuiButtonEmpty
+                color="primary"
+                size="xs"
+                onClick={() => setFileTreeOpen(!isFileTreeOpen)}
+                data-test-subj="consoleFilesButton"
+              >
+                {i18n.translate('console.topNav.filesTabDescription', {
+                  defaultMessage: 'Files',
+                })}
+              </EuiButtonEmpty>
+            }
+            isOpen={isFileTreeOpen}
+            closePopover={() => setFileTreeOpen(false)}
+            panelPaddingSize="s"
+            anchorPosition="downLeft"
           >
-            {item.label}
-          </EuiTab>
-        );
-      })}
-    </EuiTabs>
+            <FilesPopover />
+          </EuiPopover>
+        </EuiFlexItem>
+
+        <EuiFlexItem grow={false}>
+          <EuiButtonEmpty
+            color="primary"
+            size="xs"
+            onClick={onClickHistory}
+            data-test-subj="consoleHistoryButton"
+          >
+            {i18n.translate('console.topNav.historyTabLabel', {
+              defaultMessage: 'History',
+            })}
+          </EuiButtonEmpty>
+        </EuiFlexItem>
+
+        <EuiFlexItem grow={false}>
+          <EuiButtonEmpty
+            color="primary"
+            size="xs"
+            onClick={onClickSettings}
+            data-test-subj="consoleSettingsButton"
+          >
+            {i18n.translate('console.topNav.settingsTabLabel', {
+              defaultMessage: 'Settings',
+            })}
+          </EuiButtonEmpty>
+        </EuiFlexItem>
+
+        <EuiFlexItem grow={false}>
+          <EuiButtonEmpty
+            color="primary"
+            size="xs"
+            onClick={onClickHelp}
+            data-test-subj="consoleHelpButton"
+          >
+            {i18n.translate('console.topNav.helpTabLabel', {
+              defaultMessage: 'Help',
+            })}
+          </EuiButtonEmpty>
+        </EuiFlexItem>
+      </EuiFlexGroup>
+    </>
   );
 };
