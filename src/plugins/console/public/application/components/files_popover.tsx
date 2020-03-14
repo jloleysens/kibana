@@ -19,7 +19,13 @@
 
 import React, { FunctionComponent, useState } from 'react';
 import { flow } from 'fp-ts/lib/function';
-import { EuiListGroup, EuiListGroupItem, EuiButton, EuiFieldSearch } from '@elastic/eui';
+import {
+  EuiListGroup,
+  EuiSpacer,
+  EuiListGroupItem,
+  EuiButtonEmpty,
+  EuiFieldSearch,
+} from '@elastic/eui';
 import { i18n } from '@kbn/i18n';
 
 import { sortTextObjectsAsc, TextObjectWithId } from '../../../common/text_object';
@@ -90,14 +96,30 @@ export const FilesPopover: FunctionComponent = () => {
       <EuiFieldSearch
         inputRef={ref => ref?.focus()}
         compressed
-        placeholder={i18n.translate('console.fileTree.searchBarPlaceholderText', {
-          defaultMessage: 'Enter a file name',
-        })}
         onChange={event => {
           setSearchFilter(event.target.value);
         }}
         value={searchFilter ?? ''}
       />
+
+      <EuiSpacer size="s" />
+
+      <EuiButtonEmpty
+        size="xs"
+        flush="left"
+        disabled={disabled}
+        onClick={() => {
+          dispatch({
+            type: 'setCreateFileModalVisible',
+            payload: true,
+          });
+        }}
+        data-test-subj="consoleCreateFileButton"
+      >
+        {i18n.translate('console.fileTree.forms.createButtonAriaLabel', {
+          defaultMessage: 'Create a file',
+        })}
+      </EuiButtonEmpty>
 
       <EuiListGroup className="conApp__fileList">
         {filteredTextObjects.map(({ id, displayName, name }) => (
@@ -114,24 +136,6 @@ export const FilesPopover: FunctionComponent = () => {
           />
         ))}
       </EuiListGroup>
-
-      <EuiButton
-        fullWidth
-        size="s"
-        disabled={disabled}
-        onClick={() => {
-          dispatch({
-            type: 'setCreateFileModalVisible',
-            payload: true,
-          });
-        }}
-        color="primary"
-        data-test-subj="consoleCreateFileButton"
-      >
-        {i18n.translate('console.fileTree.forms.createButtonAriaLabel', {
-          defaultMessage: 'Create a file',
-        })}
-      </EuiButton>
     </div>
   );
 };

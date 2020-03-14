@@ -17,11 +17,9 @@
  * under the License.
  */
 
-import React, { useState, FunctionComponent } from 'react';
-import { EuiFlexGroup, EuiFlexItem, EuiButtonEmpty, EuiPopover } from '@elastic/eui';
+import React, { FunctionComponent } from 'react';
+import { EuiBottomBar, EuiFlexGroup, EuiFlexItem, EuiButtonEmpty, EuiPopover } from '@elastic/eui';
 import { i18n } from '@kbn/i18n';
-
-import { FilesPopover } from './files_popover';
 
 interface Props {
   onClickHistory: () => void;
@@ -33,75 +31,53 @@ export const TopNavMenu: FunctionComponent<Props> = ({
   onClickHistory,
   onClickSettings,
   onClickHelp,
-}) => {
-  const [isFileTreeOpen, setFileTreeOpen] = useState(false);
+}) => (
+  <EuiBottomBar paddingSize="s">
+    <EuiFlexGroup gutterSize="s" justifyContent="spaceBetween">
+      <EuiFlexItem grow={false}>
+        <EuiButtonEmpty
+          color="ghost"
+          size="s"
+          iconType="help"
+          iconSide="left"
+          onClick={onClickHelp}
+          data-test-subj="consoleHelpButton"
+        >
+          {i18n.translate('console.topNav.helpTabLabel', {
+            defaultMessage: 'Help',
+          })}
+        </EuiButtonEmpty>
+      </EuiFlexItem>
 
-  return (
-    <>
-      <EuiFlexGroup gutterSize="none" className="conApp__menuBar">
-        <EuiFlexItem grow={false}>
-          <EuiPopover
-            id="popover"
-            button={
-              <EuiButtonEmpty
-                color="primary"
-                size="xs"
-                onClick={() => setFileTreeOpen(!isFileTreeOpen)}
-                data-test-subj="consoleFilesButton"
-              >
-                {i18n.translate('console.topNav.filesTabDescription', {
-                  defaultMessage: 'Files',
-                })}
-              </EuiButtonEmpty>
-            }
-            isOpen={isFileTreeOpen}
-            closePopover={() => setFileTreeOpen(false)}
-            panelPaddingSize="s"
-            anchorPosition="downLeft"
-          >
-            <FilesPopover />
-          </EuiPopover>
-        </EuiFlexItem>
+      <EuiFlexItem grow={false}>
+        <EuiFlexGroup gutterSize="s" justifyContent="flexStart">
+          <EuiFlexItem grow={false}>
+            <EuiButtonEmpty
+              color="ghost"
+              size="s"
+              onClick={onClickHistory}
+              data-test-subj="consoleHistoryButton"
+            >
+              {i18n.translate('console.topNav.historyTabLabel', {
+                defaultMessage: 'History',
+              })}
+            </EuiButtonEmpty>
+          </EuiFlexItem>
 
-        <EuiFlexItem grow={false}>
-          <EuiButtonEmpty
-            color="primary"
-            size="xs"
-            onClick={onClickHistory}
-            data-test-subj="consoleHistoryButton"
-          >
-            {i18n.translate('console.topNav.historyTabLabel', {
-              defaultMessage: 'History',
-            })}
-          </EuiButtonEmpty>
-        </EuiFlexItem>
-
-        <EuiFlexItem grow={false}>
-          <EuiButtonEmpty
-            color="primary"
-            size="xs"
-            onClick={onClickSettings}
-            data-test-subj="consoleSettingsButton"
-          >
-            {i18n.translate('console.topNav.settingsTabLabel', {
-              defaultMessage: 'Settings',
-            })}
-          </EuiButtonEmpty>
-        </EuiFlexItem>
-
-        <EuiFlexItem grow={false}>
-          <EuiButtonEmpty
-            color="primary"
-            size="xs"
-            onClick={onClickHelp}
-            data-test-subj="consoleHelpButton"
-          >
-            {i18n.translate('console.topNav.helpTabLabel', {
-              defaultMessage: 'Help',
-            })}
-          </EuiButtonEmpty>
-        </EuiFlexItem>
-      </EuiFlexGroup>
-    </>
-  );
-};
+          <EuiFlexItem grow={false}>
+            <EuiButtonEmpty
+              color="ghost"
+              size="s"
+              onClick={onClickSettings}
+              data-test-subj="consoleSettingsButton"
+            >
+              {i18n.translate('console.topNav.settingsTabLabel', {
+                defaultMessage: 'Settings',
+              })}
+            </EuiButtonEmpty>
+          </EuiFlexItem>
+        </EuiFlexGroup>
+      </EuiFlexItem>
+    </EuiFlexGroup>
+  </EuiBottomBar>
+);

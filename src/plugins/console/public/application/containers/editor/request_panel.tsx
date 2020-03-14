@@ -21,6 +21,7 @@ import React, { useState, memo } from 'react';
 import {
   EuiFlexGroup,
   EuiButtonIcon,
+  EuiButtonToggle,
   EuiContextMenuItem,
   EuiContextMenuPanel,
   EuiPopover,
@@ -32,7 +33,7 @@ import { i18n } from '@kbn/i18n';
 import { Panel } from '../../../../../kibana_react/public';
 import { useTextObjectsCRUD } from '../../hooks/text_objects';
 import { useTextObjectsReadContext } from '../../contexts';
-import { DeleteFileModal, FileSaveErrorIcon } from '../../components';
+import { DeleteFileModal, FileSaveErrorIcon, FilesPopover } from '../../components';
 
 import { Editor as EditorUI } from './legacy/console_editor';
 
@@ -44,6 +45,7 @@ interface Props {
 
 export const RequestPanel = memo<Props>(({ initialWidth, minWidth, initialTextValue }) => {
   const [isFileOptionsOpen, setFileOptionsOpen] = useState(false);
+  const [isFileTreeOpen, setFileTreeOpen] = useState(false);
   const [isDeleteModalVisible, setDeleteModalVisible] = useState(false);
   const textObjectsCRUD = useTextObjectsCRUD();
 
@@ -96,6 +98,17 @@ export const RequestPanel = memo<Props>(({ initialWidth, minWidth, initialTextVa
             <EuiFlexItem>
               <EuiFlexGroup gutterSize="s" alignItems="center">
                 <EuiFlexItem grow={false}>
+                  <EuiButtonToggle
+                    isIconOnly
+                    isEmpty
+                    isSelected={isFileTreeOpen}
+                    onChange={e => setFileTreeOpen(e.target.checked)}
+                    iconType={isFileTreeOpen ? 'folderOpen' : 'folderClosed'}
+                    label={isFileTreeOpen ? 'Close file menu' : 'Open file menu'}
+                  />
+                </EuiFlexItem>
+
+                <EuiFlexItem grow={false}>
                   <EuiText size="s">{currentTextObject.name}</EuiText>
                 </EuiFlexItem>
 
@@ -147,9 +160,19 @@ export const RequestPanel = memo<Props>(({ initialWidth, minWidth, initialTextVa
           />
         )}
 
-        <div className="conAppContainer">
-          <EditorUI textObject={{ ...currentTextObject, text: initialTextValue }} />
-        </div>
+        <EuiFlexGroup gutterSize="none">
+          {isFileTreeOpen && (
+            <EuiFlexItem grow={false}>
+              <FilesPopover />
+            </EuiFlexItem>
+          )}
+
+          <EuiFlexItem>
+            <div className="conAppContainer">
+              <EditorUI textObject={{ ...currentTextObject, text: initialTextValue }} />
+            </div>
+          </EuiFlexItem>
+        </EuiFlexGroup>
       </>
     );
   }

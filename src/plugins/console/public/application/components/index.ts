@@ -27,3 +27,4 @@ export { DeleteFileModal } from './delete_file_modal';
 export { EditFileModal } from './edit_file_modal';
 export { HelpPanel } from './help_panel';
 export { FileSaveErrorIcon } from './file_save_error_icon';
+export { FilesPopover } from './files_popover';

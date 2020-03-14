@@ -17,18 +17,14 @@
 
 .conApp__menuBar {
   padding: $euiSizeXS 0;
-  border-bottom: $euiBorderThin;
-  // Lay on top of the resizer
-  z-index: $euiZLevel2;
 }
 
 .conApp__fileListContainer {
-  min-width: 120px;
+  padding: 0 $euiSizeS;
 }
 
 .conApp__fileList {
   @include euiYScrollWithShadows;
-  max-height: 280px;
 
   // Override EuiListGroup styles.
   padding-left: 0;
