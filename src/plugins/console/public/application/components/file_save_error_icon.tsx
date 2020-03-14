@@ -16,5 +16,21 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+import { i18n } from '@kbn/i18n';
+import React, { FunctionComponent } from 'react';
+import { EuiToolTip, EuiIcon } from '@elastic/eui';
 
-export { FileTree } from './file_tree';
+interface Props {
+  errorMessage: string;
+}
+
+export const FileSaveErrorIcon: FunctionComponent<Props> = ({ errorMessage }) => (
+  <EuiToolTip
+    content={i18n.translate('console.file.errorIconToolTip', {
+      defaultMessage: 'Could not save file due to: {errorMessage}',
+      values: { errorMessage },
+    })}
+  >
+    <EuiIcon type="alert" color="danger" />
+  </EuiToolTip>
+);

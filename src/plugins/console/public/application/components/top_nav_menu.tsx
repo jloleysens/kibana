@@ -18,37 +18,66 @@
  */
 
 import React, { FunctionComponent } from 'react';
-import { EuiTabs, EuiTab } from '@elastic/eui';
-
-export interface TopNavMenuItem {
-  id: string;
-  label: string;
-  description: string;
-  onClick: () => void;
-  testId: string;
-}
+import { EuiBottomBar, EuiFlexGroup, EuiFlexItem, EuiButtonEmpty, EuiPopover } from '@elastic/eui';
+import { i18n } from '@kbn/i18n';
 
 interface Props {
-  disabled?: boolean;
-  items: TopNavMenuItem[];
+  onClickHistory: () => void;
+  onClickSettings: () => void;
+  onClickHelp: () => void;
 }
 
-export const TopNavMenu: FunctionComponent<Props> = ({ items, disabled }) => {
-  return (
-    <EuiTabs size="s">
-      {items.map((item, idx) => {
-        return (
-          <EuiTab
-            key={idx}
-            disabled={disabled}
-            onClick={item.onClick}
-            title={item.label}
-            data-test-subj={item.testId}
-          >
-            {item.label}
-          </EuiTab>
-        );
-      })}
-    </EuiTabs>
-  );
-};
+export const TopNavMenu: FunctionComponent<Props> = ({
+  onClickHistory,
+  onClickSettings,
+  onClickHelp,
+}) => (
+  <EuiBottomBar paddingSize="s">
+    <EuiFlexGroup gutterSize="s" justifyContent="spaceBetween">
+      <EuiFlexItem grow={false}>
+        <EuiButtonEmpty
+          color="ghost"
+          size="s"
+          iconType="help"
+          iconSide="left"
+          onClick={onClickHelp}
+          data-test-subj="consoleHelpButton"
+        >
+          {i18n.translate('console.topNav.helpTabLabel', {
+            defaultMessage: 'Help',
+          })}
+        </EuiButtonEmpty>
+      </EuiFlexItem>
+
+      <EuiFlexItem grow={false}>
+        <EuiFlexGroup gutterSize="s" justifyContent="flexStart">
+          <EuiFlexItem grow={false}>
+            <EuiButtonEmpty
+              color="ghost"
+              size="s"
+              onClick={onClickHistory}
+              data-test-subj="consoleHistoryButton"
+            >
+              {i18n.translate('console.topNav.historyTabLabel', {
+                defaultMessage: 'History',
+              })}
+            </EuiButtonEmpty>
+          </EuiFlexItem>
+
+          <EuiFlexItem grow={false}>
+            <EuiButtonEmpty
+              color="ghost"
+              size="s"
+              onClick={onClickSettings}
+              data-test-subj="consoleSettingsButton"
+            >
+              {i18n.translate('console.topNav.settingsTabLabel', {
+                defaultMessage: 'Settings',
+              })}
+            </EuiButtonEmpty>
+          </EuiFlexItem>
+        </EuiFlexGroup>
+      </EuiFlexItem>
+    </EuiFlexGroup>
+  </EuiBottomBar>
+);

@@ -17,20 +17,16 @@
  * under the License.
  */
 
-import '../../../models/legacy_core_editor/legacy_core_editor.test.mocks';
+import '../../models/legacy_core_editor/legacy_core_editor.test.mocks';
 // @ts-ignore
 import { findTestSubject } from '@elastic/eui/lib/test';
 import React from 'react';
 import { mount, ReactWrapper } from 'enzyme';
 
-import { FileTreeEntry } from '../../../components/file_tree/file_tree_entry';
+import { FileTreeEntry } from '../../components/file_tree/file_tree_entry';
 
-import { serviceContextMock } from '../../../contexts/services_context.mock';
-import {
-  TextObjectsContextProvider,
-  ServicesContextProvider,
-  ContextValue,
-} from '../../../contexts';
+import { serviceContextMock } from '../../contexts/services_context.mock';
+import { TextObjectsContextProvider, ServicesContextProvider, ContextValue } from '../../contexts';
 
 import { FileTree } from '../file_tree';
 

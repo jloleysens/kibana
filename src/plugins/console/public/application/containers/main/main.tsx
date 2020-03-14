@@ -23,20 +23,31 @@ import { EuiFlexGroup, EuiFlexItem, EuiTitle, EuiPageContent } from '@elastic/eu
 import { ConsoleHistory } from '../console_history';
 import { Editor } from '../editor';
 import { Settings } from '../settings';
-import { FileTree } from '../file_tree';
 
-import { TopNavMenu, WelcomePanel, HelpPanel, SomethingWentWrongCallout } from '../../components';
-
-import { useServicesContext, useEditorContext } from '../../contexts';
+import {
+  TopNavMenu,
+  WelcomePanel,
+  HelpPanel,
+  EditFileModal,
+  SomethingWentWrongCallout,
+} from '../../components';
+import {
+  useServicesContext,
+  useEditorContext,
+  useTextObjectsReadContext,
+  useTextObjectsActionContext,
+} from '../../contexts';
 import { useDataInit } from '../../hooks';
-
-import { getTopNavConfig } from './get_top_nav';
+import { useTextObjectsCRUD } from '../../hooks/text_objects';
 
 export function Main() {
   const {
     services: { storage },
   } = useServicesContext();
 
+  const textObjectsCRUD = useTextObjectsCRUD();
+  const { isCreateFileModalVisible } = useTextObjectsReadContext();
+  const dispatch = useTextObjectsActionContext();
   const [{ ready: editorsReady }] = useEditorContext();
 
   const [showWelcome, setShowWelcomePanel] = useState(
@@ -46,7 +57,6 @@ export function Main() {
   const [showingHistory, setShowHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
-  const [showFileTree, setShowFileTree] = useState(false);
 
   const renderConsoleHistory = () => {
     return editorsReady ? <ConsoleHistory close={() => setShowHistory(false)} /> : null;
@@ -73,16 +83,14 @@ export function Main() {
             </h1>
           </EuiTitle>
           <TopNavMenu
-            disabled={!done}
-            items={getTopNavConfig({
-              onClickFiles: () => setShowFileTree(!showFileTree),
-              onClickHistory: () => setShowHistory(!showingHistory),
-              onClickSettings: () => setShowSettings(true),
-              onClickHelp: () => setShowHelp(!showHelp),
-            })}
+            onClickHistory={() => setShowHistory(!showingHistory)}
+            onClickSettings={() => setShowSettings(true)}
+            onClickHelp={() => setShowHelp(!showHelp)}
           />
         </EuiFlexItem>
+
         {showingHistory ? <EuiFlexItem grow={false}>{renderConsoleHistory()}</EuiFlexItem> : null}
+
         <EuiFlexItem>
           <EuiFlexGroup
             responsive={false}
@@ -90,11 +98,6 @@ export function Main() {
             direction="row"
             gutterSize="none"
           >
-            {showFileTree && (
-              <EuiFlexItem grow={false}>
-                <FileTree />
-              </EuiFlexItem>
-            )}
             <EuiFlexItem>
               <Editor />
             </EuiFlexItem>
@@ -114,6 +117,35 @@ export function Main() {
       {showSettings ? <Settings onClose={() => setShowSettings(false)} /> : null}
 
       {showHelp ? <HelpPanel onClose={() => setShowHelp(false)} /> : null}
+
+      {isCreateFileModalVisible && (
+        <EditFileModal
+          onClose={() => {
+            dispatch({
+              type: 'setCreateFileModalVisible',
+              payload: false,
+            });
+          }}
+          onSubmit={fileName => {
+            textObjectsCRUD
+              .create({
+                // We don't set a text value here so that the default text value is
+                // set for new files
+                textObject: {
+                  updatedAt: Date.now(),
+                  createdAt: Date.now(),
+                  name: fileName,
+                },
+              })
+              .finally(() => {
+                dispatch({
+                  type: 'setCreateFileModalVisible',
+                  payload: false,
+                });
+              });
+          }}
+        />
+      )}
     </div>
   );
 }

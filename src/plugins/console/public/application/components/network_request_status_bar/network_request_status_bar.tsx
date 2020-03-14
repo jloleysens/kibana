@@ -119,6 +119,16 @@ export const NetworkRequestStatusBar: FunctionComponent<Props> = ({
         </EuiFlexItem>
       </>
     );
+  } else {
+    content = (
+      <EuiFlexItem grow={false}>
+        <EuiBadge color="hollow">
+          {i18n.translate('console.responseCodePlaceholderContent', {
+            defaultMessage: 'No request sent yet',
+          })}
+        </EuiBadge>
+      </EuiFlexItem>
+    );
   }
 
   return (

@@ -19,9 +19,12 @@
 
 export { NetworkRequestStatusBar } from './network_request_status_bar';
 export { SomethingWentWrongCallout } from './something_went_wrong_callout';
-export { TopNavMenuItem, TopNavMenu } from './top_nav_menu';
+export { TopNavMenu } from './top_nav_menu';
 export { ConsoleMenu } from './console_menu';
 export { WelcomePanel } from './welcome_panel';
 export { AutocompleteOptions, DevToolsSettingsModal } from './settings_modal';
+export { DeleteFileModal } from './delete_file_modal';
+export { EditFileModal } from './edit_file_modal';
 export { HelpPanel } from './help_panel';
-export * from './file_tree';
+export { FileSaveErrorIcon } from './file_save_error_icon';
+export { FilesPopover } from './files_popover';
