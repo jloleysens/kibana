@@ -81,6 +81,7 @@ export default async function ({ readConfigFile }) {
       ...kibanaCommonConfig.get('kbnTestServer'),
       serverArgs: [
         ...kibanaCommonConfig.get('kbnTestServer.serverArgs'),
+        '--logging.root.level=debug',
         '--status.allowAnonymous=true',
         '--server.uuid=5b2de169-2785-441b-ae8c-186a1936b17d',
         '--xpack.maps.showMapsInspectorAdapter=true',
