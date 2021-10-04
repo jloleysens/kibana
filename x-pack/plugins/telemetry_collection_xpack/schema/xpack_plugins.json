@@ -4308,7 +4308,7 @@
             }
           }
         },
-        "PNGV2": {
+        "PNG_v2": {
           "properties": {
             "available": {
               "type": "boolean"
@@ -4599,7 +4599,7 @@
                     }
                   }
                 },
-                "PNGV2": {
+                "PNG_v2": {
                   "properties": {
                     "search": {
                       "type": "long"
@@ -4715,7 +4715,7 @@
                     }
                   }
                 },
-                "PNGV2": {
+                "PNG_v2": {
                   "properties": {
                     "search": {
                       "type": "long"
@@ -4831,7 +4831,7 @@
                     }
                   }
                 },
-                "PNGV2": {
+                "PNG_v2": {
                   "properties": {
                     "search": {
                       "type": "long"
@@ -4947,7 +4947,7 @@
                     }
                   }
                 },
-                "PNGV2": {
+                "PNG_v2": {
                   "properties": {
                     "search": {
                       "type": "long"
@@ -5063,7 +5063,7 @@
                     }
                   }
                 },
-                "PNGV2": {
+                "PNG_v2": {
                   "properties": {
                     "search": {
                       "type": "long"
@@ -5419,7 +5419,7 @@
                 }
               }
             },
-            "PNGV2": {
+            "PNG_v2": {
               "properties": {
                 "available": {
                   "type": "boolean"
@@ -5710,7 +5710,7 @@
                         }
                       }
                     },
-                    "PNGV2": {
+                    "PNG_v2": {
                       "properties": {
                         "search": {
                           "type": "long"
@@ -5826,7 +5826,7 @@
                         }
                       }
                     },
-                    "PNGV2": {
+                    "PNG_v2": {
                       "properties": {
                         "search": {
                           "type": "long"
@@ -5942,7 +5942,7 @@
                         }
                       }
                     },
-                    "PNGV2": {
+                    "PNG_v2": {
                       "properties": {
                         "search": {
                           "type": "long"
@@ -6058,7 +6058,7 @@
                         }
                       }
                     },
-                    "PNGV2": {
+                    "PNG_v2": {
                       "properties": {
                         "search": {
                           "type": "long"
@@ -6174,7 +6174,7 @@
                         }
                       }
                     },
-                    "PNGV2": {
+                    "PNG_v2": {
                       "properties": {
                         "search": {
                           "type": "long"

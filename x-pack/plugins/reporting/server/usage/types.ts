@@ -93,7 +93,7 @@ type BaseJobTypes =
   | 'csv_searchsource'
   | 'csv_searchsource_immediate'
   | 'PNG'
-  | 'PNGV2'
+  | 'PNG_v2'
   | 'printable_pdf'
   | 'printable_pdf_v2';
 

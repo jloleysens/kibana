@@ -35,7 +35,8 @@ const byAppCountsSchema: MakeSchemaFrom<ByAppCounts> = {
   csv_searchsource: appCountsSchema,
   csv_searchsource_immediate: appCountsSchema,
   PNG: appCountsSchema,
-  PNGV2: appCountsSchema,
+  // eslint-disable-next-line @typescript-eslint/naming-convention
+  PNG_v2: appCountsSchema,
   printable_pdf: appCountsSchema,
   printable_pdf_v2: appCountsSchema,
 };
@@ -64,7 +65,8 @@ const jobTypesSchema: MakeSchemaFrom<JobTypes> = {
   csv_searchsource: availableTotalSchema,
   csv_searchsource_immediate: availableTotalSchema,
   PNG: availableTotalSchema,
-  PNGV2: availableTotalSchema,
+  // eslint-disable-next-line @typescript-eslint/naming-convention
+  PNG_v2: availableTotalSchema,
   printable_pdf: availableTotalSchema,
   printable_pdf_v2: availableTotalSchema,
 };
