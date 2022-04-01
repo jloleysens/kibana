@@ -23,8 +23,8 @@ export default function ({ getService, getPageObjects }: FtrProviderContext) {
     baselineAPdfPrint: path.resolve(__dirname, 'fixtures/baseline/capture_a_print.pdf'),
   };
 
-  describe('Captures', () => {
-    it('PNG that matches the baseline', async () => {
+  describe('Visual report output', () => {
+    it.skip('matches PNG baseline', async () => {
       await PageObjects.common.navigateToApp(appId);
 
       await (await testSubjects.find('shareButton')).click();
@@ -43,6 +43,49 @@ export default function ({ getService, getPageObjects }: FtrProviderContext) {
       expect(
         await compareImages.checkIfPngsMatch(pngSessionFilePath, fixtures.baselineAPng)
       ).to.be.lessThan(0.09);
+    });
+
+    it('matches PDF baseline', async () => {
+      await PageObjects.common.navigateToApp(appId);
+
+      await (await testSubjects.find('shareButton')).click();
+      await (await testSubjects.find('captureTestPanel')).click();
+      await (await testSubjects.find('captureTestPDF')).click();
+
+      await PageObjects.reporting.clickGenerateReportButton();
+      const url = await PageObjects.reporting.getReportURL(60000);
+      const captureData = await PageObjects.reporting.getRawPdfReportData(url);
+
+      const pdfSessionFilePath = await compareImages.writeToSessionFile(
+        'capture_test_baseline_a',
+        captureData
+      );
+
+      expect(
+        await compareImages.checkIfPdfsMatch(pdfSessionFilePath, fixtures.baselineAPdf)
+      ).to.be.lessThan(0.001);
+    });
+
+    it.skip('print-optimized PDF that matches the baseline', async () => {
+      await PageObjects.common.navigateToApp(appId);
+
+      await (await testSubjects.find('shareButton')).click();
+      await (await testSubjects.find('captureTestPanel')).click();
+      await (await testSubjects.find('captureTestPDFPrint')).click();
+
+      await PageObjects.reporting.checkUsePrintLayout();
+      await PageObjects.reporting.clickGenerateReportButton();
+      const url = await PageObjects.reporting.getReportURL(60000);
+      const captureData = await PageObjects.reporting.getRawPdfReportData(url);
+
+      const pdfSessionFilePath = await compareImages.writeToSessionFile(
+        'capture_test_baseline_a',
+        captureData
+      );
+
+      expect(
+        await compareImages.checkIfPdfsMatch(pdfSessionFilePath, fixtures.baselineAPdfPrint)
+      ).to.be.lessThan(0.001);
     });
   });
 }
