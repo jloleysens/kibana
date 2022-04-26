@@ -31,16 +31,20 @@ function canRequire(path) {
 const DEV_MODE_PATH = '@kbn/cli-dev-mode';
 const DEV_MODE_SUPPORTED = canRequire(DEV_MODE_PATH);
 
-const getBootstrapScript = (isDev) => {
-  if (DEV_MODE_SUPPORTED && isDev && process.env.isDevCliChild !== 'true') {
-    // need dynamic require to exclude it from production build
-    // eslint-disable-next-line import/no-dynamic-require
-    const { bootstrapDevMode } = require(DEV_MODE_PATH);
-    return bootstrapDevMode;
-  } else {
-    const { bootstrap } = require('@kbn/core/server');
-    return bootstrap;
+const getBootstrapScript = (upgradeable) => {
+  // if (DEV_MODE_SUPPORTED && isDev && process.env.isDevCliChild !== 'true') {
+  //   // need dynamic require to exclude it from production build
+  //   // eslint-disable-next-line import/no-dynamic-require
+  //   const { bootstrapDevMode } = require(DEV_MODE_PATH);
+  //   return bootstrapDevMode;
+  // } else {
+  console.log('is upgradeable', upgradeable);
+  if (upgradeable) {
+    const { KibanaMon } = require('../../../kibana_mon');
+    return () => new KibanaMon().bootstrap();
   }
+  const { bootstrap } = require('@kbn/core/server');
+  return bootstrap;
 };
 
 const pathCollector = function () {
@@ -146,6 +150,7 @@ export default function (program) {
   command
     .description('Run the kibana server')
     .collectUnknownOptions()
+    .option('-u, --upgradeable', 'Whether Kibana can be in place upgraded')
     .option('-e, --elasticsearch <uri1,uri2>', 'Elasticsearch instances')
     .option(
       '-c, --config <path>',
@@ -214,6 +219,7 @@ export default function (program) {
     const configs = [].concat(opts.config || []);
     const cliArgs = {
       dev: !!opts.dev,
+      upgradeable: !!opts.upgradeable,
       envName: unknownOptions.env ? unknownOptions.env.name : undefined,
       silent: !!opts.silent,
       verbose: !!opts.verbose,
@@ -239,7 +245,7 @@ export default function (program) {
     // This variable is then used to identify that we're the 'real'
     // Kibana server process, and will be using core's bootstrap script
     // to effectively start Kibana.
-    const bootstrapScript = getBootstrapScript(cliArgs.dev);
+    const bootstrapScript = getBootstrapScript(cliArgs.upgradeable);
 
     await bootstrapScript({
       configs,

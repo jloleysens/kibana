@@ -155,6 +155,8 @@
       "@kbn/ui-actions-plugin/*": ["src/plugins/ui_actions/*"],
       "@kbn/unified-search-plugin": ["src/plugins/unified_search"],
       "@kbn/unified-search-plugin/*": ["src/plugins/unified_search/*"],
+      "@kbn/upgrade-me-plugin": ["src/plugins/upgrade_me"],
+      "@kbn/upgrade-me-plugin/*": ["src/plugins/upgrade_me/*"],
       "@kbn/url-forwarding-plugin": ["src/plugins/url_forwarding"],
       "@kbn/url-forwarding-plugin/*": ["src/plugins/url_forwarding/*"],
       "@kbn/usage-collection-plugin": ["src/plugins/usage_collection"],
