@@ -1,0 +1,14 @@
+{
+  "id": "upgradeMe",
+  "version": "1.0.0",
+  "kibanaVersion": "kibana",
+  "owner": {
+    "name": "OnWeek",
+    "githubTeam": "OnWeel"
+  },
+  "description": "No",
+  "server": true,
+  "ui": true,
+  "requiredPlugins": ["navigation"],
+  "optionalPlugins": []
+}

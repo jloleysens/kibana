@@ -1,0 +1,7 @@
+{
+  "prefix": "upgradeMe",
+  "paths": {
+    "upgradeMe": "."
+  },
+  "translations": ["translations/ja-JP.json"]
+}
