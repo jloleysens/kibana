@@ -161,13 +161,15 @@ export const registerRoutes = (router: FleetAuthzRouter) => {
       fleetAuthz: {
         fleet: { readEnrollmentTokens: true },
       },
-      // @ts-expect-error TODO(https://github.com/elastic/kibana/issues/196095): Repalce {RouteDeprecationInfo}
-      deprecated: true,
     })
     .addVersion(
       {
         version: API_VERSIONS.public.v1,
         validate: { request: GetOneEnrollmentAPIKeyRequestSchema },
+        options: {
+          // @ts-expect-error TODO(https://github.com/elastic/kibana/issues/196095): Replace {RouteDeprecationInfo}
+          deprecated: true,
+        },
       },
       getOneEnrollmentApiKeyHandler
     );
@@ -178,13 +180,15 @@ export const registerRoutes = (router: FleetAuthzRouter) => {
       fleetAuthz: {
         fleet: { allAgents: true },
       },
-      // @ts-expect-error TODO(https://github.com/elastic/kibana/issues/196095): Repalce {RouteDeprecationInfo}
-      deprecated: true,
     })
     .addVersion(
       {
         version: API_VERSIONS.public.v1,
         validate: { request: DeleteEnrollmentAPIKeyRequestSchema },
+        options: {
+          // @ts-expect-error TODO(https://github.com/elastic/kibana/issues/196095): Replace {RouteDeprecationInfo}
+          deprecated: true,
+        },
       },
       deleteEnrollmentApiKeyHandler
     );
@@ -195,13 +199,15 @@ export const registerRoutes = (router: FleetAuthzRouter) => {
       fleetAuthz: {
         fleet: { readEnrollmentTokens: true },
       },
-      // @ts-expect-error TODO(https://github.com/elastic/kibana/issues/196095): Repalce {RouteDeprecationInfo}
-      deprecated: true,
     })
     .addVersion(
       {
         version: API_VERSIONS.public.v1,
         validate: { request: GetEnrollmentAPIKeysRequestSchema },
+        options: {
+          // @ts-expect-error TODO(https://github.com/elastic/kibana/issues/196095): Replace {RouteDeprecationInfo}
+          deprecated: true,
+        },
       },
       getEnrollmentApiKeysHandler
     );
@@ -212,13 +218,15 @@ export const registerRoutes = (router: FleetAuthzRouter) => {
       fleetAuthz: {
         fleet: { allAgents: true },
       },
-      // @ts-expect-error TODO(https://github.com/elastic/kibana/issues/196095): Repalce {RouteDeprecationInfo}
-      deprecated: true,
     })
     .addVersion(
       {
         version: API_VERSIONS.public.v1,
         validate: { request: PostEnrollmentAPIKeyRequestSchema },
+        options: {
+          // @ts-expect-error TODO(https://github.com/elastic/kibana/issues/196095): Replace {RouteDeprecationInfo}
+          deprecated: true,
+        },
       },
       postEnrollmentApiKeyHandler
     );

@@ -397,13 +397,15 @@ export const registerAPIRoutes = (router: FleetAuthzRouter, config: FleetConfigT
       fleetAuthz: {
         fleet: { allAgents: true },
       },
-      // @ts-expect-error TODO(https://github.com/elastic/kibana/issues/196095): Repalce {RouteDeprecationInfo}
-      deprecated: true,
     })
     .addVersion(
       {
         version: API_VERSIONS.public.v1,
         validate: { request: PutAgentReassignRequestSchemaDeprecated },
+        options: {
+          // @ts-expect-error TODO(https://github.com/elastic/kibana/issues/196095): Replace {RouteDeprecationInfo}
+          deprecated: true,
+        },
       },
       putAgentsReassignHandlerDeprecated
     );
@@ -619,13 +621,15 @@ export const registerAPIRoutes = (router: FleetAuthzRouter, config: FleetConfigT
       fleetAuthz: {
         fleet: { readAgents: true },
       },
-      // @ts-expect-error TODO(https://github.com/elastic/kibana/issues/196095): Repalce {RouteDeprecationInfo}
-      deprecated: true,
     })
     .addVersion(
       {
         version: API_VERSIONS.public.v1,
         validate: { request: GetAgentStatusRequestSchema },
+        options: {
+          // @ts-expect-error TODO(https://github.com/elastic/kibana/issues/196095): Replace {RouteDeprecationInfo}
+          deprecated: true,
+        },
       },
       getAgentStatusForAgentPolicyHandler
     );

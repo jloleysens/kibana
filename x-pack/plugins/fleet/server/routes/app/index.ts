@@ -293,13 +293,15 @@ export const registerRoutes = (router: FleetAuthzRouter, config: FleetConfigType
         fleet: { allAgents: true },
       },
       description: `Create a service token`,
-      // @ts-expect-error TODO(https://github.com/elastic/kibana/issues/196095): Repalce {RouteDeprecationInfo}
-      deprecated: true,
     })
     .addVersion(
       {
         version: API_VERSIONS.public.v1,
         validate: {},
+        options: {
+          // @ts-expect-error TODO(https://github.com/elastic/kibana/issues/196095): Repalce {RouteDeprecationInfo}
+          deprecated: true,
+        },
       },
       generateServiceTokenHandler
     );
