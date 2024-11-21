@@ -178,9 +178,9 @@ export class Server {
     });
 
     if (!disablePreboot) {
-      // Immediately terminate in case of invalid configuration. This needs to be done after plugin discovery. We also
+      // Try to terminate ASAP in case of invalid configuration after plugin discovery. We also
       // silent deprecation warnings until `setup` stage where we'll validate config once again.
-      await ensureValidConfiguration(this.configService, { logDeprecations: false });
+      await this.ensureValidConfiguration({ logDeprecations: false });
     }
 
     // services we need to preboot even when preboot is disabled
@@ -502,9 +502,9 @@ export class Server {
     this.userProfile.stop();
   }
 
-  private async ensureValidConfiguration() {
+  private async ensureValidConfiguration(opts = { logDeprecations: true }) {
     try {
-      await ensureValidConfiguration(this.configService);
+      await ensureValidConfiguration(this.configService, opts);
     } catch (validationError) {
       if (this.env.packageInfo.buildFlavor !== 'serverless') {
         throw validationError;
