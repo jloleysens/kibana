@@ -8,6 +8,7 @@
  */
 
 import equal from 'fast-deep-equal';
+import dedent from 'dedent';
 import { cloneDeep } from 'lodash';
 import type { MigrationInfoRecord, ModelVersionSummary } from '../types';
 
@@ -37,11 +38,38 @@ export function validateChangesExistingType({ from, to }: ValidateChangesExistin
     throw new Error(`❌ Some model versions have been deleted for SO type '${name}'.`);
   }
 
-  // check that current changes don't define more than 1 new modelVersion
-  if (to.modelVersions.length - from.modelVersions.length > 1) {
-    throw new Error(
-      `❌ The SO type '${name}' is defining two (or more) new model versions. Please refer to our troubleshooting guide: https://www.elastic.co/docs/extend/kibana/saved-objects#troubleshooting`
-    );
+  if (
+    !!from.hash && // `from` has a hash in the snapshot so it has been released
+    from.modelVersions.length === 0 && // But `from` may have an empty modelVersions array as this is allowed when defining the first version of an SO type
+    to.modelVersions.length === 2
+  ) {
+    if (!['1', '2'].every((version) => to.modelVersions.find((mv) => mv.version === version))) {
+      throw new Error(
+        dedent`❌ The SO type '${name}' has been released and must introduce model version '1' and '2' in the same PR.
+          "1": {
+            "changes": [],
+            "schemas": {
+              "forwardCompatibility": {},
+              "create": {}
+            }
+          },
+          "2": {
+            "changes": [{ /* Your new changes here */ }],
+            "schemas": {
+              "forwardCompatibility": {},
+              "create": {}
+            }
+          }
+        `
+      );
+    }
+  } else {
+    // check that current changes don't define more than 1 new modelVersion
+    if (to.modelVersions.length - from.modelVersions.length > 1) {
+      throw new Error(
+        `❌ The SO type '${name}' is defining two (or more) new model versions. Please refer to our troubleshooting guide: https://www.elastic.co/docs/extend/kibana/saved-objects#troubleshooting`
+      );
+    }
   }
 
   // check that existing model versions have not been mutated
