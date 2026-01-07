@@ -70,6 +70,23 @@ describe('validateChangesExistingType', () => {
     );
   });
 
+  it('should throw if going from empty modelVersions to any versions other than "1" and "2"', () => {
+    const from = loadSnapshot('baseline.json');
+    const to = loadSnapshot('new_model_versions_after_empty.json');
+    expect(() => validateChangesWrapper({ from, to, name: 'core-usage-stats' }))
+      .toThrowErrorMatchingInlineSnapshot(`
+      "❌ The SO type 'core-usage-stats' has been released and must introduce model version '1' and '2' in the same PR.
+      \\"1\\": {
+        \\"changes\\": [], // important: add empty changes in v1
+        \\"schemas\\": { /* your v1 schemas here, if you have any */ }
+      },
+      \\"2\\": {
+        \\"changes\\": [{ /* Your new changes here */ }],
+        \\"schemas\\": { /* your v2 schemas here, if you have any */ }
+      }"
+    `);
+  });
+
   it('should throw if existing model versions are mutated', () => {
     const from = loadSnapshot('baseline.json');
     const to = loadSnapshot('mutated_model_versions.json');

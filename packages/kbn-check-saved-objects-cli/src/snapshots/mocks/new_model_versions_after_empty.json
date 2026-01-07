@@ -1,0 +1,37 @@
+{
+  "meta": {
+    "timestamp": 1756914281687,
+    "date": "2025-09-03T15:44:41.687Z",
+    "kibanaCommitHash": "20b1ec4d471768b45fab2c61f781bbc5ce776452",
+    "buildUrl": "https://buildkite.com/elastic/kibana-on-merge/builds/76489",
+    "pullRequestUrl": "https://github.com/elastic/kibana/pulls/233325"
+  },
+  "typeDefinitions": {
+    "core-usage-stats": {
+      "name": "core-usage-stats",
+      "migrationVersions": [
+        "7.14.1"
+      ],
+      "hash": "b3c04da317c957741ebcdedfea4524049fdc79ff",
+      "modelVersions": [
+        {
+          "version": "1",
+          "changeTypes": [
+            "mappings_addition"
+          ],
+          "hasTransformation": false,
+          "newMappings": [
+            "someNewProperty.type"
+          ],
+          "schemas": {
+            "forwardCompatibility": true
+          }
+        }
+      ],
+      "schemaVersions": [],
+      "mappings": {
+        "dynamic": false
+      }
+    }
+  }
+}
