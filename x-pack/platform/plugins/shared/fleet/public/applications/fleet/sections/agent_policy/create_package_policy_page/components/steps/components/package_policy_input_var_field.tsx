@@ -233,6 +233,7 @@ function getInputComponent({
         onChange={onChange}
         onBlur={() => setIsDirty(true)}
         isDisabled={frozen}
+        isSecret={varDef.secret}
         data-test-subj={`multiTextInput-${fieldTestSelector}`}
       />
     );
@@ -262,6 +263,7 @@ function getInputComponent({
             <>
               <FixedHeightDiv>
                 <CodeEditor
+                  fullWidth
                   languageId="yaml"
                   width="100%"
                   height="300px"
@@ -311,6 +313,7 @@ function getInputComponent({
     case 'password':
       return (
         <EuiFieldPassword
+          fullWidth
           type="dual"
           isInvalid={isInvalid}
           value={value}
@@ -351,6 +354,7 @@ function getInputComponent({
     default:
       return (
         <EuiFieldText
+          fullWidth
           isInvalid={isInvalid}
           value={value}
           onChange={(e) => onChange(e.target.value ? e.target.value : undefined)}

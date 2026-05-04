@@ -5,7 +5,8 @@
  * 2.0.
  */
 
-import type { JsonSchema7ObjectType } from 'zod-to-json-schema';
+// eslint-disable-next-line @kbn/eslint/module_migration
+import type { JSONSchema } from 'zod/v4/core/json-schema';
 
 /**
  * Possible types of tools
@@ -31,6 +32,15 @@ export enum ToolType {
    * MCP server tools
    */
   mcp = 'mcp',
+}
+
+/**
+ * Source category of a tool call in a conversation.
+ */
+export enum ToolOrigin {
+  registry = 'registry',
+  inline = 'inline',
+  internal = 'internal',
 }
 
 /**
@@ -75,5 +85,5 @@ export interface ToolDefinitionWithSchema<
   /**
    * the JSON schema associated with this tool's input parameters.
    */
-  schema: JsonSchema7ObjectType;
+  schema: JSONSchema;
 }

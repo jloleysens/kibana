@@ -8,6 +8,7 @@
 import type { ConstructorOptions } from '../../../../rules_client/rules_client';
 import { RulesClient } from '../../../../rules_client/rules_client';
 import {
+  coreFeatureFlagsMock,
   savedObjectsClientMock,
   savedObjectsRepositoryMock,
   uiSettingsServiceMock,
@@ -80,6 +81,7 @@ const rulesClientParams: jest.Mocked<ConstructorOptions> = {
   namespace: 'default',
   getUserName: jest.fn(),
   createAPIKey: createAPIKeyMock,
+  cloneAPIKey: jest.fn(),
   logger,
   internalSavedObjectsRepository,
   encryptedSavedObjectsClient: encryptedSavedObjects,
@@ -98,6 +100,8 @@ const rulesClientParams: jest.Mocked<ConstructorOptions> = {
   backfillClient,
   uiSettings: uiSettingsServiceMock.createStartContract(),
   eventLogger,
+  featureFlags: coreFeatureFlagsMock.createStart(),
+  isServerless: false,
 };
 
 const getBulkOperationStatusErrorResponse = (statusCode: number) => ({

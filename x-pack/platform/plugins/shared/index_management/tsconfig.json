@@ -65,6 +65,7 @@
     "@kbn/reindex-service-plugin",
     "@kbn/inference-common",
     "@kbn/upgrade-assistant-pkg-common",
+    "@kbn/ml-common-types",
     "@kbn/failure-store-modal",
     "@kbn/react-query",
     "@kbn/scout",
@@ -73,6 +74,8 @@
     "@kbn/core-elasticsearch-server",
     "@kbn/cloud",
     "@kbn/search-index-documents",
+    "@kbn/cloud-connect-plugin",
+    "@kbn/shared-ux-column-presets",
   ],
   "exclude": ["target/**/*"]
 }

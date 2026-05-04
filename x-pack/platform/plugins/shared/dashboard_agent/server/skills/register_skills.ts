@@ -5,9 +5,9 @@
  * 2.0.
  */
 
-import type { AgentBuilderPluginSetup } from '@kbn/agent-builder-plugin/server';
+import type { AgentBuilderPluginSetup } from '@kbn/agent-builder-server';
 import { dashboardManagementSkill } from './dashboard_management_skill';
 
-export const registerSkills = async (agentBuilder: AgentBuilderPluginSetup): Promise<void> => {
-  await agentBuilder.skills.register(dashboardManagementSkill);
+export const registerSkills = (agentBuilder: AgentBuilderPluginSetup): void => {
+  agentBuilder.skills.register(dashboardManagementSkill);
 };
