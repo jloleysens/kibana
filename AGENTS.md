@@ -13,6 +13,10 @@
 - Modules are grouped by domain (platform vs solutions) with visibility rules (`shared` vs `private`) that limit cross-group access.
 - Utility scripts live in `scripts/` (e.g., `node scripts/generate.js`).
 
+## Saved Objects
+- Do not eagerly add Saved Object type mappings. Ask the feature author for explicit permission for each field they want mapped. Mapped fields are not SQL table columns: once added, they cannot be removed, and they should only be used to power search functionality for the feature.
+- Do not add type mappings for fields that already exist in the Saved Object root mappings. Current root mapped fields are `type`, `namespace`, `namespaces`, `originId`, `updated_at`, `updated_by`, `created_at`, `created_by`, `references`, `coreMigrationVersion`, `typeMigrationVersion`, `managed`, and `accessControl`; check `src/core/packages/saved-objects/migration-server-internal/src/core/build_active_mappings.ts` for the authoritative list.
+
 ## Critical Thinking
 - Fix root cause (not band-aid).
 - Unsure: read more code; if still stuck, ask w/ short options. Never guess.
