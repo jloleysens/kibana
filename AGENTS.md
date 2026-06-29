@@ -14,8 +14,8 @@
 - Utility scripts live in `scripts/` (e.g., `node scripts/generate.js`).
 
 ## Saved Objects
-- Do not eagerly add Saved Object type mappings. Ask the feature author for explicit permission for each field they want mapped. Mapped fields are not SQL table columns: once added, they cannot be removed, and they should only be used to power search functionality for the feature.
-- Do not add type mappings for fields that already exist in the Saved Object root mappings. Current root mapped fields are `type`, `namespace`, `namespaces`, `originId`, `updated_at`, `updated_by`, `created_at`, `created_by`, `references`, `coreMigrationVersion`, `typeMigrationVersion`, `managed`, and `accessControl`; check `src/core/packages/saved-objects/migration-server-internal/src/core/build_active_mappings.ts` for the authoritative list.
+- Do not eagerly add Saved Object type mappings. Ask the feature author to confirm each mapped field is needed for feature search; mapped fields are not SQL columns and cannot be removed once added.
+- Do not map fields already covered by root mappings (for example, `created_at`). Inspect the authoritative source by searching for `getBaseMappings` in `src/core/packages/saved-objects`.
 
 ## Critical Thinking
 - Fix root cause (not band-aid).
