@@ -13,6 +13,10 @@
 - Modules are grouped by domain (platform vs solutions) with visibility rules (`shared` vs `private`) that limit cross-group access.
 - Utility scripts live in `scripts/` (e.g., `node scripts/generate.js`).
 
+## Saved Objects
+- Do not eagerly add Saved Object type mappings. Ask the feature author to confirm each mapped field is needed for feature search; mapped fields are not SQL columns and cannot be removed once added.
+- Do not map fields already covered by root mappings (for example, `created_at`). Inspect the authoritative source by searching for `getBaseMappings` in `src/core/packages/saved-objects`.
+
 ## Critical Thinking
 - Fix root cause (not band-aid).
 - Unsure: read more code; if still stuck, ask w/ short options. Never guess.
