@@ -3,6 +3,17 @@
 ## Setup
 - Run `yarn kbn bootstrap` for initial setup, after switching branches, or when encountering dependency errors
 
+## Cursor Cloud specific instructions
+- Node.js must be **exactly** `v22.22.0` (Kibana rejects any other version via `src/setup_node_env/node_version_validator.js`). It is installed via `nvm` and made default; `~/.bashrc` prepends its bin dir to PATH so it wins over the pre-existing `/exec-daemon/node` (v22.14.0). Verify with `node --version` in a fresh login shell before running anything. `yarn` (1.22.22) is installed globally for that Node version.
+- The startup update script only runs `yarn kbn bootstrap` (installs deps + builds shared webpack bundles). It is idempotent and takes a few minutes; the Node/yarn install is a one-time setup step, not part of it.
+- Running the app requires two long-lived services, best run in separate tmux sessions (they don't self-terminate):
+  - Elasticsearch: `yarn es snapshot --license trial` (listens on `http://localhost:9200`, creds `elastic:changeme`). First run downloads the ES snapshot. Wait for `kbn/es setup complete`.
+  - Kibana dev server: `yarn start` (first start compiles ~200 optimizer bundles, ~3 min; wait for `Kibana is now available`). Kibana must be started **after** ES is up.
+- **Dev base path gotcha:** `yarn start` serves Kibana behind a randomly-generated base path (e.g. `http://localhost:5601/zel`), not the root. Grep the Kibana log for `http server running at` (or `basepath proxy server running at`) to get the current path each run; hitting `http://localhost:5601/` just 302-redirects to it. API/UI calls must include the base path (e.g. `GET /<basepath>/api/status`).
+- Login is `elastic:changeme` at `/<basepath>/login`. `kbn-xsrf: true` header is required for non-GET Kibana API calls.
+- Benign startup noise: Fleet/ELSER model errors (`Model download task is currently running`) and screenshotting chromium re-downloads are background tasks and do not block Kibana from becoming available.
+- Playwright chromium is available in `node_modules` and launches headless in this VM, useful for capturing UI screenshots/tests.
+
 ## Overview
 - Kibana is organized into modules, each defined by a `kibana.jsonc`: core, packages, and plugin packages. Aside from tooling and testing, most code lives in these modules.
 - Packages are reusable units with explicit boundaries and a single public entry point (no subpath imports), usually with a focused purpose.
