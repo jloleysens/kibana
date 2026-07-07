@@ -8,9 +8,9 @@
 - The startup update script only runs `yarn kbn bootstrap` (installs deps + builds shared webpack bundles). It is idempotent and takes a few minutes; the Node/yarn install is a one-time setup step, not part of it.
 - Running the app requires two long-lived services, best run in separate tmux sessions (they don't self-terminate):
   - Elasticsearch: `yarn es snapshot --license trial` (listens on `http://localhost:9200`, creds `elastic:changeme`). First run downloads the ES snapshot. Wait for `kbn/es setup complete`.
-  - Kibana dev server: `yarn start` (first start compiles ~200 optimizer bundles, ~3 min; wait for `Kibana is now available`). Kibana must be started **after** ES is up.
-- **Dev base path gotcha:** `yarn start` serves Kibana behind a randomly-generated base path (e.g. `http://localhost:5601/zel`), not the root. Grep the Kibana log for `http server running at` (or `basepath proxy server running at`) to get the current path each run; hitting `http://localhost:5601/` just 302-redirects to it. API/UI calls must include the base path (e.g. `GET /<basepath>/api/status`).
-- Login is `elastic:changeme` at `/<basepath>/login`. `kbn-xsrf: true` header is required for non-GET Kibana API calls.
+  - Kibana dev server: `yarn start --no-base-path` (first start compiles ~200 optimizer bundles, ~3 min; wait for `Kibana is now available`). Kibana must be started **after** ES is up.
+- **Base path:** prefer `yarn start --no-base-path` so Kibana is served at the root `http://localhost:5601` (no proxy). Without `--no-base-path`, `yarn start` serves Kibana behind a randomly-generated base path (e.g. `http://localhost:5601/zel`) and API/UI calls must include that path (grep the Kibana log for `http server running at`); using `--no-base-path` avoids that.
+- Login is `elastic:changeme` at `/login`. `kbn-xsrf: true` header is required for non-GET Kibana API calls.
 - Benign startup noise: Fleet/ELSER model errors (`Model download task is currently running`) and screenshotting chromium re-downloads are background tasks and do not block Kibana from becoming available.
 - Playwright chromium is available in `node_modules` and launches headless in this VM, useful for capturing UI screenshots/tests.
 
