@@ -71,7 +71,8 @@ type TestHttpConfig = Omit<Partial<HttpConfigType>, 'selfHttp' | 'ssl' | 'versio
 
 const startServer = async (
   serverConfig: TestHttpConfig = { port: TEST_PORT },
-  featureFlags = coreFeatureFlagsMock.createStart()
+  featureFlags = coreFeatureFlagsMock.createStart(),
+  useTrancheAuthentication = false
 ) => {
   const logger = loggingSystemMock.create();
   const server = createInternalHttpService({
@@ -95,13 +96,32 @@ const startServer = async (
   const {
     server: innerServer,
     createRouter,
+    registerAuth,
     registerOnPostAuth,
     registerOnPreAuth,
   } = await server.setup(setupDeps);
   const router = createRouter('/');
   const supertest = Supertest(innerServer.listener);
   const started = { httpStart: null as InternalHttpServiceStart | null };
-  const lifecycleCalls = { preAuthForNonOpted: 0, nonOptedHandler: 0 };
+  const lifecycleCalls = {
+    preAuthForNonOpted: 0,
+    nonOptedHandler: 0,
+    trancheAuthzChecks: 0,
+    trancheHandlers: 0,
+  };
+
+  if (useTrancheAuthentication) {
+    registerAuth((request, response, toolkit) => {
+      const authorization = request.headers.authorization;
+      if (!authorization || Array.isArray(authorization)) {
+        return toolkit.notHandled();
+      }
+      return toolkit.authenticated({
+        state: { username: 'tranche-test-user' },
+        requestHeaders: { authorization },
+      });
+    });
+  }
 
   registerOnPreAuth((request, response, toolkit) => {
     if (request.route.path === '/self/not_opted') {
@@ -112,6 +132,12 @@ const startServer = async (
   registerOnPostAuth((request, response, toolkit) => {
     if (request.route.path === '/self/authz_denied') {
       return response.forbidden({ body: 'Rejected by test authorization' });
+    }
+    if (request.route.path.startsWith('/api/alerting/rule')) {
+      lifecycleCalls.trancheAuthzChecks++;
+      if (request.headers['x-test-tranche-authorized'] !== 'true') {
+        return response.forbidden({ body: 'Rejected by tranche test authorization' });
+      }
     }
     return toolkit.next();
   });
@@ -341,6 +367,39 @@ const startServer = async (
     }
   );
 
+  router.post(
+    {
+      path: '/api/alerting/rule/{id?}',
+      security: routeSecurity,
+      validate: false,
+      options: { access: 'public', selfCallable: true },
+    },
+    (_context, req, res) => {
+      lifecycleCalls.trancheHandlers++;
+      return res.ok({
+        body: { method: req.route.method.toUpperCase(), marker: req.headers['x-kbn-self-call'] },
+      });
+    }
+  );
+
+  router.get(
+    {
+      path: '/self/call_response_ops_tranche',
+      security: routeSecurity,
+      validate: false,
+    },
+    async (_context, req, res) => {
+      const createdRule = await started.httpStart!.selfClient.asScoped(req).fetch<{
+        method: string;
+        marker: string;
+      }>('/api/alerting/rule', {
+        method: 'POST',
+        headers: { 'x-test-tranche-authorized': 'true' },
+      });
+      return res.ok({ body: createdRule });
+    }
+  );
+
   router.get(
     {
       path: '/self/resolve_target',
@@ -498,7 +557,12 @@ describe('Http self client', () => {
           attributes: { code: 'SELF_CALL_NOT_ALLOWED' },
         })
       );
-      expect(started.lifecycleCalls).toEqual({ preAuthForNonOpted: 0, nonOptedHandler: 0 });
+      expect(started.lifecycleCalls).toEqual({
+        preAuthForNonOpted: 0,
+        nonOptedHandler: 0,
+        trancheAuthzChecks: 0,
+        trancheHandlers: 0,
+      });
       expect(started.featureFlags.getBooleanValue$).toHaveBeenCalledWith(
         'core.http.selfCallableEnforcement',
         true
@@ -539,6 +603,39 @@ describe('Http self client', () => {
       expect(featureFlags.getBooleanValue$).toHaveBeenCalledWith(
         'core.http.selfCallableEnforcement',
         false
+      );
+    });
+
+    it('allows authenticated and authorized tranche routes without non-opted discovery', async () => {
+      const started = await startServer(
+        {
+          port: TEST_PORT,
+          selfHttp: { target: 'auto', selfCallableEnforcement: true, ssl: {} },
+        },
+        coreFeatureFlagsMock.createStart(),
+        true
+      );
+      server = started.server;
+      (started.logger.get().info as jest.Mock).mockClear();
+
+      await started.supertest
+        .get('/self/call_response_ops_tranche')
+        .set('authorization', 'Bearer tranche-test')
+        .expect(200, { method: 'POST', marker: 'true' });
+
+      await started.supertest.post('/api/alerting/rule').set('x-kbn-self-call', 'true').expect(401);
+      await started.supertest
+        .post('/api/alerting/rule')
+        .set('authorization', 'Bearer unauthorized')
+        .set('kbn-xsrf', 'true')
+        .set('x-kbn-self-call', 'true')
+        .expect(403);
+
+      expect(started.lifecycleCalls.trancheAuthzChecks).toBe(2);
+      expect(started.lifecycleCalls.trancheHandlers).toBe(1);
+      expect(started.logger.get().info).not.toHaveBeenCalledWith(
+        'Kibana self HTTP call targeted a route that has not opted in',
+        expect.anything()
       );
     });
 

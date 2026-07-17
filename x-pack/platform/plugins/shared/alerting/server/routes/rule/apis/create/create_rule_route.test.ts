@@ -208,6 +208,7 @@ describe('createRuleRoute', () => {
     const [config, handler] = router.post.mock.calls[0];
 
     expect(config.path).toMatchInlineSnapshot(`"/api/alerting/rule/{id?}"`);
+    expect(config.options).toMatchObject({ access: 'public', selfCallable: true });
 
     rulesClient.create.mockResolvedValueOnce(mockedAlert);
 

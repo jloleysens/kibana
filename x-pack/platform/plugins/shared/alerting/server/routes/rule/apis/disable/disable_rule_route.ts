@@ -32,6 +32,7 @@ export const disableRuleRoute = (
       security: DEFAULT_ALERTING_ROUTE_SECURITY,
       options: {
         access: 'public',
+        selfCallable: true,
         summary: 'Disable a rule',
         tags: ['oas-tag:alerting'],
         oasOperationObject: disableRuleParamsExamplesV1,

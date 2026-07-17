@@ -31,6 +31,7 @@ describe('getAllConnectorsRoute', () => {
     const [config, handler] = router.get.mock.calls[0];
 
     expect(config.path).toMatchInlineSnapshot(`"/api/actions/connectors"`);
+    expect(config.options).toMatchObject({ access: 'public', selfCallable: true });
 
     const actionsClient = actionsClientMock.create();
     actionsClient.getAll.mockResolvedValueOnce([]);

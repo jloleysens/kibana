@@ -40,6 +40,7 @@ export const updateRuleRoute = (
       security: DEFAULT_ALERTING_ROUTE_SECURITY,
       options: {
         access: 'public',
+        selfCallable: true,
         summary: `Update a rule`,
         tags: ['oas-tag:alerting'],
         oasOperationObject: updateRuleParamsExamplesV1,

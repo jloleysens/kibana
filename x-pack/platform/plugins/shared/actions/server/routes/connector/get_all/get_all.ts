@@ -27,6 +27,7 @@ export const getAllConnectorsRoute = (
       security: DEFAULT_ACTION_ROUTE_SECURITY,
       options: {
         access: 'public',
+        selfCallable: true,
         summary: `Get all connectors`,
         tags: ['oas-tag:connectors'],
       },

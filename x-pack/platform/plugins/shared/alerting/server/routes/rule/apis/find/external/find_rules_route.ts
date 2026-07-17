@@ -35,6 +35,7 @@ export const findRulesRoute = (
       security: DEFAULT_ALERTING_ROUTE_SECURITY,
       options: {
         access: 'public',
+        selfCallable: true,
         summary: 'Get information about rules',
         tags: ['oas-tag:alerting'],
         oasOperationObject: findRuleParamsExamplesV1,

@@ -34,6 +34,7 @@ export const getRuleRoute = (
       path: `${BASE_ALERTING_API_PATH}/rule/{id}`,
       options: {
         access: 'public',
+        selfCallable: true,
         summary: `Get rule details`,
         tags: ['oas-tag:alerting'],
         oasOperationObject: getRuleParamsExamplesV1,

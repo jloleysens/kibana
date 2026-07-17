@@ -40,6 +40,7 @@ export const createRuleRoute = ({ router, licenseState, usageCounter }: RouteOpt
       security: DEFAULT_ALERTING_ROUTE_SECURITY,
       options: {
         access: 'public',
+        selfCallable: true,
         summary: `Create a rule`,
         tags: ['oas-tag:alerting'],
         oasOperationObject: createRuleParamsExamplesV1,
