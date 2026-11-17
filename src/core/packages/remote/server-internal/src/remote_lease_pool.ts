@@ -11,6 +11,7 @@ export interface LeaseHost<T> {
   readonly value: T;
   readonly close: () => Promise<void>;
   readonly alive: () => boolean;
+  readonly terminated?: AbortSignal;
 }
 
 interface ManagedHost<T> {
@@ -18,6 +19,8 @@ interface ManagedHost<T> {
   readonly born: number;
   runs: number;
   settingsKey?: string;
+  closing?: Promise<void>;
+  onTermination?: () => void;
 }
 
 interface Waiter {
@@ -33,12 +36,15 @@ export class RemoteLeasePool<T> {
   private creating?: Promise<ManagedHost<T>>;
   private busy = false;
   private stopped = false;
+  private stopping?: Promise<void>;
+  private readonly retirements = new Set<Promise<void>>();
   private readonly waiters: Waiter[] = [];
 
   constructor(
     private readonly create: () => Promise<LeaseHost<T>>,
     private readonly policy: { maxAgeMs: number; maxRuns: number },
-    private readonly now: () => number = Date.now
+    private readonly now: () => number = Date.now,
+    private readonly name: string = 'remote host'
   ) {
     if (
       !Number.isFinite(policy.maxAgeMs) ||
@@ -54,14 +60,22 @@ export class RemoteLeasePool<T> {
     if (this.stopped) throw new Error('Remote lease pool stopped');
     if (this.host) return;
     this.creating ??= this.create().then(async (host) => {
+      const managed: ManagedHost<T> = { host, born: this.now(), runs: 0 };
       if (this.stopped) {
-        await host.close();
+        await this.retire(managed);
         throw new Error('Remote lease pool stopped');
       }
-      return { host, born: this.now(), runs: 0 };
+      this.host = managed;
+      managed.onTermination = () => {
+        // Shutdown and acquisitions observe this same promise; event callbacks cannot await it.
+        void this.retire(managed).catch(() => undefined);
+      };
+      host.terminated?.addEventListener('abort', managed.onTermination, { once: true });
+      if (host.terminated?.aborted) managed.onTermination();
+      return managed;
     });
     try {
-      this.host = await this.creating;
+      await this.creating;
     } finally {
       this.creating = undefined;
     }
@@ -98,7 +112,7 @@ export class RemoteLeasePool<T> {
           if (released) return;
           released = true;
           try {
-            if (discard) await this.retire();
+            if (discard) await this.retire(managed);
           } finally {
             this.giveSlot();
           }
@@ -110,21 +124,47 @@ export class RemoteLeasePool<T> {
     }
   }
 
-  async stop(): Promise<void> {
-    if (this.stopped) return;
+  stop(): Promise<void> {
+    if (this.stopping) return this.stopping;
     this.stopped = true;
     for (const waiter of this.waiters.splice(0)) {
       waiter.signal?.removeEventListener('abort', waiter.onAbort);
       waiter.reject(new Error('Remote lease pool stopped'));
     }
-    await this.creating?.catch(() => undefined);
-    await this.retire();
+    const closing = (async () => {
+      await this.creating?.catch(() => undefined);
+      await this.retire();
+      await Promise.all([...this.retirements]);
+    })();
+    let timeout: ReturnType<typeof setTimeout>;
+    this.stopping = Promise.race([
+      closing,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error(`Remote host "${this.name}" did not close within 5000ms`)),
+          5000
+        );
+      }),
+    ]).finally(() => clearTimeout(timeout));
+    return this.stopping;
   }
 
-  private async retire(): Promise<void> {
-    const previous = this.host;
-    this.host = undefined;
-    await previous?.host.close();
+  private retire(previous = this.host): Promise<void> {
+    if (!previous) return Promise.resolve();
+    if (previous.closing) return previous.closing;
+    if (this.host === previous) this.host = undefined;
+    if (previous.onTermination) {
+      previous.host.terminated?.removeEventListener('abort', previous.onTermination);
+    }
+    // Publish before invoking close: closing the transport may synchronously signal termination.
+    const closing = Promise.resolve().then(() => previous.host.close());
+    previous.closing = closing;
+    this.retirements.add(closing);
+    void closing.then(
+      () => this.retirements.delete(closing),
+      () => this.retirements.delete(closing)
+    );
+    return closing;
   }
 
   private async takeSlot(signal?: AbortSignal): Promise<void> {

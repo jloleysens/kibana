@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import type { Logger } from '@kbn/logging';
 import { RemoteService } from './remote_service';
 import { Echo } from './__fixtures__/demo_plugin/server/remote/echo';
+import { Root } from './__fixtures__/demo_plugin/server/remote/root';
 import {
   DemoCatalogToken,
   DemoRootToken,
@@ -379,3 +380,126 @@ it.each(['disconnect', 'messageerror'] as const)(
     }
   }
 );
+
+it.each(['close', 'messageerror', 'peerClose'] as const)(
+  'disposes active in-process work on transport %s and replaces the host',
+  async (event) => {
+    const channels: workerThreads.MessageChannel[] = [];
+    const OriginalChannel = workerThreads.MessageChannel;
+    const spy = jest
+      .spyOn(jest.requireActual<typeof workerThreads>('node:worker_threads'), 'MessageChannel')
+      .mockImplementation(() => {
+        const channel = new OriginalChannel();
+        channels.push(channel);
+        return channel;
+      });
+    const started = Promise.withResolvers<void>();
+    const aborted = jest.fn();
+    const sideEffect = jest.fn();
+    const service = createService();
+    service.bindInProcess(DemoValueToken, () => ({
+      label: (labelEvent: string) => {
+        if (labelEvent === 'started') started.resolve();
+        if (labelEvent === 'aborted') aborted();
+        if (labelEvent === 'sideEffect') sideEffect();
+        return 'healthy';
+      },
+    }));
+    try {
+      await service.start('in_process');
+      const lease = await service.lease<{ untilDisposed(): Promise<void> }>('demo');
+      void lease.stub.untilDisposed().catch(() => {});
+      await started.promise;
+      if (event === 'close') channels[0].port1.close();
+      else if (event === 'peerClose') channels[0].port1.emit('message', null);
+      else channels[0].port1.emit('messageerror', new Error('decode failed'));
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(aborted).toHaveBeenCalledTimes(1);
+      const count = sideEffect.mock.calls.length;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      expect(sideEffect).toHaveBeenCalledTimes(count);
+      await lease.release();
+      const next = await service.lease<{ bindingLabel(): Promise<string> }>('demo');
+      expect(channels).toHaveLength(2);
+      expect(await next.stub.bindingLabel()).toBe('healthy');
+      await next.release();
+    } finally {
+      await service.stop();
+      spy.mockRestore();
+    }
+  }
+);
+
+it('rejects and logs shutdown when an in-process executor disposal hangs', async () => {
+  const gate = Promise.withResolvers<void>();
+  const dispose = jest
+    .spyOn(Root.prototype, Symbol.asyncDispose)
+    .mockImplementation(() => gate.promise);
+  const service = createService();
+  try {
+    await service.start('in_process');
+    jest.useFakeTimers();
+    const stopping = service.stop();
+    const rejected = expect(stopping).rejects.toThrow(
+      'Remote host "demo" did not close within 5000ms'
+    );
+    await jest.advanceTimersByTimeAsync(5000);
+    await rejected;
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Remote host "demo" did not close within 5000ms' })
+    );
+  } finally {
+    gate.resolve();
+    jest.useRealTimers();
+    dispose.mockRestore();
+  }
+});
+
+it('kills and awaits a child that ignores coordinator disconnect', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'remote-ignore-disconnect-'));
+  mkdirSync(join(directory, 'demo'));
+  writeFileSync(
+    join(directory, 'demo', 'graph.mjs'),
+    `
+    process.on('message', () => process.send({ kind: 'ready' }));
+    process.on('disconnect', () => {});
+    setInterval(() => {}, 100);
+  `
+  );
+  const children: childProcess.ChildProcess[] = [];
+  const originalFork = childProcess.fork;
+  const spy = jest
+    .spyOn(jest.requireActual<typeof childProcess>('node:child_process'), 'fork')
+    .mockImplementation((...args: Parameters<typeof childProcess.fork>) => {
+      const child = originalFork(...args);
+      children.push(child);
+      return child;
+    });
+  const service = new RemoteService(logger, {
+    maxOldGenerationSizeMb: 256,
+    bundleDirectory: directory,
+  });
+  service.discover([FIXTURE]);
+  service.register({
+    id: 'demo',
+    root: DemoRootToken,
+    contributions: [DemoStepKind],
+    dependencies: [DemoCatalogToken],
+  });
+  service.bind(EchoToken, () => new Echo());
+  try {
+    await service.start('child_process');
+    const started = Date.now();
+    await service.stop();
+    expect(children[0].signalCode).toBe('SIGKILL');
+    expect(Date.now() - started).toBeLessThan(3000);
+    expect(children[0].listenerCount('exit')).toBe(0);
+    await service.stop();
+  } finally {
+    for (const child of children)
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    spy.mockRestore();
+    rmSync(directory, { recursive: true });
+  }
+}, 5000);

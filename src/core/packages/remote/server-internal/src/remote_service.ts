@@ -199,29 +199,41 @@ export class RemoteService implements RemoteSetup {
       const spec = this.buildSpec(registration);
       const coordinator = this.materializeCoordinator(spec);
       let initialized = false;
-      const pool = new RemoteLeasePool(async () => {
-        if (initialized) this.prepareReadiness(registration.id);
-        initialized = true;
-        try {
-          if (backend === 'in_process')
-            return await this.startInProcess(registration.id, spec, coordinator);
-          if (backend === 'child_process')
-            return await this.startProcess(registration.id, spec, coordinator);
-          return await this.startWorker(registration.id, spec, coordinator);
-        } catch (error) {
-          this.rejectors.get(registration.id)?.(
-            error instanceof Error ? error : new Error(String(error))
-          );
-          throw error;
-        }
-      }, registration.reuse ?? { maxAgeMs: 5 * 60_000, maxRuns: 100 });
+      const pool = new RemoteLeasePool(
+        async () => {
+          if (initialized) this.prepareReadiness(registration.id);
+          initialized = true;
+          try {
+            if (backend === 'in_process')
+              return await this.startInProcess(registration.id, spec, coordinator);
+            if (backend === 'child_process')
+              return await this.startProcess(registration.id, spec, coordinator);
+            return await this.startWorker(registration.id, spec, coordinator);
+          } catch (error) {
+            this.rejectors.get(registration.id)?.(
+              error instanceof Error ? error : new Error(String(error))
+            );
+            throw error;
+          }
+        },
+        registration.reuse ?? { maxAgeMs: 5 * 60_000, maxRuns: 100 },
+        Date.now,
+        registration.id
+      );
       this.pools.set(registration.id, pool);
       await pool.warm();
     }
   }
 
   public async stop(): Promise<void> {
-    await Promise.all([...this.pools.values()].map((pool) => pool.stop()));
+    await Promise.all(
+      [...this.pools.values()].map((pool) =>
+        pool.stop().catch((error: Error) => {
+          this.logger.error(error);
+          throw error;
+        })
+      )
+    );
     this.scopes.clear();
   }
 
@@ -341,6 +353,8 @@ export class RemoteService implements RemoteSetup {
   ): LeaseHost<RemoteSession<unknown>> {
     const scopeIds = new Set<string>();
     let closed = false;
+    const terminated = new AbortController();
+    let disposing: Promise<void> | undefined;
     const endScope = (scopeId: string, reason: Error) => {
       if (!scopeIds.delete(scopeId)) return;
       const controller = this.scopeControllers.get(scopeId);
@@ -352,19 +366,23 @@ export class RemoteService implements RemoteSetup {
       closed = true;
       for (const scopeId of scopeIds) endScope(scopeId, reason);
     };
+    const terminate = (reason: Error) => {
+      endScopes(reason);
+      terminated.abort(reason);
+    };
     const onMessage = (message: object | null) => {
-      if (message === null) endScopes(new Error('Remote RPC peer closed'));
+      if (message === null) terminate(new Error('Remote RPC peer closed'));
     };
     const messagePort =
       transport && 'postMessage' in transport ? (transport as MessagePort) : undefined;
     messagePort?.on('message', onMessage);
     const events = ['close', 'messageerror', 'error', 'disconnect', 'exit'];
     const listeners = events.map((event) => {
-      const listener = () => endScopes(new Error(`Remote transport ${event}`));
+      const listener = () => terminate(new Error(`Remote transport ${event}`));
       transport?.on(event, listener);
       return listener;
     });
-    const onTransportAbort = () => endScopes(transportSignal?.reason);
+    const onTransportAbort = () => terminate(transportSignal?.reason);
     transportSignal?.addEventListener('abort', onTransportAbort, { once: true });
     const session: RemoteSession<T> = {
       stub,
@@ -387,19 +405,20 @@ export class RemoteService implements RemoteSetup {
     const resolve = this.resolvers.get(id);
     if (!resolve) throw new Error('Remote graph has no readiness waiter');
     resolve(session as RemoteSession<unknown>);
-    let disposed = false;
     if (transportSignal?.aborted) onTransportAbort();
     return {
       value: session as RemoteSession<unknown>,
       alive: () => !closed && alive(),
-      close: async () => {
-        if (disposed) return;
-        disposed = true;
-        endScopes(new Error('Remote host stopped'));
-        messagePort?.off('message', onMessage);
-        events.forEach((event, index) => transport?.off(event, listeners[index]));
-        transportSignal?.removeEventListener('abort', onTransportAbort);
-        await close();
+      terminated: terminated.signal,
+      close: () => {
+        disposing ??= Promise.resolve().then(async () => {
+          endScopes(new Error('Remote host stopped'));
+          messagePort?.off('message', onMessage);
+          events.forEach((event, index) => transport?.off(event, listeners[index]));
+          transportSignal?.removeEventListener('abort', onTransportAbort);
+          await close();
+        });
+        return disposing;
       },
     };
   }
@@ -585,6 +604,11 @@ async function closeChild(child: ChildProcess, session: IpcSession<object>): Pro
   session.close();
   if (child.exitCode !== null || child.signalCode !== null) return;
   const exited = once(child, 'exit');
-  child.kill();
-  await exited;
+  const timeout = setTimeout(() => child.kill('SIGKILL'), 1000);
+  try {
+    if (child.connected) child.disconnect();
+    await exited;
+  } finally {
+    clearTimeout(timeout);
+  }
 }

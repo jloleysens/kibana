@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { appendFileSync } from 'node:fs';
 import { isMainThread, threadId } from 'node:worker_threads';
 import { inject } from 'inversify';
 import { remotable } from '@kbn/core-remote-common';
@@ -17,15 +18,19 @@ import { DemoCatalogToken, EchoToken, DemoValueToken, type EchoApi } from './tok
 export class Root {
   private readonly abortController = new AbortController();
 
-  async untilDisposed(): Promise<void> {
-    this.value.label('started');
+  async untilDisposed(eventsPath?: string): Promise<void> {
+    const record = (event: string) => {
+      this.value.label(event);
+      if (eventsPath) appendFileSync(eventsPath, event + '\n');
+    };
+    record('started');
     await new Promise<void>((resolve) => {
-      const timer = setInterval(() => this.value.label('sideEffect'), 5);
+      const timer = setInterval(() => record('sideEffect'), 5);
       this.abortController.signal.addEventListener(
         'abort',
         () => {
           clearInterval(timer);
-          this.value.label('aborted');
+          record('aborted');
           resolve();
         },
         { once: true }

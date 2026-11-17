@@ -164,3 +164,31 @@ it('closes a host that finishes booting after stop', async () => {
   await stopping;
   expect(close).toHaveBeenCalledTimes(1);
 });
+
+it('awaits retirement already underway when stop begins', async () => {
+  const closing = Promise.withResolvers<void>();
+  const started = Promise.withResolvers<void>();
+  const close = jest.fn(async () => {
+    started.resolve();
+    await closing.promise;
+  });
+  const pool = new RemoteLeasePool(async () => ({ value: 1, close, alive: () => true }), {
+    maxAgeMs: 1000,
+    maxRuns: 1,
+  });
+  const lease = await pool.acquire('a');
+  const retiring = lease.release(true);
+  await started.promise;
+  const stopped = jest.fn();
+  const stopping = pool.stop().then(stopped);
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(stopped).not.toHaveBeenCalled();
+  } finally {
+    closing.resolve();
+    await retiring;
+    await stopping;
+  }
+  expect(stopped).toHaveBeenCalledTimes(1);
+  expect(close).toHaveBeenCalledTimes(1);
+});

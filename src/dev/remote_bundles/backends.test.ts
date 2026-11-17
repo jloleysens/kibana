@@ -7,7 +7,9 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import * as childProcess from 'node:child_process';
+import { setTimeout as delay } from 'node:timers/promises';
+import { existsSync, readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createToken } from '@kbn/core-di';
@@ -158,3 +160,75 @@ it('refuses a stale child-process step-registration digest and cleans up the fai
     rmSync(directory, { recursive: true });
   }
 });
+
+it.each(['error', 'peerClose'] as const)(
+  'disposes active child work on transport %s and replaces the host',
+  async (event) => {
+    const directory = mkdtempSync(join(tmpdir(), 'runner-transport-end-'));
+    const effects = join(directory, 'effects');
+    const children: childProcess.ChildProcess[] = [];
+    const originalFork = childProcess.fork;
+    const spy = jest
+      .spyOn(jest.requireActual<typeof childProcess>('node:child_process'), 'fork')
+      .mockImplementation((...args: Parameters<typeof childProcess.fork>) => {
+        const child = originalFork(...args);
+        children.push(child);
+        return child;
+      });
+    const service = new RemoteService(loggingSystemMock.createLogger(), {
+      maxOldGenerationSizeMb: 256,
+      bundleDirectory: directory,
+    });
+    try {
+      await buildRemoteBundle({
+        manifests: [join(plugin, 'server/remote/index.ts')],
+        graph: {
+          id: 'demo',
+          root: 'demo.root',
+          dependencies: ['demo.catalog'],
+          contributions: ['demo.step'],
+        },
+        outdir: join(directory, 'demo'),
+      });
+      service.discover([plugin]);
+      service.register({
+        id: 'demo',
+        root: createToken('demo.root'),
+        dependencies: [createToken('demo.catalog')],
+        contributions: [createToken('demo.step')],
+      });
+      service.bind(createToken('demo.echo'), () => new CoordinatorEcho());
+      await service.start('child_process');
+      const lease = await service.lease<DemoApi & { untilDisposed(path: string): Promise<void> }>(
+        'demo'
+      );
+      const pid = await lease.stub.pid();
+      void lease.stub.untilDisposed(effects).catch(() => {});
+      for (let attempt = 0; attempt < 100 && !existsSync(effects); attempt++) await delay(10);
+      expect(readFileSync(effects, 'utf8')).toContain('started');
+      const exited = new Promise<void>((resolveExit) =>
+        children[0].once('exit', () => resolveExit())
+      );
+      if (event === 'error') children[0].emit('error', new Error('transport failed'));
+      else children[0].emit('message', { kind: 'remote-seam', payload: null });
+      // Failure must dispose without another acquisition or service.stop driving retirement.
+      await delay(150);
+      expect(readFileSync(effects, 'utf8')).toContain('aborted');
+      await exited;
+      const writes = readFileSync(effects, 'utf8');
+      await delay(30);
+      expect(readFileSync(effects, 'utf8')).toBe(writes);
+      expect(writes.slice(writes.indexOf('aborted'))).not.toContain('sideEffect');
+      await lease.release();
+      const next = await service.lease<DemoApi>('demo');
+      expect(await next.stub.pid()).not.toBe(pid);
+      expect(await next.stub.bindingLabel()).toBe('executor');
+      await next.release();
+    } finally {
+      await service.stop();
+      spy.mockRestore();
+      rmSync(directory, { recursive: true });
+    }
+  },
+  15000
+);
