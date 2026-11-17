@@ -7,44 +7,4 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import type { SerializedError } from '../../spec/schema';
-
-export class ExecutionError extends Error {
-  public readonly type: string;
-  public readonly details?: Record<string, unknown>;
-
-  constructor(params: SerializedError) {
-    super(params.message);
-    this.type = params.type;
-    this.details = params.details;
-  }
-
-  /**
-   * Creates an instance of ExecutionError from a standard Error.
-   * @param error The standard Error to convert.
-   * @returns An instance of ExecutionError.
-   */
-  public static fromError(error: Error): ExecutionError {
-    if (error instanceof ExecutionError) {
-      return error;
-    }
-
-    return new ExecutionError({
-      type: error.name || 'Error',
-      message: error.message,
-    });
-  }
-
-  public toSerializableObject(): SerializedError {
-    const baseError: SerializedError = {
-      type: this.type,
-      message: this.message,
-    };
-
-    if (this.details) {
-      baseError.details = this.details;
-    }
-
-    return baseError;
-  }
-}
+export { ExecutionError } from '@kbn/workflows-runtime';

@@ -13,7 +13,6 @@ import { remotable } from '@kbn/core-remote-common';
 import type { ScopeLookup } from '@kbn/core-remote-server';
 import { getElasticsearchConnectors } from '@kbn/workflows';
 import type { AtomicGraphNode } from '@kbn/workflows/graph';
-import { ExecutionError } from '@kbn/workflows/server';
 import type { StepHandlerContext } from '@kbn/workflows-extensions/server';
 import type {
   WorkflowConnectorInvocation,
@@ -31,6 +30,7 @@ import {
   DURABLE_STEP_STATE_KEY,
   type DurableStepState,
 } from '../step/custom_step_impl/step_definition_handlers/durable_step_state';
+import { toExecutionError } from '../step/errors';
 import type { ContextDependencies } from '../workflow_context_manager/types';
 
 type AdditionalTemplateContext = Parameters<
@@ -68,6 +68,16 @@ export class WorkflowStepRunner implements WorkflowStepRunnerApi {
       const metadata: Omit<WorkflowStepDescription, 'digest'> = {
         type,
         mode,
+        ...(mode === 'native'
+          ? {
+              elasticsearch: this.dependencies.runtimeMetadata.elasticsearchDefinition(type),
+            }
+          : {}),
+        ...(mode === 'connector'
+          ? {
+              isSpecConnector: this.dependencies.runtimeMetadata.isSpecConnector(type),
+            }
+          : {}),
         configKeys: Object.keys(definition?.configSchema?.shape ?? {}),
         hasStart:
           definition !== undefined &&
@@ -217,9 +227,7 @@ export class WorkflowStepRunner implements WorkflowStepRunnerApi {
         ...('nextPollDelayMs' in result && typeof result.nextPollDelayMs === 'number'
           ? { nextPollDelayMs: result.nextPollDelayMs }
           : {}),
-        ...(result.error
-          ? { error: ExecutionError.fromError(result.error).toSerializableObject() }
-          : {}),
+        ...(result.error ? { error: toExecutionError(result.error).toSerializableObject() } : {}),
       };
     } finally {
       this.active.delete(request.invocationId);

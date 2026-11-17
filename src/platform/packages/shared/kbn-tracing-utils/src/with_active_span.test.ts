@@ -15,6 +15,7 @@ import { withActiveSpan } from './with_active_span';
 import { last } from 'lodash';
 import { tracing } from '@elastic/opentelemetry-node/sdk';
 import { AsyncHooksContextManager } from '@opentelemetry/context-async-hooks';
+import { suppressTracing } from '@opentelemetry/core';
 
 const createMockSpan = () => {
   return {
@@ -64,6 +65,16 @@ describe('withActiveSpan', () => {
   it('returns the callback result unchanged when no tracer is provided', () => {
     const result = withActiveSpan('no-tracer', () => 123);
     expect(result).toBe(123);
+  });
+
+  it('does not create a span when tracing is suppressed', () => {
+    const tracer = createMockTracer(createMockSpan());
+    const callback = jest.fn(() => 'suppressed');
+    expect(
+      withActiveSpan('suppressed', { tracer }, suppressTracing(context.active()), callback)
+    ).toBe('suppressed');
+    expect(callback).toHaveBeenCalledWith();
+    expect(tracer.startActiveSpan).not.toHaveBeenCalled();
   });
 
   it('handles synchronous results – sets OK status and ends span', () => {

@@ -10,24 +10,24 @@
 import { errors } from '@elastic/elasticsearch';
 import { ByteSizeValue } from '@kbn/config-schema';
 import type { ElasticsearchClient } from '@kbn/core/server';
-import { buildElasticsearchRequest } from '@kbn/workflows';
-
 import type { ElasticsearchGraphNode } from '@kbn/workflows/graph/types';
+import { buildElasticsearchRequestFromDefinition } from '@kbn/workflows-runtime';
+
 import { ElasticsearchActionStepImpl } from './elasticsearch_action_step';
+import { coordinatorRuntimeMetadata } from '../execution_functions/coordinator_runtime_metadata';
 import type { StepExecutionRuntime } from '../workflow_context_manager/step_execution_runtime';
 import type { WorkflowContextManager } from '../workflow_context_manager/workflow_context_manager';
 import type { WorkflowExecutionRuntimeManager } from '../workflow_context_manager/workflow_execution_runtime_manager';
 import type { IWorkflowEventLogger } from '../workflow_event_logger';
 
-// Only `buildElasticsearchRequest` is stubbed — `getElasticsearchConnectors` stays real so the
-// output normalization is driven by the actual connector contracts.
-jest.mock('@kbn/workflows', () => ({
-  ...jest.requireActual('@kbn/workflows'),
-  buildElasticsearchRequest: jest.fn(),
+// Stub request assembly, but resolve runtime metadata from the real coordinator catalog.
+jest.mock('@kbn/workflows-runtime', () => ({
+  ...jest.requireActual('@kbn/workflows-runtime'),
+  buildElasticsearchRequestFromDefinition: jest.fn(),
 }));
 
-const mockedBuildRequest = buildElasticsearchRequest as jest.MockedFunction<
-  typeof buildElasticsearchRequest
+const mockedBuildRequest = buildElasticsearchRequestFromDefinition as jest.MockedFunction<
+  typeof buildElasticsearchRequestFromDefinition
 >;
 
 describe('ElasticsearchActionStepImpl', () => {
@@ -49,6 +49,7 @@ describe('ElasticsearchActionStepImpl', () => {
         workflow: { id: 'test', name: 'test', enabled: true, spaceId: 'default' },
       }),
       getDependencies: jest.fn().mockReturnValue({
+        runtimeMetadata: coordinatorRuntimeMetadata,
         config: { maxResponseSize: new ByteSizeValue(10 * 1024 * 1024) },
       }),
       renderValueAccordingToContext: jest.fn((value) => value),
@@ -81,7 +82,7 @@ describe('ElasticsearchActionStepImpl', () => {
   });
 
   describe('transport.request integration', () => {
-    it('should call transport.request with buildElasticsearchRequest output for regular requests', async () => {
+    it('should call transport.request with buildElasticsearchRequestFromDefinition output for regular requests', async () => {
       mockedBuildRequest.mockReturnValue({
         method: 'GET',
         path: '/my-test/_search',
@@ -111,7 +112,11 @@ describe('ElasticsearchActionStepImpl', () => {
 
       await (esStep as any)._run(stepWith);
 
-      expect(mockedBuildRequest).toHaveBeenCalledWith('elasticsearch.search', stepWith);
+      expect(mockedBuildRequest).toHaveBeenCalledWith(
+        'elasticsearch.search',
+        stepWith,
+        coordinatorRuntimeMetadata.elasticsearchDefinition('elasticsearch.search')
+      );
       expect(mockEsClient.transport.request).toHaveBeenCalledWith(
         {
           method: 'GET',
@@ -157,7 +162,11 @@ describe('ElasticsearchActionStepImpl', () => {
 
       await (esStep as any)._run(stepWith);
 
-      expect(mockedBuildRequest).toHaveBeenCalledWith('elasticsearch.bulk', stepWith);
+      expect(mockedBuildRequest).toHaveBeenCalledWith(
+        'elasticsearch.bulk',
+        stepWith,
+        coordinatorRuntimeMetadata.elasticsearchDefinition('elasticsearch.bulk')
+      );
       expect(mockEsClient.transport.request).toHaveBeenCalledWith(
         {
           method: 'POST',
@@ -238,7 +247,7 @@ describe('ElasticsearchActionStepImpl', () => {
 
       await (esStep as any)._run(stepWith);
 
-      // Should not call buildElasticsearchRequest for raw format
+      // Should not call buildElasticsearchRequestFromDefinition for raw format
       expect(mockedBuildRequest).not.toHaveBeenCalled();
       expect(mockEsClient.transport.request).toHaveBeenCalledWith(
         {
@@ -272,7 +281,7 @@ describe('ElasticsearchActionStepImpl', () => {
 
       await (esStep as any)._run(stepWith);
 
-      // Should not call buildElasticsearchRequest for elasticsearch.request type
+      // Should not call buildElasticsearchRequestFromDefinition for elasticsearch.request type
       expect(mockedBuildRequest).not.toHaveBeenCalled();
       expect(mockEsClient.transport.request).toHaveBeenCalledWith(
         { method: 'DELETE', path: '/my-index', body: undefined },

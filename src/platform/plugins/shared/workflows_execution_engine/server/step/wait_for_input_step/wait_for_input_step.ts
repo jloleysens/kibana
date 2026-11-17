@@ -16,11 +16,8 @@ import {
   isHitlExternalResumeEnabled,
 } from '@kbn/workflows';
 import type { WaitForInputGraphNode } from '@kbn/workflows/graph';
-import {
-  buildExternalResumeFormUrl,
-  buildExternalResumeUrl,
-  ExecutionError,
-} from '@kbn/workflows/server';
+import { buildExternalResumeFormUrl, buildExternalResumeUrl } from '@kbn/workflows/server';
+import { ExecutionError } from '@kbn/workflows-runtime';
 import {
   invalidateHitlExternalResumeTokenIfPresent,
   mintHitlExternalResumeToken,

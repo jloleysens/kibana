@@ -166,7 +166,11 @@ export interface WorkflowRunRequest {
   readonly facts?: WorkflowDispatchFacts;
 }
 
+import type { ElasticsearchRequestDefinition } from '@kbn/workflows-runtime';
+
 export interface WorkflowStepDescription {
+  readonly elasticsearch?: ElasticsearchRequestDefinition;
+  readonly isSpecConnector?: boolean;
   readonly type: string;
   readonly mode: 'handler' | 'poll' | 'native' | 'connector';
   readonly configKeys: readonly string[];

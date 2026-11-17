@@ -50,6 +50,7 @@ import {
   resumeWorkflow,
   runWorkflow,
 } from './execution_functions';
+import { coordinatorRuntimeMetadata } from './execution_functions/coordinator_runtime_metadata';
 import { handlePostExecutionLoop } from './execution_functions/handle_post_execution_loop';
 import { buildWorkflowExecutionDocument } from './lib/build_workflow_execution_document';
 import { checkLicense } from './lib/check_license';
@@ -390,6 +391,7 @@ export class WorkflowsExecutionEnginePlugin
               await checkLicense(pluginsStart.licensing);
 
               const dependencies: ContextDependencies = {
+                runtimeMetadata: coordinatorRuntimeMetadata,
                 ...setupDependencies,
                 coreStart,
                 actions: pluginsStart.actions,
@@ -652,6 +654,7 @@ export class WorkflowsExecutionEnginePlugin
               await checkLicense(pluginsStart.licensing);
 
               const dependencies: ContextDependencies = {
+                runtimeMetadata: coordinatorRuntimeMetadata,
                 ...setupDependencies,
                 coreStart,
                 actions: pluginsStart.actions,
@@ -982,6 +985,7 @@ export class WorkflowsExecutionEnginePlugin
               await checkLicense(pluginsStart.licensing);
 
               const dependencies: ContextDependencies = {
+                runtimeMetadata: coordinatorRuntimeMetadata,
                 ...setupDependencies,
                 coreStart,
                 actions: pluginsStart.actions,
@@ -1403,6 +1407,7 @@ export class WorkflowsExecutionEnginePlugin
     }
 
     const dependencies: ContextDependencies = {
+      runtimeMetadata: coordinatorRuntimeMetadata,
       ...this.setupDependencies,
       coreStart,
       actions: plugins.actions,

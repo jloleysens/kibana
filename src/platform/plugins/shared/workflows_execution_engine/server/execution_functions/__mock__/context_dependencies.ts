@@ -14,7 +14,10 @@ import { coreMock } from '@kbn/core/server/mocks';
 import { taskManagerMock } from '@kbn/task-manager-plugin/server/mocks';
 import { workflowsExtensionsMock } from '@kbn/workflows-extensions/server/mocks';
 
+import { coordinatorRuntimeMetadata } from '../coordinator_runtime_metadata';
+
 export const mockContextDependencies = () => ({
+  runtimeMetadata: coordinatorRuntimeMetadata,
   cloudSetup: cloudMock.createSetup(),
   coreStart: coreMock.createStart(),
   actions: actionsMock.createStart(),

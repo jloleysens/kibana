@@ -17,12 +17,12 @@ import {
 import { applySpacePrefix } from '@kbn/workflows';
 import {
   getOutboundEventChainHeaders,
-  KibanaApiCallError,
   X_ELASTIC_INTERNAL_ORIGIN_REQUEST,
 } from '@kbn/workflows-extensions/server';
+import { KibanaApiCallError } from '@kbn/workflows-runtime';
 import { isTextContentType, readResponseStream } from '../utils/http_response';
 
-export { KibanaApiCallError } from '@kbn/workflows-extensions/server';
+export { KibanaApiCallError } from '@kbn/workflows-runtime';
 
 /**
  * Default cap on the response body size (bytes) when no per-step limit is supplied.

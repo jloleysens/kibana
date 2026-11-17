@@ -61,3 +61,41 @@ export const isTerminalStatus = (status: ExecutionStatus): boolean =>
 export const DEFAULT_LOOP_MAX_ITERATIONS = 2000;
 
 export { parseJsPropertyAccess } from './parse_js_property_access';
+
+export { ExecutionError } from './execution_error';
+
+export { KibanaApiCallError } from './kibana_api_call_error';
+
+export {
+  MAX_DURATION_LENGTH,
+  DURATION_REGEX,
+  isValidDuration,
+  assertValidDuration,
+  parseDuration,
+} from './duration';
+
+export {
+  isValidWorkflowDocumentVersion,
+  pickWorkflowDocumentVersion,
+} from './pick_workflow_document_version';
+
+export {
+  WORKFLOW_STEP_TRIGGER_SOURCE,
+  AGENT_BUILDER_HOOK_TRIGGER_SOURCE,
+  isWorkflowStepTriggered,
+  getEventDrivenWorkflowTriggerEvidence,
+  isWellKnownWorkflowTriggerSource,
+  isEventDrivenWorkflowTriggerSource,
+} from './well_known_trigger_sources';
+export type {
+  WellKnownWorkflowTriggerSource,
+  EventDrivenWorkflowTriggerSourceInput,
+} from './well_known_trigger_sources';
+
+export type { SerializedError } from './serialized_error';
+
+export { buildElasticsearchRequestFromDefinition } from './elasticsearch_request_builder';
+export type {
+  RequestOptions,
+  ElasticsearchRequestDefinition,
+} from './elasticsearch_request_builder';

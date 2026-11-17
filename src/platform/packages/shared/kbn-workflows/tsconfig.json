@@ -6,6 +6,7 @@
   },
   "include": ["**/*.ts"],
   "kbn_references": [
+    "@kbn/workflows-template-runtime",
     "@kbn/workflows-runtime",
     "@kbn/entity-access-control",
     "@kbn/i18n",

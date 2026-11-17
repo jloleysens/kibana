@@ -297,6 +297,12 @@ function contextDependencies({
     runId: execution.id,
   };
   return {
+    runtimeMetadata: {
+      elasticsearchDefinition: (type) =>
+        remoteSteps?.descriptions.find((item) => item.type === type)?.elasticsearch,
+      isSpecConnector: (type) =>
+        remoteSteps?.descriptions.find((item) => item.type === type)?.isSpecConnector ?? false,
+    },
     cloudSetup: undefined,
     coreStart,
     actions: {} as ContextDependencies['actions'],

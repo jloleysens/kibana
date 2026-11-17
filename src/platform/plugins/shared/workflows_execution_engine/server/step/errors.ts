@@ -7,8 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { ExecutionError } from '@kbn/workflows/server';
-import { KibanaApiCallError } from '@kbn/workflows-extensions/server';
+import { ExecutionError, KibanaApiCallError } from '@kbn/workflows-runtime';
 
 export const DEFAULT_MAX_STEP_SIZE = '10mb';
 

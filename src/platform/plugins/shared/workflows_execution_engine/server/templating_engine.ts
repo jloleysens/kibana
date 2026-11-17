@@ -12,7 +12,7 @@ import { toValue } from 'liquidjs';
 import { encodeKqlTemplateValue } from '@kbn/eval-kql';
 import { i18n } from '@kbn/i18n';
 import type { LiquidSettings } from '@kbn/workflows';
-import { createWorkflowLiquidEngine } from '@kbn/workflows';
+import { createWorkflowLiquidEngine } from '@kbn/workflows-template-runtime';
 
 type TemplateVariableSegment = string | number;
 type TemplateVariableSegments = TemplateVariableSegment[];

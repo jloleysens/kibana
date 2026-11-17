@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 import memoize from 'lodash/memoize';
-import { parseDuration } from '@kbn/workflows';
+import { parseDuration } from '@kbn/workflows-runtime';
 import { applyBackoffJitter } from '../backoff_jitter/backoff_jitter';
 
 // parseDuration is on the hot path of retry delay computation,

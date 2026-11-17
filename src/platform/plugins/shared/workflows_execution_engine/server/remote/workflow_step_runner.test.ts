@@ -143,6 +143,25 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
+it('describes only requested Elasticsearch operations with scalar runtime metadata, never schemas', async () => {
+  const { runner } = setup(async () => ({ output: null }));
+  const descriptions = await runner.describe(['elasticsearch.search']);
+  expect(descriptions).toHaveLength(1);
+  const [description] = descriptions;
+  expect(description.type).toBe('elasticsearch.search');
+  expect(description.mode).toBe('native');
+  expect(description.elasticsearch?.methods).toContain('GET');
+  expect(description.elasticsearch?.patterns).toContain('{index}/_search');
+  expect(Object.keys(description.elasticsearch ?? {}).sort()).toEqual([
+    'methods',
+    'parameterTypes',
+    'patterns',
+  ]);
+  expect(JSON.parse(JSON.stringify(descriptions))).toEqual(descriptions);
+  expect(JSON.stringify(descriptions)).not.toContain('inputSchema');
+  expect(JSON.stringify(descriptions)).not.toContain('elasticsearch.bulk');
+});
+
 it('rebuilds synchronous context from persisted references without shipping a large prior output', async () => {
   const handler = jest.fn(async (context: StepHandlerContext) => {
     expect(context.input).toEqual({ message: 'rendered by worker' });

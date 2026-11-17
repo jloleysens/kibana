@@ -8,7 +8,7 @@
  */
 
 import type { SerializedError } from '@kbn/workflows';
-import { ExecutionError } from '@kbn/workflows/server';
+import { ExecutionError } from '@kbn/workflows-runtime';
 import type { StepExecutionRuntime } from '../../../workflow_context_manager/step_execution_runtime';
 import type { WorkflowExecutionRuntimeManager } from '../../../workflow_context_manager/workflow_execution_runtime_manager';
 import type { NodeImplementation } from '../../node_implementation';

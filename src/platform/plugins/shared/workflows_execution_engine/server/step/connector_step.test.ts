@@ -8,10 +8,12 @@
  */
 
 import { ConnectorStepImpl } from './connector_step';
+import { coordinatorRuntimeMetadata } from '../execution_functions/coordinator_runtime_metadata';
 
 const createMocks = () => {
   const stepExecutionRuntime = {
     contextManager: {
+      getDependencies: () => ({ runtimeMetadata: coordinatorRuntimeMetadata }),
       renderValueAccordingToContext: jest.fn((v: unknown) => v),
     },
     abortController: new AbortController(),

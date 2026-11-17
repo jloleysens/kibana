@@ -13,6 +13,7 @@ import type { CoreStart, KibanaRequest } from '@kbn/core/server';
 import type { TaskManagerStartContract } from '@kbn/task-manager-plugin/server';
 import type { WorkflowRepository } from '@kbn/workflows';
 import type { WorkflowsExtensionsServerPluginStart } from '@kbn/workflows-extensions/server';
+import type { ElasticsearchRequestDefinition } from '@kbn/workflows-runtime';
 import type { StepExecutionRuntime } from './step_execution_runtime';
 import type { WorkflowsExecutionEngineConfig } from '../config';
 import type { WorkflowDispatchFacts } from '../remote/tokens';
@@ -23,6 +24,10 @@ import type { RuntimeStepDefinition } from '../step/custom_step_impl/types';
 import type { WorkflowsExecutionEnginePluginStart } from '../types';
 
 export interface ContextDependencies {
+  runtimeMetadata: {
+    elasticsearchDefinition(type: string): ElasticsearchRequestDefinition | undefined;
+    isSpecConnector(type: string): boolean;
+  };
   cloudSetup: CloudSetup | undefined;
   coreStart: CoreStart;
   actions: ActionsPluginStartContract;

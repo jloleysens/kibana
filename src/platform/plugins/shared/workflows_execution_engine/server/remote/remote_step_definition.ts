@@ -8,12 +8,12 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { ExecutionError } from '@kbn/workflows/server';
 import type {
   DurablePhaseResult,
   PollHandlerContext,
   StepHandlerContext,
 } from '@kbn/workflows-extensions/server';
+import { ExecutionError } from '@kbn/workflows-runtime';
 import type {
   WorkflowStepDescription,
   WorkflowStepInvocation,

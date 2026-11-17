@@ -19,7 +19,7 @@ import {
   WAIT_FOR_APPROVAL_RESPONSE_SCHEMA,
 } from '@kbn/workflows';
 import type { WaitForApprovalGraphNode } from '@kbn/workflows/graph';
-import { ExecutionError } from '@kbn/workflows/server';
+import { ExecutionError } from '@kbn/workflows-runtime';
 import type { ConnectorExecutor } from '../../connector_executor';
 import { getKibanaUrl } from '../../utils/get_kibana_url';
 import type { StepExecutionRuntime } from '../../workflow_context_manager/step_execution_runtime';

@@ -7,12 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-export const isValidWorkflowDocumentVersion = (version: unknown): version is number =>
-  typeof version === 'number' && !Number.isNaN(version);
-
-export const pickWorkflowDocumentVersion = (source: {
-  version?: unknown;
-}): { version?: number } => {
-  const { version } = source;
-  return isValidWorkflowDocumentVersion(version) ? { version } : {};
-};
+export {
+  isValidWorkflowDocumentVersion,
+  pickWorkflowDocumentVersion,
+} from '@kbn/workflows-runtime';

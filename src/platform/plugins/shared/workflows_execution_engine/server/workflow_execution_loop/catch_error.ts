@@ -7,8 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { ExecutionError } from '@kbn/workflows/server';
-import { ExecutionStatus, isTerminalStatus } from '@kbn/workflows-runtime';
+import { ExecutionError, ExecutionStatus, isTerminalStatus } from '@kbn/workflows-runtime';
 import { isResumeTaskSchedulingError } from './resume_task_scheduling_error';
 import type { WorkflowExecutionLoopParams } from './types';
 import type { NodeWithErrorCatching } from '../step/node_implementation';

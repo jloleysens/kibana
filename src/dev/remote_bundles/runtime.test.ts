@@ -65,6 +65,45 @@ it.each([
   ).toEqual([]);
 });
 
+it('does not bundle the telemetry SDK for tracing suppression checks', async () => {
+  const result = await build({
+    entryPoints: [resolve(__dirname, '../../platform/packages/shared/kbn-tracing-utils/index.ts')],
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    metafile: true,
+    write: false,
+  });
+  expect(
+    Object.keys(result.metafile.inputs).filter((path) =>
+      /node_modules\/(?:@elastic\/opentelemetry-node|@opentelemetry\/(?:sdk-node|configuration))\//.test(
+        path
+      )
+    )
+  ).toEqual([]);
+});
+
+it('keeps template runtime limited to LiquidJS and its pure helpers', async () => {
+  const directory = resolve(
+    __dirname,
+    '../../platform/packages/shared/kbn-workflows-template-runtime'
+  );
+  const result = await build({
+    entryPoints: [resolve(directory, 'index.ts')],
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    metafile: true,
+    write: false,
+  });
+  expect(
+    Object.keys(result.metafile.inputs).filter(
+      (path) =>
+        !resolve(path).startsWith(directory + '/') && !path.startsWith('node_modules/liquidjs/')
+    )
+  ).toEqual([]);
+});
+
 it('keeps workflow runtime contracts free of authoring, schemas, catalogs, i18n and UI dependencies', async () => {
   const directory = resolve(__dirname, '../../platform/packages/shared/kbn-workflows-runtime');
   const result = await build({
@@ -80,7 +119,18 @@ it('keeps workflow runtime contracts free of authoring, schemas, catalogs, i18n 
       .map((path) => resolve(path))
       .sort()
   ).toEqual(
-    [resolve(directory, 'index.ts'), resolve(directory, 'parse_js_property_access.ts')].sort()
+    [
+      'index',
+      'parse_js_property_access',
+      'execution_error',
+      'kibana_api_call_error',
+      'duration',
+      'pick_workflow_document_version',
+      'well_known_trigger_sources',
+      'elasticsearch_request_builder',
+    ]
+      .map((name) => resolve(directory, `${name}.ts`))
+      .sort()
   );
   expect(isTerminalStatus(ExecutionStatus.COMPLETED)).toBe(true);
   expect(isTerminalStatus(ExecutionStatus.RUNNING)).toBe(false);

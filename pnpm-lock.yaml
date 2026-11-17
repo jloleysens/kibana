@@ -4172,6 +4172,9 @@ importers:
       '@kbn/workflows-runtime':
         specifier: workspace:*
         version: link:src/platform/packages/shared/kbn-workflows-runtime
+      '@kbn/workflows-template-runtime':
+        specifier: workspace:*
+        version: link:src/platform/packages/shared/kbn-workflows-template-runtime
       '@kbn/workflows-ui':
         specifier: workspace:*
         version: link:src/platform/packages/shared/kbn-workflows-ui
@@ -4275,6 +4278,9 @@ importers:
         specifier: 0.223.0
         version: 0.223.0
       '@opentelemetry/context-async-hooks':
+        specifier: 2.12.0
+        version: 2.12.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/core':
         specifier: 2.12.0
         version: 2.12.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/exporter-logs-otlp-grpc':
@@ -8467,6 +8473,8 @@ importers:
   src/platform/packages/shared/kbn-workflows-library: {}
 
   src/platform/packages/shared/kbn-workflows-runtime: {}
+
+  src/platform/packages/shared/kbn-workflows-template-runtime: {}
 
   src/platform/packages/shared/kbn-workflows-ui: {}
 

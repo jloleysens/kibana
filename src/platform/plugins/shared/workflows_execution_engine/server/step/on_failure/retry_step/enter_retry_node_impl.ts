@@ -9,7 +9,7 @@
 
 import type { SerializedError } from '@kbn/workflows';
 import type { EnterRetryNode } from '@kbn/workflows/graph';
-import { ExecutionError } from '@kbn/workflows/server';
+import { ExecutionError } from '@kbn/workflows-runtime';
 import type { RetryStepState } from './types';
 import { computeRetryDelayMs } from '../../../utils/retry_delay/retry_delay';
 import type { StepExecutionRuntime } from '../../../workflow_context_manager/step_execution_runtime';

@@ -8,7 +8,6 @@
  */
 
 import type { AtomicGraphNode } from '@kbn/workflows/graph';
-import { ExecutionError } from '@kbn/workflows/server';
 import { PollStepDefaults } from '@kbn/workflows-extensions/server';
 import type {
   DurablePhaseResult,
@@ -16,6 +15,7 @@ import type {
   PollHandlerContext,
   StepHandlerContext,
 } from '@kbn/workflows-extensions/server';
+import { ExecutionError } from '@kbn/workflows-runtime';
 import { createBaseHandlerContext } from './create_base_handler_context';
 import { DURABLE_STEP_STATE_KEY, type DurableStepState } from './durable_step_state';
 import { applyBackoffJitter } from '../../../utils/backoff_jitter/backoff_jitter';

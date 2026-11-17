@@ -980,6 +980,7 @@ packages:
   - 'src/platform/packages/shared/kbn-workflows'
   - 'src/platform/packages/shared/kbn-workflows-library'
   - 'src/platform/packages/shared/kbn-workflows-runtime'
+  - 'src/platform/packages/shared/kbn-workflows-template-runtime'
   - 'src/platform/packages/shared/kbn-workflows-ui'
   - 'src/platform/packages/shared/kbn-workflows-yaml'
   - 'src/platform/packages/shared/kbn-workspaces'

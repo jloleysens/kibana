@@ -11,10 +11,13 @@ import agent from 'elastic-apm-node';
 import { addTransactionLabels } from '@kbn/apm-utils';
 import type { CoreStart } from '@kbn/core/server';
 import type { EsWorkflowExecution, SerializedError, StackFrame } from '@kbn/workflows';
-import { isEventDrivenWorkflowTriggerSource } from '@kbn/workflows';
 import type { GraphNodeUnion } from '@kbn/workflows/graph';
-import { ExecutionError } from '@kbn/workflows/server';
-import { ExecutionStatus, isTerminalStatus } from '@kbn/workflows-runtime';
+import {
+  ExecutionError,
+  ExecutionStatus,
+  isEventDrivenWorkflowTriggerSource,
+  isTerminalStatus,
+} from '@kbn/workflows-runtime';
 import {
   getActiveOtelSpanId,
   getActiveOtelTraceId,

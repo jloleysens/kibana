@@ -865,15 +865,7 @@ export interface WorkflowsSearchParams {
   visibilityContext?: string[];
 }
 
-export interface RequestOptions {
-  method: string;
-  path: string;
-  body?: Record<string, unknown>;
-  query?: Record<string, string>;
-  headers?: Record<string, string>;
-  /** Bulk body for elasticsearch.bulk step */
-  bulkBody?: Array<Record<string, unknown>>;
-}
+export type { RequestOptions } from '@kbn/workflows-runtime';
 
 export type WorkflowDiagnosticSeverity = 'error' | 'warning' | 'info';
 

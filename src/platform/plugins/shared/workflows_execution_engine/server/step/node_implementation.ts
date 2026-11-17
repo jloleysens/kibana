@@ -10,7 +10,7 @@
 import apm from 'elastic-apm-node';
 import type { ByteSizeValue } from '@kbn/config-schema';
 import type { SerializedError } from '@kbn/workflows';
-import { ExecutionError } from '@kbn/workflows/server';
+import { ExecutionError } from '@kbn/workflows-runtime';
 import {
   DEFAULT_MAX_STEP_SIZE,
   parseByteSize,

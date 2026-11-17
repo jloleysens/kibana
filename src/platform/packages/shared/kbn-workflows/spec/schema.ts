@@ -1621,7 +1621,7 @@ export const BaseSerializedErrorSchema = z.object({
   message: z.string(),
   details: z.record(z.string(), z.unknown()).optional(),
 });
-export type SerializedError = z.infer<typeof BaseSerializedErrorSchema>;
+export type { SerializedError } from '@kbn/workflows-runtime';
 
 export const WhileContextSchema = z.object({
   iteration: z.number().int(),
