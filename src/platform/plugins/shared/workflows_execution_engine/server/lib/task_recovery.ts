@@ -15,6 +15,7 @@ import {
   MISSING_EXECUTION_IDENTITY_ERROR_TYPE,
   MISSING_EXECUTION_IDENTITY_MESSAGE,
 } from './execution_identity';
+import { hasNoWorkflowStartEvidence } from '../execution_functions/acquire_workflow_start_barrier';
 import type { StepExecutionRepository } from '../repositories/step_execution_repository';
 import type { WorkflowExecutionRepository } from '../repositories/workflow_execution_repository';
 
@@ -89,6 +90,12 @@ export async function resolveInterruptedWorkflowRunTask({
       `workflow:run retry (attempts=${taskAttempts}) but no execution document for ${workflowRunId}; continuing run`
     );
     return { action: 'run_workflow' };
+  }
+
+  if (hasNoWorkflowStartEvidence(execution)) {
+    if (!(await stepExecutionRepository.hasStepExecutionsForWorkflow(workflowRunId))) {
+      return { action: 'run_workflow' };
+    }
   }
 
   if (!shouldFailOnWorkflowRunRetry(execution)) {

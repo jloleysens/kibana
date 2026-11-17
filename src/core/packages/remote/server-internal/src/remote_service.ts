@@ -413,7 +413,11 @@ export class RemoteService implements RemoteSetup {
     const entry = join(directory, id, 'graph.mjs');
     if (!existsSync(entry)) throw new Error(`Remote bundle missing: ${entry}`);
     const child = fork(entry, [], {
-      execArgv: [`--max-old-space-size=${this.limits.maxOldGenerationSizeMb}`],
+      execArgv: [
+        `--max-old-space-size=${this.limits.maxOldGenerationSizeMb}`,
+        ...(process.env.KBN_REMOTE_LOAD_HOOK ? ['--import', process.env.KBN_REMOTE_LOAD_HOOK] : []),
+        ...(process.env.KBN_REMOTE_EXPOSE_GC === 'true' ? ['--expose-gc'] : []),
+      ],
       stdio: ['ignore', 'ignore', 'inherit', 'ipc'],
       env: Object.fromEntries(
         [
@@ -425,6 +429,9 @@ export class RemoteService implements RemoteSetup {
           'NODE_EXTRA_CA_CERTS',
           'KBN_REMOTE_SEAM_LOG',
           'KBN_REMOTE_HEAP_LOG',
+          'KBN_REMOTE_TIMING_LOG',
+          'KBN_REMOTE_MODULE_LOG',
+          'KBN_REMOTE_WIRE_LOG',
         ].flatMap((key) => (process.env[key] === undefined ? [] : [[key, process.env[key]]]))
       ),
     });

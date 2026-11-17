@@ -9,6 +9,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { CoreStart, ElasticsearchClient, KibanaRequest } from '@kbn/core/server';
+import { recordRemoteTiming } from '@kbn/core-remote-common';
 import {
   type EsWorkflowExecution,
   type EsWorkflowStepExecution,
@@ -68,6 +69,7 @@ export async function runWorkflowEngineInWorker(
   request: EngineLoopRequest
 ): Promise<WorkflowRunOutcome> {
   const { execution, scopeId, steps, storage, log } = request;
+  recordRemoteTiming('engine_start', { executionId: execution.id, scopeId });
   const compiled = WorkflowGraph.fromWorkflowDefinition(
     execution.workflowDefinition as WorkflowYaml,
     defaultWorkflowSettings

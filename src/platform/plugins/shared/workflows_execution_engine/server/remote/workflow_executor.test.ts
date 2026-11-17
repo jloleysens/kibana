@@ -52,6 +52,37 @@ describe('WorkflowExecutor', () => {
     expect(caseTitles).toEqual(['Graph nodes 2']);
   });
 
+  it('refuses to start a pending execution without a durable start barrier', async () => {
+    const job = execution([{ name: 'native', type: GRAPH, with: {} }]);
+    job.startedAt = '';
+    const store = createStore(job);
+    const steps = catalog([]);
+    await expect(
+      new WorkflowExecutor(steps, store.storage, log()).run({
+        scopeId: 'scope-1',
+        workflowRunId: 'run-1',
+        spaceId: 'default',
+      })
+    ).rejects.toThrow('durable start barrier');
+    expect(steps.run).not.toHaveBeenCalled();
+  });
+
+  it('does not request coordinator metadata for a core-only execution', async () => {
+    const store = createStore(
+      execution([{ name: 'native', type: 'data.set', with: { value: 1 } }])
+    );
+    const stepRunner = { describe: jest.fn(), invoke: jest.fn(), cancel: jest.fn() };
+    const result = await new WorkflowExecutor(
+      catalog([]),
+      store.storage,
+      log(),
+      undefined,
+      stepRunner
+    ).run({ scopeId: 'scope-1', workflowRunId: 'run-1', spaceId: 'default' });
+    expect(result.status).toBe(ExecutionStatus.COMPLETED);
+    expect(stepRunner.describe).not.toHaveBeenCalled();
+  });
+
   it('passes executor-local synchronous helpers to native contributions', async () => {
     const store = createStore(execution([{ name: 'native', type: GRAPH, with: {} }]));
     const steps = catalog([]);
@@ -229,6 +260,7 @@ function execution(stepOverride?: unknown[]): EsWorkflowExecution {
   return {
     id: 'run-1',
     spaceId: 'default',
+    startedAt: new Date().toISOString(),
     workflowId: 'remote-heap-measurement',
     status: ExecutionStatus.PENDING,
     workflowDefinition: {

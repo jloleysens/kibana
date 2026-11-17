@@ -73,6 +73,25 @@ describe('schedule_workflow_run_task', () => {
       expect(bulkUpdateWorkflowExecutions).toHaveBeenCalledWith([failedUpdate('exec-a')]);
     });
 
+    it('selects immediate self-claimed scheduling only when explicitly requested', async () => {
+      taskManager.scheduleNow.mockImplementation(async (task) => task as never);
+      await scheduleRunTaskOrMarkFailed(deps, tasks[0], request, true);
+      expect(taskManager.scheduleNow).toHaveBeenCalledWith(tasks[0], {
+        request,
+        cloneApiKey: true,
+      });
+      expect(taskManager.schedule).not.toHaveBeenCalled();
+      expect(bulkUpdateWorkflowExecutions).not.toHaveBeenCalled();
+    });
+
+    it('marks failed if immediate scheduling fails before creating a task', async () => {
+      taskManager.scheduleNow.mockRejectedValue(scheduleError);
+      await expect(scheduleRunTaskOrMarkFailed(deps, tasks[0], request, true)).rejects.toBe(
+        scheduleError
+      );
+      expect(bulkUpdateWorkflowExecutions).toHaveBeenCalledWith([failedUpdate('exec-a')]);
+    });
+
     it('does not mark the execution when the task is scheduled', async () => {
       taskManager.schedule.mockImplementation(async (task) => task as never);
 

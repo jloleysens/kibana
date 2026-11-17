@@ -6,6 +6,9 @@
  */
 
 import sinon from 'sinon';
+import { mockTask } from './task_pool/test_utils';
+import { TaskPoolRunResult } from './task_pool';
+import { taskManagerMock } from './mocks';
 import { Subject } from 'rxjs';
 
 import type { TaskLifecycleEvent } from './polling_lifecycle';
@@ -175,6 +178,70 @@ describe('TaskPollingLifecycle', () => {
   });
 
   afterEach(() => clock.restore());
+
+  describe('direct claimed dispatch', () => {
+    test('uses the same runner, API-key strategy, middleware and fake-request enricher', async () => {
+      const enrichFakeRequest = jest.fn();
+      const lifecycle = new TaskPollingLifecycle({
+        ...taskManagerOpts,
+        elasticsearchAndSOAvailability$: new Subject<boolean>(),
+        enrichFakeRequest,
+      });
+      const task = taskManagerMock.createTask({ taskType: 'quickReport' });
+      const runner = mockTask({ taskType: 'quickReport' });
+      (TaskManagerRunner as jest.Mock).mockReturnValue(runner);
+      const run = jest
+        .spyOn(lifecycle.pool, 'run')
+        .mockResolvedValue(TaskPoolRunResult.RunningAllClaimedTasks);
+      try {
+        expect(await lifecycle.runClaimedTask(task)).toBe(true);
+        expect(TaskManagerRunner).toHaveBeenCalledWith(
+          expect.objectContaining({
+            instance: task,
+            apiKeyStrategy: taskManagerOpts.apiKeyStrategy,
+            beforeRun: taskManagerOpts.middleware.beforeRun,
+            enrichFakeRequest,
+          })
+        );
+        expect(run).toHaveBeenCalledWith([runner]);
+        expect(mockTaskClaiming.claimAvailableTasksIfCapacityIsAvailable).not.toHaveBeenCalled();
+      } finally {
+        lifecycle.stop();
+        run.mockRestore();
+        (TaskManagerRunner as jest.Mock).mockReset();
+      }
+    });
+
+    test.each(['uninitialized', 'paused', 'excluded', 'capacity', 'stopped'] as const)(
+      'does not bypass %s',
+      (reason) => {
+        const control = taskExecutionControlServiceMock.create();
+        const lifecycle = new TaskPollingLifecycle({
+          ...taskManagerOpts,
+          executionControlService: control,
+          elasticsearchAndSOAvailability$: new Subject<boolean>(),
+          config: {
+            ...taskManagerOpts.config,
+            unsafe: {
+              ...taskManagerOpts.config.unsafe,
+              exclude_task_types: reason === 'excluded' ? ['quick*'] : [],
+            },
+          },
+        });
+        try {
+          if (reason === 'uninitialized') control.isInitialized.mockReturnValue(false);
+          if (reason === 'paused')
+            control.getState.mockReturnValue({ paused: true, pausedTaskTypes: [] });
+          if (reason === 'capacity')
+            jest.spyOn(lifecycle.pool, 'availableCapacity').mockReturnValue(0);
+          if (reason === 'stopped') lifecycle.stop();
+          expect(lifecycle.canRunDirect({ taskType: 'quickReport' })).toBe(false);
+        } finally {
+          lifecycle.stop();
+        }
+      }
+    );
+  });
 
   describe('start', () => {
     taskManagerOpts.definitions.registerTaskDefinitions({

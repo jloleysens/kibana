@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { appendFileSync } from 'node:fs';
 import type { RpcTransport } from 'capnweb';
 
 interface IpcEnvelope {
@@ -58,6 +59,18 @@ export class IpcTransport implements RpcTransport {
 
   send(payload: string): Promise<void> {
     if (this.error) return Promise.reject(this.error);
+    const log = process.env.KBN_REMOTE_WIRE_LOG;
+    if (log) {
+      appendFileSync(
+        log,
+        JSON.stringify({
+          at: performance.timeOrigin + performance.now(),
+          pid: process.pid,
+          payloadBytes: Buffer.byteLength(payload),
+          envelopeBytes: Buffer.byteLength(JSON.stringify({ kind: 'remote-seam', payload })) + 1,
+        }) + '\n'
+      );
+    }
     return new Promise((resolve, reject) => {
       this.channel.send({ kind: 'remote-seam', payload }, (error) =>
         error ? reject(error) : resolve()

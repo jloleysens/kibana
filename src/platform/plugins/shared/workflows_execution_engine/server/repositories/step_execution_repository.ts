@@ -49,6 +49,17 @@ export class StepExecutionRepository {
    * Uses mget (real-time, O(1)) when stepExecutionIds are available,
    * falls back to search for backward compatibility with older executions.
    */
+  public async hasStepExecutionsForWorkflow(workflowRunId: string): Promise<boolean> {
+    const response = await this.stepExecutionsDataClient.count({
+      query: { term: { workflowRunId } },
+      terminate_after: 1,
+    });
+    if (response._shards?.failed) {
+      throw new Error('Unable to verify workflow step absence because a count shard failed');
+    }
+    return response.count > 0;
+  }
+
   public async getStepExecutionsByWorkflowExecution(
     workflowExecutionId: string,
     stepExecutionIds?: string[]

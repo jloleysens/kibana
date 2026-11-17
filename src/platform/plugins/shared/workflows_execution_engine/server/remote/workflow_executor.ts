@@ -9,7 +9,7 @@
 
 import { inject } from 'inversify';
 import { isMainThread, threadId } from 'node:worker_threads';
-import { recordRemoteHeap, remotable } from '@kbn/core-remote-common';
+import { recordRemoteHeap, recordRemoteTiming, remotable } from '@kbn/core-remote-common';
 import { ExecutionStatus, isTerminalStatus } from '@kbn/workflows-runtime';
 import {
   type WorkflowDataPlaneApi,
@@ -102,6 +102,10 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
   }
 
   async run(request: WorkflowRunRequest): Promise<WorkflowRunOutcome> {
+    recordRemoteTiming('received', {
+      executionId: request.workflowRunId,
+      scopeId: request.scopeId,
+    });
     if (this.active.has(request.scopeId)) throw new Error('Remote scope is already executing');
     const controller = new AbortController();
     this.active.set(request.scopeId, controller);
@@ -129,12 +133,20 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
     }
 
     try {
+      if (execution.status === ExecutionStatus.PENDING && !execution.startedAt) {
+        throw new Error('Remote workflow execution requires a durable start barrier');
+      }
       const descriptions = await this.assertRunnable(execution.workflowDefinition);
       const resume =
         execution.status === ExecutionStatus.WAITING ||
         execution.status === ExecutionStatus.WAITING_FOR_INPUT ||
         (execution.status === ExecutionStatus.RUNNING && Boolean(execution.currentNodeId));
+      const importStarted = performance.now();
       const { runWorkflowEngineInWorker } = await import('./assemble_engine_loop');
+      recordRemoteTiming('engine_import', {
+        executionId: execution.id,
+        durationMs: performance.now() - importStarted,
+      });
       const outcome = await runWorkflowEngineInWorker({
         execution,
         signal,
@@ -195,11 +207,10 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
         );
       }
     }
-    return this.stepRunner
-      ? this.stepRunner.describe(
-          references.map(({ type }) => type ?? '').filter((type) => !CORE_STEP_TYPES.has(type))
-        )
-      : [];
+    const describedTypes = references
+      .map(({ type }) => type ?? '')
+      .filter((type) => !CORE_STEP_TYPES.has(type));
+    return this.stepRunner && describedTypes.length ? this.stepRunner.describe(describedTypes) : [];
   }
 }
 

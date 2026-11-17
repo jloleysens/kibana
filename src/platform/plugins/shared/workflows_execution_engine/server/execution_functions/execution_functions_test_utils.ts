@@ -62,11 +62,19 @@ export const createMockWorkflowRuntime = (): MockWorkflowRuntime => ({
 });
 
 export interface MockWorkflowExecutionRepository {
+  getWorkflowExecutionWithVersion: jest.Mock;
+  tryUpdateWorkflowExecutionWithVersion: jest.Mock;
   getWorkflowExecutionById: jest.Mock;
   updateWorkflowExecution: jest.Mock;
 }
 
 export const createMockWorkflowExecutionRepository = (): MockWorkflowExecutionRepository => ({
+  getWorkflowExecutionWithVersion: jest.fn().mockResolvedValue({
+    execution: { id: 'test-workflow-run-id', status: ExecutionStatus.PENDING },
+    seqNo: 1,
+    primaryTerm: 1,
+  }),
+  tryUpdateWorkflowExecutionWithVersion: jest.fn().mockResolvedValue(true),
   getWorkflowExecutionById: jest.fn().mockResolvedValue({
     id: 'test-workflow-run-id',
     workflowId: 'workflow',
@@ -81,6 +89,7 @@ export const createMockStepExecutionRepository = (): jest.Mocked<StepExecutionRe
     bulkUpsert: jest.fn().mockResolvedValue(undefined),
     markNonTerminalStepsFailed: jest.fn().mockResolvedValue(undefined),
     getStepExecutionsByWorkflowExecution: jest.fn().mockResolvedValue([]),
+    hasStepExecutionsForWorkflow: jest.fn().mockResolvedValue(false),
   } as unknown as jest.Mocked<StepExecutionRepository>);
 
 export interface MockTelemetryClient {

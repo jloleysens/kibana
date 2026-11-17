@@ -26,6 +26,24 @@ describe('StepExecutionRepository', () => {
     underTest = new StepExecutionRepository(stepExecutionsDataClient);
   });
 
+  it('checks persisted step existence without loading inputs or outputs', async () => {
+    stepExecutionsDataClient.count.mockResolvedValue({ count: 1 } as never);
+    expect(await underTest.hasStepExecutionsForWorkflow('run')).toBe(true);
+    expect(stepExecutionsDataClient.count).toHaveBeenCalledWith({
+      query: { term: { workflowRunId: 'run' } },
+      terminate_after: 1,
+    });
+    expect(stepExecutionsDataClient.search).not.toHaveBeenCalled();
+    expect(stepExecutionsDataClient.getByIds).not.toHaveBeenCalled();
+  });
+
+  it('does not treat a partial failed count as proof that no step exists', async () => {
+    stepExecutionsDataClient.count.mockResolvedValue({ count: 0, _shards: { failed: 1 } } as never);
+    await expect(underTest.hasStepExecutionsForWorkflow('run')).rejects.toThrow(
+      'count shard failed'
+    );
+  });
+
   it('still finalizes legacy steps without a persisted ID list', async () => {
     const step = {
       id: 'legacy-step',

@@ -19,6 +19,7 @@ import type {
   Plugin,
   PluginInitializerContext,
 } from '@kbn/core/server';
+import { recordRemoteTiming } from '@kbn/core-remote-common';
 import type { ScopeLookup } from '@kbn/core-remote-server';
 import {
   ExecutionStatus,
@@ -290,6 +291,7 @@ export class WorkflowsExecutionEnginePlugin
     if (config.remoteExecution.enabled) {
       core.remote.register({
         id: 'workflows',
+        reuse: this.config.remoteExecution.reuse,
         root: WorkflowExecutorToken,
         contributions: [WorkflowStepKind],
         dependencies: [WorkflowStepCatalogToken],
@@ -434,6 +436,15 @@ export class WorkflowsExecutionEnginePlugin
                 return;
               }
 
+              recordRemoteTiming('workflow_task_ready', {
+                executionId: workflowRunId,
+                taskId: taskInstance.id,
+              });
+              recordRemoteTiming('claimed', {
+                executionId: workflowRunId,
+                taskId: taskInstance.id,
+                atEpochMs: taskInstance.startedAt?.getTime(),
+              });
               try {
                 const result = await runWorkflow({
                   workflowExecutionRepository,
@@ -1190,6 +1201,23 @@ export class WorkflowsExecutionEnginePlugin
                     internalResumeWorkflowExecution: this.internalResumeWorkflowExecutionHandler,
                     workflowExecutionRepository,
                     stepExecutionRepository,
+                    executeRemote: config.remoteExecution.enabled
+                      ? (scopedRequest, workflowSignal) =>
+                          dispatchWorkflow({
+                            remote: core.remote,
+                            request: scopedRequest,
+                            signal: workflowSignal,
+                            workflowRunId: workflowExecution.id,
+                            spaceId: workflowExecution.spaceId,
+                            logger,
+                            phase: 'run',
+                            facts: {
+                              kibanaUrl: getKibanaUrl(coreStart, setupDependencies.cloudSetup),
+                              maxResponseSizeBytes: config.maxResponseSize.getValueInBytes(),
+                              evictionMinBytes: config.eviction.minPayloadSize.getValueInBytes(),
+                            },
+                          })
+                      : undefined,
                   });
                 } catch (error) {
                   await markScheduledExecutionFailedAfterTaskError({
@@ -1574,6 +1602,7 @@ export class WorkflowsExecutionEnginePlugin
     };
 
     const executeWorkflow: ExecuteWorkflow = async (workflow, context, originalRequest) => {
+      const requestedAt = performance.timeOrigin + performance.now();
       const request = getWorkflowOriginalRequest(originalRequest);
       await checkLicense(plugins.licensing);
 
@@ -1610,6 +1639,11 @@ export class WorkflowsExecutionEnginePlugin
         originalRequest,
         { refresh: true }
       );
+      recordRemoteTiming('requested', {
+        executionId: workflowExecution.id,
+        atEpochMs: requestedAt,
+      });
+      recordRemoteTiming('execution_persisted', { executionId: workflowExecution.id });
 
       if (workflowExecution.status === ExecutionStatus.FAILED) {
         return {
@@ -1659,6 +1693,7 @@ export class WorkflowsExecutionEnginePlugin
         if (!this.coreSetup) {
           throw new Error('Core setup not available');
         }
+        const { remote } = this.coreSetup;
         const [, , workflowsExecutionEngine] = await this.coreSetup.getStartServices();
 
         await runWorkflow({
@@ -1674,11 +1709,35 @@ export class WorkflowsExecutionEnginePlugin
           workflowsExecutionEngine,
           meteringService: this.meteringService,
           internalResumeWorkflowExecution: this.internalResumeWorkflowExecutionHandler,
+          executeRemote: this.config.remoteExecution.enabled
+            ? (scopedRequest, workflowSignal) =>
+                dispatchWorkflow({
+                  remote,
+                  request: scopedRequest,
+                  signal: workflowSignal,
+                  workflowRunId: workflowExecution.id,
+                  spaceId: workflowExecution.spaceId,
+                  logger: this.logger,
+                  phase: 'run',
+                  facts: {
+                    kibanaUrl: getKibanaUrl(coreStart, dependencies.cloudSetup),
+                    maxResponseSizeBytes: this.config.maxResponseSize.getValueInBytes(),
+                    evictionMinBytes: this.config.eviction.minPayloadSize.getValueInBytes(),
+                  },
+                })
+            : undefined,
         });
       } else {
         // Schedule a task: either we're not in a task, or this is a child execution (must not run inline)
         const taskInstance = createTaskInstance(workflowExecution, ['workflows']);
-        await scheduleRunTaskOrMarkFailed(scheduleDeps, taskInstance, request as KibanaRequest);
+        await scheduleRunTaskOrMarkFailed(
+          scheduleDeps,
+          taskInstance,
+          request as KibanaRequest,
+          this.config.remoteExecution.enabled &&
+            this.config.remoteExecution.directDispatch !== false &&
+            !isChildExecution
+        );
         this.logger.debug(
           `Scheduling workflow task for workflow ${workflow.id}, execution ${workflowExecution.id}${
             isChildExecution ? ' (child execution)' : ''

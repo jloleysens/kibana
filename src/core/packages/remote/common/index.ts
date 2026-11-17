@@ -21,3 +21,6 @@ export type {
   RemoteProviderRole,
   RemoteWorkerSpec,
 } from './src/types';
+
+export { recordRemoteTiming } from './src/remote_timing';
+export type { RemoteTimingContext } from './src/remote_timing';

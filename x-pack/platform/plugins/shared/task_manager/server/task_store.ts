@@ -8,6 +8,7 @@
 /*
  * This module contains helpers for managing the task manager storage layer.
  */
+import { recordRemoteTiming } from '@kbn/core-remote-common';
 import murmurhash from 'murmurhash';
 import { v4 } from 'uuid';
 import { Subject } from 'rxjs';
@@ -46,6 +47,7 @@ import { decodeRequestVersion, encodeVersion } from '@kbn/core-saved-objects-bas
 import { brandSpaceId } from '@kbn/core-spaces-common';
 import { nodeBuilder } from '@kbn/es-query';
 import type { ExecutionContextStart } from '@kbn/core/server';
+import { getRetryAt } from './lib/get_retry_at';
 
 import type { Result } from './lib/result_type';
 import { asOk, asErr } from './lib/result_type';
@@ -607,16 +609,27 @@ export class TaskStore {
    */
   public async schedule(
     taskInstance: TaskInstance,
-    options?: ApiKeyOptions
+    options?: ApiKeyOptions,
+    claimImmediately = false
   ): Promise<ConcreteTaskInstance> {
-    return this.executionContextRunner.run(() => this._schedule(taskInstance, options), {
-      id: 'schedule',
-    });
+    return this.executionContextRunner.run(
+      () => this._schedule(taskInstance, options, claimImmediately),
+      {
+        id: 'schedule',
+      }
+    );
   }
   private async _schedule(
     taskInstance: TaskInstance,
-    options?: ApiKeyOptions
+    options: ApiKeyOptions | undefined,
+    claimImmediately: boolean
   ): Promise<ConcreteTaskInstance> {
+    if (
+      claimImmediately &&
+      (taskInstance.runAs || taskInstance.schedule || !this.willGrantApiKeys(options))
+    ) {
+      throw new Error('Immediate claim requires a one-off API-key task');
+    }
     try {
       this.validateCanEncryptSavedObjects(options?.request);
     } catch (e) {
@@ -626,10 +639,16 @@ export class TaskStore {
     this.definitions.ensureHas(taskInstance.taskType);
     const serviceAccountAttributes = this.getServiceAccountCredentialAttributes(taskInstance);
 
+    const credentialStarted = performance.now();
+    recordRemoteTiming('api_key_start', { taskId: taskInstance.id });
     const apiKeySOFieldsMap =
       (serviceAccountAttributes
         ? null
         : await this.grantApiKeysFromRequest([taskInstance], options)) || new Map();
+    recordRemoteTiming('api_key_ready', {
+      taskId: taskInstance.id,
+      durationMs: performance.now() - credentialStarted,
+    });
     const grantedApiKeyFields = apiKeySOFieldsMap.get(taskInstance.id);
     const apiKeySOFields = grantedApiKeyFields || {};
 
@@ -643,10 +662,26 @@ export class TaskStore {
       const validatedTaskInstance =
         this.taskValidator.getValidatedTaskInstanceForUpdating(taskInstance);
 
+      const now = new Date();
+      const ownedTask = claimImmediately
+        ? {
+            ...validatedTaskInstance,
+            status: TaskStatus.Running,
+            ownerId: this.taskManagerId,
+            scheduledAt: now,
+            startedAt: now,
+            attempts: 1,
+            retryAt:
+              getRetryAt(
+                { ...validatedTaskInstance, attempts: 0 },
+                this.definitions.get(taskInstance.taskType)
+              ) ?? null,
+          }
+        : validatedTaskInstance;
       savedObject = await soClient.create<SerializedConcreteTaskInstance>(
         'task',
         {
-          ...taskInstanceToAttributes(validatedTaskInstance, id),
+          ...taskInstanceToAttributes(ownedTask, id),
           ...apiKeySOFields,
           ...serviceAccountAttributes,
           runAt: getFirstRunAt({ taskInstance: validatedTaskInstance, logger: this.logger }),

@@ -8,7 +8,7 @@
  */
 
 import type { KibanaRequest, Logger } from '@kbn/core/server';
-import { recordRemoteHeap } from '@kbn/core-remote-common';
+import { recordRemoteHeap, recordRemoteTiming } from '@kbn/core-remote-common';
 import type { RemoteSetup } from '@kbn/core-remote-server';
 import type { WorkflowDispatchFacts, WorkflowExecutorApi, WorkflowRunOutcome } from './tokens';
 import { workflowDispatchCredentials } from './workflow_dispatch_credentials';
@@ -35,10 +35,12 @@ export const dispatchWorkflow = async ({
   phase: 'run' | 'resume';
 }): Promise<WorkflowRunOutcome> => {
   signal.throwIfAborted();
+  recordRemoteTiming('lease_requested', { executionId: workflowRunId });
   const lease = await remote.lease<WorkflowExecutorApi>('workflows', {
     settingsKey: JSON.stringify(facts),
     signal,
   });
+  recordRemoteTiming('lease_acquired', { executionId: workflowRunId });
   let scopeId: string | undefined;
   try {
     scopeId = lease.openScope(request);
@@ -48,6 +50,7 @@ export const dispatchWorkflow = async ({
         .cancel(activeScope, isWorkflowTaskManagerAbortSignal(signal) ? 'task_manager' : undefined)
         .catch(() => logger.warn('Remote workflow cancellation failed'));
     };
+    recordRemoteTiming('dispatched', { executionId: workflowRunId, scopeId });
     const pending = lease.stub.run({
       scopeId,
       workflowRunId,

@@ -249,6 +249,30 @@ describe('runWorkflow', () => {
     });
 
     describe('remote engine preserves coordinator guards', () => {
+      it.each(['local', 'remote'] as const)(
+        'does not start a second %s engine after an existing barrier',
+        async (placement) => {
+          workflowExecutionRepository.getWorkflowExecutionWithVersion.mockResolvedValue({
+            execution: {
+              ...defaultRunningExecution(),
+              status: ExecutionStatus.PENDING,
+              startedAt: '2026-11-17T00:00:00Z',
+            },
+            seqNo: 2,
+            primaryTerm: 1,
+          });
+          const executeRemote = jest.fn();
+          await expect(
+            runWorkflowWithDefaults({
+              executeRemote: placement === 'remote' ? executeRemote : undefined,
+            })
+          ).rejects.toThrow('start barrier was already crossed');
+          expect(executeRemote).not.toHaveBeenCalled();
+          expect(workflowRuntime.start).not.toHaveBeenCalled();
+          expect(mockWorkflowExecutionLoop).not.toHaveBeenCalled();
+        }
+      );
+
       it('calls only the remote loop after admission', async () => {
         const executeRemote = jest.fn().mockResolvedValue({ status: ExecutionStatus.COMPLETED });
         await runWorkflowWithDefaults({ executeRemote });

@@ -108,6 +108,7 @@ export interface TaskManagerSetupContract {
 export type TaskManagerStartContract = Pick<
   TaskScheduling,
   | 'schedule'
+  | 'scheduleNow'
   | 'runSoon'
   | 'ensureScheduled'
   | 'bulkUpdateSchedules'
@@ -552,6 +553,7 @@ export class TaskManagerPlugin
       bulkRemove: (ids: string[]) => taskStore.bulkRemove(ids),
       removeIfExists: (id: string) => removeIfExists(taskStore, id),
       schedule: (...args) => taskScheduling.schedule(...args),
+      scheduleNow: (...args) => taskScheduling.scheduleNow(...args),
       bulkSchedule: (...args) => taskScheduling.bulkSchedule(...args),
       ensureScheduled: (...args) => taskScheduling.ensureScheduled(...args),
       runSoon: (...args) => taskScheduling.runSoon(...args),

@@ -12,6 +12,7 @@
  */
 
 import apm from 'elastic-apm-node';
+import { recordRemoteTiming } from '@kbn/core-remote-common';
 import { withActiveSpan } from '@kbn/tracing-utils';
 import { v4 as uuidv4 } from 'uuid';
 import { withSpan } from '@kbn/apm-utils';
@@ -373,6 +374,7 @@ export class TaskManagerRunner implements TaskRunner {
    * @returns {Promise<Result<SuccessfulRunResult, FailedRunResult>>}
    */
   public async run(): Promise<Result<SuccessfulRunResult, FailedRunResult>> {
+    recordRemoteTiming('task_runner_started', { taskId: this.id });
     const definition = this.definition;
     if (!definition) {
       throw new Error(`Running task ${this} failed because it has no definition`);

@@ -6,11 +6,13 @@
  */
 
 import pMap from 'p-map';
+import { recordRemoteTiming } from '@kbn/core-remote-common';
 import { chunk, flatten, omit } from 'lodash';
 import agent from 'elastic-apm-node';
 import type { Logger } from '@kbn/core/server';
 import { SavedObjectsErrorHelpers } from '@kbn/core/server';
 import { isEqual } from 'lodash';
+import { isOk } from './lib/result_type';
 import type { Middleware } from './lib/middleware';
 import { parseIntervalAsMillisecond } from './lib/intervals';
 import {
@@ -132,6 +134,7 @@ export interface RunNowResult {
 
 export class TaskScheduling {
   private store: TaskStore;
+  private readonly taskManagerId: string;
   private logger: Logger;
   private middleware: Middleware;
   private readonly definitions: TaskTypeDictionary;
@@ -145,6 +148,7 @@ export class TaskScheduling {
    */
   constructor(opts: TaskSchedulingOpts) {
     this.logger = opts.logger;
+    this.taskManagerId = opts.taskManagerId;
     this.middleware = opts.middleware;
     this.store = opts.taskStore;
     this.definitions = opts.definitions;
@@ -182,6 +186,25 @@ export class TaskScheduling {
     taskInstance: TaskInstanceWithDeprecatedFields,
     options?: ScheduleOptions
   ): Promise<ConcreteTaskInstance> {
+    return this.scheduleTask(taskInstance, options, false);
+  }
+
+  /** Persists an API-key task with a normal ownership lease and dispatches without a poll cycle. */
+  public async scheduleNow(
+    taskInstance: TaskInstanceWithDeprecatedFields,
+    options?: ScheduleOptions
+  ): Promise<ConcreteTaskInstance> {
+    if (taskInstance.runAs || taskInstance.schedule || taskInstance.interval || !options?.request) {
+      throw new Error('Immediate task dispatch requires a one-off request-scoped API-key task');
+    }
+    return this.scheduleTask(taskInstance, options, true);
+  }
+
+  private async scheduleTask(
+    taskInstance: TaskInstanceWithDeprecatedFields,
+    options: ScheduleOptions | undefined,
+    immediate: boolean
+  ): Promise<ConcreteTaskInstance> {
     const { runAs, ...taskInstanceWithoutRunAs } = taskInstance;
     const { taskInstance: modifiedTask } = await this.middleware.beforeSave({
       ...omit(options, 'apiKey', 'request'),
@@ -193,15 +216,64 @@ export class TaskScheduling {
         ? agent.currentTraceparent
         : '';
 
-    return await this.store.schedule(
-      {
-        ...omit(modifiedTask, 'runAs'),
-        ...(runAs ? { runAs } : {}),
-        traceparent: traceparent || '',
-        enabled: modifiedTask.enabled ?? true,
-      },
-      scheduleOptionsToStoreApiKeyOptions(options)
-    );
+    const normalTask = {
+      ...omit(modifiedTask, 'runAs'),
+      ...(runAs ? { runAs } : {}),
+      traceparent: traceparent || '',
+      enabled: modifiedTask.enabled ?? true,
+    };
+    if (immediate && normalTask.schedule)
+      throw new Error('Immediate dispatch requires a one-off task');
+    const direct =
+      immediate &&
+      normalTask.enabled &&
+      this.store.willGrantApiKeys(options) &&
+      this.taskPolling?.canRunDirect(normalTask);
+    const storeOptions = scheduleOptionsToStoreApiKeyOptions(options);
+    const saved = direct
+      ? await this.store.schedule(normalTask, storeOptions, true)
+      : await this.store.schedule(normalTask, storeOptions);
+    recordRemoteTiming('task_persisted', {
+      taskId: normalTask.id,
+      dispatch: direct ? 'direct' : 'task_manager',
+    });
+    if (!direct) return saved;
+    // Hydrate through the same store/API-key strategy as a normally claimed task; never export cookies.
+    // Failures after the persisted claim retain retryAt, so ordinary TM recovery cannot lose the run.
+    try {
+      // Trusted, bounded PoC fault-injection window for a crash after the durable claim write.
+      const dispatchDelay = Number(process.env.KBN_RUNNER_DIRECT_DISPATCH_DELAY_MS ?? 0);
+      if (Number.isFinite(dispatchDelay) && dispatchDelay > 0) {
+        await new Promise((resolve) => setTimeout(resolve, Math.min(dispatchDelay, 30_000)));
+      }
+      const task = await this.store.get(saved.id);
+      if (
+        task.credential ||
+        task.status !== TaskStatus.Running ||
+        task.ownerId !== this.taskManagerId ||
+        task.version !== saved.version ||
+        task.startedAt?.getTime() !== saved.startedAt?.getTime()
+      ) {
+        throw new Error('Immediate task ownership changed before dispatch');
+      }
+      if (await this.taskPolling?.runClaimedTask(task)) return saved;
+      const [released] = await this.store.bulkPartialUpdate([
+        {
+          id: task.id,
+          version: task.version,
+          status: TaskStatus.Idle,
+          ownerId: null,
+          startedAt: null,
+          retryAt: null,
+          attempts: 0,
+        },
+      ]);
+      if (!released || !isOk(released))
+        throw new Error('Unable to release unused immediate task claim');
+    } catch {
+      this.logger.warn('Immediate task dispatch deferred to normal ownership-lease recovery');
+    }
+    return saved;
   }
 
   /**

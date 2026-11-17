@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { recordRemoteTiming } from '@kbn/core-remote-common';
 import type { JsonValue } from '@kbn/utility-types';
 import type {
   EsWorkflowExecution,
@@ -207,6 +208,13 @@ export class StepExecutionRuntime {
   }
 
   public startStep(): void {
+    if (!('isSynthetic' in this.node && this.node.isSynthetic)) {
+      recordRemoteTiming('step_start', {
+        executionId: this.workflowExecution.id,
+        stepId: this.node.stepId,
+        stepType: this.node.stepType,
+      });
+    }
     const stepId = this.node.stepId;
     const stepStartedAt = new Date();
     // Capture before upsert: the write below sets startedAt, so a later read cannot

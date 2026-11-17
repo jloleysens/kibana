@@ -44,6 +44,7 @@ import type {
 } from './task_events';
 import {
   asTaskRunRequestEvent,
+  asTaskClaimEvent,
   asTaskPollingCycleEvent,
   asTaskManagerStatEvent,
   asTaskManagerBackpressureEvent,
@@ -52,7 +53,7 @@ import type { TimedFillPoolResult } from './lib/fill_pool';
 import { fillPool, FillPoolResult } from './lib/fill_pool';
 import type { Middleware } from './lib/middleware';
 import { intervalFromNow } from './lib/intervals';
-import type { ConcreteTaskInstance, TaskEventLogger } from './task';
+import type { ConcreteTaskInstance, TaskEventLogger, TaskInstance } from './task';
 import { createTaskPoller, PollingError, PollingErrorType } from './polling';
 import { TaskPool, TaskPoolRunResult } from './task_pool';
 import type { TaskRunner } from './task_running';
@@ -63,7 +64,8 @@ import { identifyEsError, isEsCannotExecuteScriptError } from './lib/identify_es
 import { BufferedTaskStore } from './buffered_task_store';
 import type { TaskTypeDictionary } from './task_type_dictionary';
 import { TaskClaiming } from './queries/task_claiming';
-import type { ClaimOwnershipResult } from './task_claimers';
+import { isTaskTypeExcluded, type ClaimOwnershipResult } from './task_claimers';
+import { getTaskCost } from './task_claimers/lib/get_task_cost';
 import type { TaskPartitioner } from './lib/task_partitioner';
 import type { TaskPoller } from './polling/task_poller';
 import {
@@ -130,6 +132,7 @@ export class TaskPollingLifecycle implements ITaskEventEmitter<TaskLifecycleEven
   private poller: TaskPoller<string, TimedFillPoolResult>;
   private started = false;
   private stopped = false;
+  private directDispatchSuppressed = true;
   private readonly executionControlService: TaskExecutionControlService;
   private executionControlSubscription?: Subscription;
   private backpressureSubscription?: Subscription;
@@ -273,7 +276,10 @@ export class TaskPollingLifecycle implements ITaskEventEmitter<TaskLifecycleEven
           rxMap(({ suppressNudges }) => suppressNudges),
           distinctUntilChanged()
         )
-        .subscribe((suppressNudges) => claimNudgeSuppressed$.next(suppressNudges))
+        .subscribe((suppressNudges) => {
+          this.directDispatchSuppressed = suppressNudges;
+          claimNudgeSuppressed$.next(suppressNudges);
+        })
     );
 
     this.bufferedStore = new BufferedTaskStore(this.store, {
@@ -414,6 +420,34 @@ export class TaskPollingLifecycle implements ITaskEventEmitter<TaskLifecycleEven
     this.executionControlSubscription?.unsubscribe();
     this.backpressureSubscription?.unsubscribe();
     this.poller.stop();
+  }
+
+  public canRunDirect(task: Pick<TaskInstance, 'taskType' | 'cost'>): boolean {
+    if (
+      this.stopped ||
+      this.directDispatchSuppressed ||
+      !this.executionControlService.isInitialized()
+    )
+      return false;
+    const { paused, pausedTaskTypes } = this.executionControlService.getState();
+    return (
+      !paused &&
+      !pausedTaskTypes.includes(task.taskType) &&
+      !isTaskTypeExcluded(this.config.unsafe.exclude_task_types, task.taskType) &&
+      this.pool.availableCapacity(task.taskType) >= getTaskCost(task, this.definitions)
+    );
+  }
+
+  /** Runs an already persisted ownership lease through the normal runner, middleware and pool. */
+  public async runClaimedTask(task: ConcreteTaskInstance): Promise<boolean> {
+    if (!this.canRunDirect(task)) return false;
+    const runner = this.createTaskRunnerForTask(task);
+    if (runner.isAdHocTaskAndOutOfAttempts) return false;
+    this.emitEvent(asTaskClaimEvent(task.id, asOk(task)));
+    const result = await this.pool.run([runner]);
+    return (
+      result !== TaskPoolRunResult.RanOutOfCapacity && result !== TaskPoolRunResult.NoTaskWereRan
+    );
   }
 
   public getCurrentTasksInPool(): string[] {

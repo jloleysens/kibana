@@ -290,7 +290,7 @@ export class WorkflowExecutionRuntimeManager {
     this.workflowExecutionCursor.stop();
   }
 
-  public async start(): Promise<void> {
+  public async start(barrierStartedAt?: string): Promise<void> {
     this.workflowLogger?.logInfo('Starting workflow execution with APM tracing', {
       workflow: { execution_id: this.workflowExecution.id },
     });
@@ -465,7 +465,7 @@ export class WorkflowExecutionRuntimeManager {
       currentNodeId: this.workflowExecutionCursor.currentNode?.id,
       scopeStack: [],
       status: ExecutionStatus.RUNNING,
-      startedAt: new Date().toISOString(),
+      startedAt: this.workflowExecution.startedAt || barrierStartedAt || new Date().toISOString(),
     };
     this.workflowExecutionState.updateWorkflowExecution(updatedWorkflowExecution);
     this.logWorkflowStart();

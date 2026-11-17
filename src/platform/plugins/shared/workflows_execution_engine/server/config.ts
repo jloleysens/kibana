@@ -79,12 +79,22 @@ const configSchema = schema.object({
     enabled: schema.boolean({ defaultValue: true }),
   }),
   /**
-   * Experimental. When enabled, workflow:run is delegated to the Core remote graph.
-   * Other task types stay on the existing engine. A workflow:run with an unmigrated
-   * step fails before any step runs; it is not sent back to the existing engine.
+   * Experimental. Workflow task loops use the Core remote graph; scheduling stays in Task Manager.
+   * Unsupported builtins fail before any step runs, rather than silently falling back to another engine.
    */
   remoteExecution: schema.object({
     enabled: schema.boolean({ defaultValue: false }),
+    directDispatch: schema.maybe(schema.boolean()),
+    reuse: schema.maybe(
+      schema.object({
+        maxAgeMs: schema.number({ min: 1, max: 3_600_000 }),
+        maxRuns: schema.number({
+          min: 1,
+          max: 10_000,
+          validate: (value) => (Number.isInteger(value) ? undefined : 'must be an integer'),
+        }),
+      })
+    ),
   }),
 });
 

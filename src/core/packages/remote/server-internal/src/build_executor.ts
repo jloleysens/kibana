@@ -9,6 +9,7 @@
 
 import { createRequire } from 'node:module';
 import { Container } from 'inversify';
+import { recordRemoteTiming } from '@kbn/core-remote-common';
 import type { RemoteWorkerSpec } from '@kbn/core-remote-common';
 
 interface StepInstance {
@@ -94,6 +95,8 @@ export async function buildExecutor(
     let constructor: Promise<Constructor<StepInstance>> | undefined;
     factories.set(contribution.stepType, () => ({
       async run(scopeId, input, context) {
+        const cached = constructor !== undefined;
+        const started = performance.now();
         constructor ??= Promise.resolve(
           load(contribution.modulePath, contribution.exportName, loaded)
         ).then((value) => {
@@ -102,6 +105,13 @@ export async function buildExecutor(
           return Ctor;
         });
         const Ctor = await constructor;
+        recordRemoteTiming('contribution_import', {
+          graphId: spec.id,
+          scopeId,
+          stepType: contribution.stepType,
+          cached,
+          durationMs: performance.now() - started,
+        });
         return container.get(Ctor).run(scopeId, input, context);
       },
     }));
