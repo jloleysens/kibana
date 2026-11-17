@@ -40,26 +40,41 @@ export const executeWorkflowRemotely = async ({
   logger: Logger;
 }): Promise<void> => {
   let outcome: WorkflowRunOutcome | undefined;
+  const finishExecution = async (): Promise<void> => {
+    try {
+      const execution = await postExecution.workflowExecutionRepository.getWorkflowExecutionById(
+        postExecution.workflowRunId,
+        postExecution.spaceId
+      );
+      if (execution) {
+        await emitWorkflowExecutionFailedEventIfFailed({
+          workflowRuntime: {
+            getWorkflowExecution: () => execution,
+            getWorkflowExecutionStatus: () => execution.status as ExecutionStatus,
+          },
+          workflowExecutionState: { getLastFailedStepContext: () => outcome?.failedStepContext },
+          emitEvent: workflowsExecutionEngine.triggerEvents.emitEvent,
+          request: fakeRequest,
+          logger: postExecution.logger,
+          workflowRunId: postExecution.workflowRunId,
+        });
+      }
+    } finally {
+      await handlePostExecutionLoop(postExecution);
+    }
+  };
   try {
     outcome = await executeRemote(fakeRequest, signal, dependencyPlan);
-  } finally {
-    const execution = await postExecution.workflowExecutionRepository.getWorkflowExecutionById(
-      postExecution.workflowRunId,
-      postExecution.spaceId
-    );
-    if (execution) {
-      await emitWorkflowExecutionFailedEventIfFailed({
-        workflowRuntime: {
-          getWorkflowExecution: () => execution,
-          getWorkflowExecutionStatus: () => execution.status as ExecutionStatus,
-        },
-        workflowExecutionState: { getLastFailedStepContext: () => outcome?.failedStepContext },
-        emitEvent: workflowsExecutionEngine.triggerEvents.emitEvent,
-        request: fakeRequest,
-        logger: postExecution.logger,
-        workflowRunId: postExecution.workflowRunId,
-      });
-    }
+  } catch (error) {
+    // Cleanup must not replace the worker's original execution error.
+    await finishExecution().catch((cleanupError) => {
+      postExecution.logger.warn(
+        `Post-execution handling failed for remote workflow ${postExecution.workflowRunId}: ${
+          cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+        }`
+      );
+    });
+    throw error;
   }
-  await handlePostExecutionLoop(postExecution);
+  await finishExecution();
 };

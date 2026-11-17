@@ -538,12 +538,8 @@ export class RemoteService implements RemoteSetup {
         session.signal
       );
     } catch (error) {
-      session.close();
-      if (child.pid !== undefined && child.exitCode === null && child.signalCode === null) {
-        const exited = once(child, 'exit');
-        child.kill();
-        await exited;
-      }
+      if (child.pid === undefined) session.close();
+      else await closeChild(child, session);
       throw error;
     }
   }

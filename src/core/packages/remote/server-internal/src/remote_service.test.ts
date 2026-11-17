@@ -503,3 +503,73 @@ it('kills and awaits a child that ignores coordinator disconnect', async () => {
     rmSync(directory, { recursive: true });
   }
 }, 5000);
+
+it('bounds boot-timeout cleanup of a spawned child ignoring SIGTERM', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'remote-boot-timeout-'));
+  mkdirSync(join(directory, 'demo'));
+  writeFileSync(
+    join(directory, 'demo', 'graph.mjs'),
+    `
+    process.on('SIGTERM', () => {});
+    process.on('disconnect', () => {});
+    process.on('message', () => process.send({ kind: 'test-booting' }));
+    setInterval(() => {}, 100);
+  `
+  );
+  const children: childProcess.ChildProcess[] = [];
+  const booting = Promise.withResolvers<void>();
+  const originalFork = childProcess.fork;
+  const spy = jest
+    .spyOn(jest.requireActual<typeof childProcess>('node:child_process'), 'fork')
+    .mockImplementation((...args: Parameters<typeof childProcess.fork>) => {
+      const child = originalFork(...args);
+      children.push(child);
+      child.on('message', () => booting.resolve());
+      return child;
+    });
+  const service = new RemoteService(logger, {
+    maxOldGenerationSizeMb: 256,
+    bundleDirectory: directory,
+  });
+  service.discover([FIXTURE]);
+  service.register({
+    id: 'demo',
+    root: DemoRootToken,
+    contributions: [DemoStepKind],
+    dependencies: [DemoCatalogToken],
+  });
+  service.bind(EchoToken, () => new Echo());
+  try {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    const startup = service.start('child_process');
+    const rejected = expect(startup).rejects.toThrow('boot timed out');
+    await booting.promise;
+    const started = Date.now();
+    await jest.advanceTimersByTimeAsync(120_000);
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(Date.now() - started).toBe(121_000);
+    jest.useRealTimers();
+    const cleanupStarted = Date.now();
+    let watchdog: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        rejected,
+        new Promise<never>((_resolve, reject) => {
+          watchdog = setTimeout(() => reject(new Error('Boot cleanup exceeded 2s watchdog')), 2000);
+        }),
+      ]);
+    } finally {
+      clearTimeout(watchdog);
+    }
+    expect(Date.now() - cleanupStarted).toBeLessThan(2000);
+    expect(children[0].signalCode).toBe('SIGKILL');
+    await service.stop();
+    expect(children[0].listenerCount('exit')).toBe(0);
+  } finally {
+    jest.useRealTimers();
+    for (const child of children)
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    spy.mockRestore();
+    rmSync(directory, { recursive: true });
+  }
+}, 5000);
