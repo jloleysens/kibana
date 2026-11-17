@@ -285,7 +285,9 @@ export abstract class BaseAtomicNodeImplementation<TStep extends BaseStep>
       }
 
       // 3. Plugin config default (from kibana.yml)
-      const pluginConfig = this.stepExecutionRuntime.contextManager.getDependencies().config;
+      const { config: pluginConfig, dispatchFacts } =
+        this.stepExecutionRuntime.contextManager.getDependencies();
+      if (dispatchFacts) return dispatchFacts.maxResponseSizeBytes;
       if (pluginConfig?.maxResponseSize) {
         const configValue = pluginConfig.maxResponseSize;
         return typeof configValue === 'number'

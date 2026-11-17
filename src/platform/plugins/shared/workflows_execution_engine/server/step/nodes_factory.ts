@@ -119,7 +119,9 @@ export class NodesFactory {
     // Check for custom registered step types first
     const { workflowsExtensions } = this.dependencies;
     if (node.stepType && workflowsExtensions.hasStepDefinition(node.stepType)) {
-      const stepDefinition = workflowsExtensions.getStepDefinition(node.stepType);
+      const stepDefinition =
+        this.dependencies.remoteStepDefinition?.(node.stepType, stepExecutionRuntime) ??
+        workflowsExtensions.getStepDefinition(node.stepType);
       if (stepDefinition) {
         this.workflowLogger.logDebug(`Creating custom registered step: ${node.stepType}`, {
           event: { action: 'custom-step-creation', outcome: 'success' },

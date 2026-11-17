@@ -8,11 +8,8 @@
  */
 
 import type { AtomicGraphNode } from '@kbn/workflows/graph';
-import type { ServerStepDefinition } from '@kbn/workflows-extensions/server';
-import { isOneShotStepDefinition, isPollStepDefinition } from '@kbn/workflows-extensions/server';
 
-import { OneShotStepDefinitionHandler, PollPolicyStepHandler } from './step_definition_handlers';
-import type { CustomStepDefinitionHandler } from './types';
+import type { CustomStepDefinitionHandler, RuntimeStepDefinition } from './types';
 import type { ConnectorExecutor } from '../../connector_executor';
 import type { StepExecutionRuntime } from '../../workflow_context_manager/step_execution_runtime';
 import type { WorkflowExecutionRuntimeManager } from '../../workflow_context_manager/workflow_execution_runtime_manager';
@@ -36,11 +33,11 @@ export class CustomStepImpl
   extends BaseAtomicNodeImplementation<BaseStep>
   implements CancellableNode
 {
-  private stepHandler: CustomStepDefinitionHandler | undefined;
+  private stepHandler: Promise<CustomStepDefinitionHandler> | undefined;
 
   constructor(
     private node: AtomicGraphNode,
-    private stepDefinition: ServerStepDefinition,
+    private stepDefinition: RuntimeStepDefinition,
     stepExecutionRuntime: StepExecutionRuntime,
     connectorExecutor: ConnectorExecutor,
     workflowExecutionRuntime: WorkflowExecutionRuntimeManager,
@@ -54,19 +51,19 @@ export class CustomStepImpl
     };
     super(baseStep, stepExecutionRuntime, connectorExecutor, workflowExecutionRuntime);
 
-    this.stepHandler = this.resolveStepHandler();
+    if (
+      !(
+        ('poll' in stepDefinition && typeof stepDefinition.poll === 'function') ||
+        ('handler' in stepDefinition && typeof stepDefinition.handler === 'function')
+      )
+    ) {
+      throw new Error('Unknown step definition type provided');
+    }
   }
 
   public async onCancel(): Promise<void> {
-    if (!this.stepHandler) {
-      throw new Error(`Step "${this.node.stepType}" has no executable phase.`);
-    }
-
-    await this.stepHandler.onCancel(
-      this.getInput(),
-      this.node.configuration.with,
-      this.getRenderedConfig()
-    );
+    const handler = await this.getStepHandler();
+    await handler.onCancel(this.getInput(), this.node.configuration.with, this.getRenderedConfig());
   }
 
   /**
@@ -81,16 +78,9 @@ export class CustomStepImpl
    * Execute the custom step handler
    */
   protected override async _run(input: unknown): Promise<RunStepResult> {
-    if (!this.stepHandler) {
-      throw new Error(`Step "${this.node.stepType}" has no executable phase.`);
-    }
-
     try {
-      return await this.stepHandler.run(
-        input,
-        this.node.configuration.with,
-        this.getRenderedConfig()
-      );
+      const handler = await this.getStepHandler();
+      return await handler.run(input, this.node.configuration.with, this.getRenderedConfig());
     } catch (err) {
       const error = toExecutionError(err as Error).toSerializableObject();
       return { input, output: undefined, error };
@@ -98,13 +88,12 @@ export class CustomStepImpl
   }
 
   private getRenderedConfig(): Record<string, unknown> {
-    const configShape = this.stepDefinition.configSchema?.shape;
-    if (!configShape) {
-      return {};
-    }
+    const configKeys =
+      this.stepDefinition.configKeys ?? Object.keys(this.stepDefinition.configSchema?.shape ?? {});
+    if (configKeys.length === 0) return {};
 
     const config = Object.fromEntries(
-      Object.keys(configShape)
+      configKeys
         .filter((key) => Object.hasOwn(this.node.configuration, key))
         .map((key) => [key, this.node.configuration[key]])
     );
@@ -112,9 +101,15 @@ export class CustomStepImpl
     return this.stepExecutionRuntime.contextManager.renderValueAccordingToContext(config);
   }
 
-  private resolveStepHandler(): CustomStepDefinitionHandler {
-    if (isPollStepDefinition(this.stepDefinition)) {
-      return new PollPolicyStepHandler(
+  private getStepHandler(): Promise<CustomStepDefinitionHandler> {
+    return (this.stepHandler ??= this.resolveStepHandler());
+  }
+
+  private async resolveStepHandler(): Promise<CustomStepDefinitionHandler> {
+    if ('poll' in this.stepDefinition && typeof this.stepDefinition.poll === 'function') {
+      return new (
+        await import('./step_definition_handlers/polling_step_definition_handler')
+      ).PollPolicyStepHandler(
         this.stepDefinition,
         this.node,
         this.stepExecutionRuntime,
@@ -122,8 +117,10 @@ export class CustomStepImpl
       );
     }
 
-    if (isOneShotStepDefinition(this.stepDefinition)) {
-      return new OneShotStepDefinitionHandler(
+    if ('handler' in this.stepDefinition && typeof this.stepDefinition.handler === 'function') {
+      return new (
+        await import('./step_definition_handlers/one_shot_step_definition_handler')
+      ).OneShotStepDefinitionHandler(
         this.stepDefinition,
         this.node,
         this.stepExecutionRuntime,

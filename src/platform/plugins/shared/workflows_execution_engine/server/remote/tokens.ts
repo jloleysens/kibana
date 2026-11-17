@@ -9,7 +9,18 @@
 
 import type { ElasticsearchClient } from '@kbn/core/server';
 import { createToken } from '@kbn/core-di';
-import type { EsWorkflowExecution, EsWorkflowStepExecution } from '@kbn/workflows';
+import type {
+  EsWorkflowExecution,
+  EsWorkflowStepExecution,
+  SerializedError,
+  StackFrame,
+} from '@kbn/workflows';
+import type {
+  PollCeilings,
+  PollHandlerContext,
+  PollPolicy,
+  StepHandlerContext,
+} from '@kbn/workflows-extensions/server';
 
 /**
  * Same stable id as Workflows Extensions' catalogue token. Reconstructed independently in each
@@ -140,4 +151,62 @@ export interface WorkflowRunRequest {
   readonly workflowRunId: string;
   readonly spaceId: string;
   readonly credentials?: WorkflowDispatchCredentials;
+  readonly facts?: WorkflowDispatchFacts;
+}
+
+export interface WorkflowStepDescription {
+  readonly type: string;
+  readonly mode: 'handler' | 'poll' | 'native' | 'connector';
+  readonly configKeys: readonly string[];
+  readonly hasStart: boolean;
+  readonly hasOnCancel: boolean;
+  readonly policy?: PollPolicy;
+  readonly ceilings?: PollCeilings;
+  readonly digest: string;
+}
+
+export interface WorkflowStepInvocation {
+  readonly invocationId: string;
+  readonly scopeId: string;
+  readonly executionId: string;
+  readonly spaceId: string;
+  readonly nodeId: string;
+  readonly stackFrames: StackFrame[];
+  readonly description: WorkflowStepDescription;
+  readonly phase: 'handler' | 'start' | 'poll' | 'onCancel';
+  readonly now: Date;
+  readonly aborted: boolean;
+}
+
+export interface WorkflowStepResult {
+  readonly output?: StepHandlerContext['input'];
+  readonly state?: PollHandlerContext['state'];
+  readonly nextPollDelayMs?: number;
+  readonly error?: SerializedError;
+}
+
+export interface WorkflowStepRunnerApi {
+  describe(stepTypes: readonly string[]): Promise<WorkflowStepDescription[]>;
+  invoke(
+    request: WorkflowStepInvocation | WorkflowConnectorInvocation
+  ): Promise<WorkflowStepResult | undefined>;
+  cancel(invocationId: string): Promise<void>;
+}
+
+export const WorkflowStepRunnerToken = createToken<WorkflowStepRunnerApi>('workflows.stepRunner');
+
+export interface WorkflowConnectorInvocation {
+  readonly invocationId: string;
+  readonly scopeId: string;
+  readonly phase: 'connector';
+  readonly connectorType: string;
+  readonly connectorNameOrId: string;
+  readonly input: Parameters<WorkflowStorageApi['executeConnector']>[1]['input'];
+  readonly aborted: boolean;
+}
+
+export interface WorkflowDispatchFacts {
+  readonly kibanaUrl: string;
+  readonly maxResponseSizeBytes: number;
+  readonly evictionMinBytes: number;
 }

@@ -20,6 +20,9 @@ import {
   type WorkflowRunRequest,
   type WorkflowStepCatalogApi,
   WorkflowStepCatalogToken,
+  type WorkflowStepDescription,
+  type WorkflowStepRunnerApi,
+  WorkflowStepRunnerToken,
   type WorkflowStorageApi,
   WorkflowStorageToken,
 } from './tokens';
@@ -39,14 +42,14 @@ interface ExecutableStep {
  * Steps that finish inside the current task. `if` and `foreach` are in this set.
  * A `wait` of at least five seconds parks and comes back through the resume task.
  */
-const IN_PROCESS_TYPES = new Set(['wait', 'if', 'foreach', 'while', 'switch', 'data.set']);
+const CORE_STEP_TYPES = new Set(['wait', 'if', 'foreach', 'while', 'switch', 'data.set']);
 
 /**
  * Pauses this proof does not run. They use the same resume entry as a long wait.
  * Parallel also stores branch progress. Human input also sends a message through
  * `executeConnector` and reads `resumeInput`.
  */
-const PARKING_TYPES = new Set([
+const UNSUPPORTED_CORE_STEP_TYPES = new Set([
   'parallel',
   'waitForInput',
   'waitForApproval',
@@ -55,10 +58,8 @@ const PARKING_TYPES = new Set([
 ]);
 
 /**
- * Worker entry for one workflow run. The existing step walker runs here.
- * `CoreStart`, Actions, Task Manager, and Workflows Extensions stay on the coordinator.
- * Making those constructors remotable later means splitting the parts that should run
- * in the worker out of the plugin start contracts. This proof does not do that split.
+ * Executes the same engine in either backend with dispatch-bound data clients and lazy nodes.
+ * Plugin-owned phases use the coordinator capability; their implementation graph stays out of the worker.
  */
 @remotable()
 export class WorkflowExecutor implements WorkflowExecutorApi {
@@ -69,7 +70,8 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
     private readonly storage: WorkflowStorageApi,
     @inject(WorkflowLogToken)
     private readonly log: WorkflowLogApi,
-    @inject(WorkflowDataPlaneToken) private readonly data?: WorkflowDataPlaneApi
+    @inject(WorkflowDataPlaneToken) private readonly data?: WorkflowDataPlaneApi,
+    @inject(WorkflowStepRunnerToken) private readonly stepRunner?: WorkflowStepRunnerApi
   ) {}
 
   async placement(): Promise<{
@@ -110,7 +112,7 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
     }
 
     try {
-      this.assertRunnable(execution.workflowDefinition);
+      const descriptions = await this.assertRunnable(execution.workflowDefinition);
       const resume =
         execution.status === ExecutionStatus.WAITING ||
         execution.status === ExecutionStatus.WAITING_FOR_INPUT ||
@@ -124,6 +126,8 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
         log: this.log,
         resume,
         esClient: this.data?.user(request.scopeId),
+        facts: request.facts,
+        remoteSteps: this.stepRunner ? { runner: this.stepRunner, descriptions } : undefined,
       });
       recordRemoteHeap('REMOTE_WORKER_HEAP', status);
       return { status };
@@ -140,14 +144,14 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
     }
   }
 
-  private assertRunnable(
+  private async assertRunnable(
     definition:
       | {
           steps?: ExecutableStep[];
           settings?: { 'on-failure'?: { fallback?: ExecutableStep[] } };
         }
       | undefined
-  ): void {
+  ): Promise<WorkflowStepDescription[]> {
     const references = [
       ...walkSteps(definition?.steps),
       ...walkSteps(definition?.settings?.['on-failure']?.fallback),
@@ -157,13 +161,14 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
       if (!step.type) {
         throw new Error(`Remote step "${stepName}" is missing a type`);
       }
-      if (PARKING_TYPES.has(step.type)) {
+      if (UNSUPPORTED_CORE_STEP_TYPES.has(step.type)) {
         throw new Error(
-          `Unsupported remote step type "${step.type}". Parallel, human input, polling, and child workflows are not run in this remote proof.`
+          `Unsupported remote step type "${step.type}". Parallel, human input, and child workflows are not run in this remote proof.`
         );
       }
       if (
-        !IN_PROCESS_TYPES.has(step.type) &&
+        !this.stepRunner &&
+        !CORE_STEP_TYPES.has(step.type) &&
         !step.type.startsWith('elasticsearch.') &&
         !this.steps.supports(step.type)
       ) {
@@ -172,6 +177,11 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
         );
       }
     }
+    return this.stepRunner
+      ? this.stepRunner.describe(
+          references.map(({ type }) => type ?? '').filter((type) => !CORE_STEP_TYPES.has(type))
+        )
+      : [];
   }
 }
 

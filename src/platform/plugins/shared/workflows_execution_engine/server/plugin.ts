@@ -91,11 +91,13 @@ import {
   WorkflowLogToken,
   WorkflowStepCatalogToken,
   WorkflowStepKind,
+  WorkflowStepRunnerToken,
   WorkflowStorageToken,
 } from './remote/tokens';
 import { WorkflowControl } from './remote/workflow_control';
 import { workflowDispatchCredentials } from './remote/workflow_dispatch_credentials';
 import { WorkflowLog } from './remote/workflow_log';
+import { WorkflowStepRunner } from './remote/workflow_step_runner';
 import { WorkflowStorage } from './remote/workflow_storage';
 import { createDataClientBundle, type DataClientBundle } from './repositories/data_access_layer';
 import { LogsRepository } from './repositories/logs_repository';
@@ -129,7 +131,7 @@ import type {
   WorkflowsExecutionEnginePluginStart,
   WorkflowsExecutionEnginePluginStartDeps,
 } from './types';
-import { generateExecutionTaskScope } from './utils';
+import { generateExecutionTaskScope, getKibanaUrl } from './utils';
 import {
   buildWorkflowRenderContext,
   type WorkflowExecutionForInputRendering,
@@ -191,6 +193,8 @@ export class WorkflowsExecutionEnginePlugin
       WorkflowsExecutionEnginePluginStartDeps
     >
 {
+  private readonly remoteStepRunners: WorkflowStepRunner[] = [];
+
   private readonly logger: Logger;
   private readonly config: WorkflowsExecutionEngineConfig;
   private concurrencyManager!: ConcurrencyManager;
@@ -441,6 +445,11 @@ export class WorkflowsExecutionEnginePlugin
                       workflowRunId,
                       spaceId,
                       credentials: workflowDispatchCredentials(fakeRequest),
+                      facts: {
+                        kibanaUrl: getKibanaUrl(coreStart, setupDependencies.cloudSetup),
+                        maxResponseSizeBytes: config.maxResponseSize.getValueInBytes(),
+                        evictionMinBytes: config.eviction.minPayloadSize.getValueInBytes(),
+                      },
                     });
                   } finally {
                     session.closeScope(scopeId);
@@ -744,6 +753,11 @@ export class WorkflowsExecutionEnginePlugin
                       workflowRunId,
                       spaceId,
                       credentials: workflowDispatchCredentials(fakeRequest),
+                      facts: {
+                        kibanaUrl: getKibanaUrl(coreStart, setupDependencies.cloudSetup),
+                        maxResponseSizeBytes: config.maxResponseSize.getValueInBytes(),
+                        evictionMinBytes: config.eviction.minPayloadSize.getValueInBytes(),
+                      },
                     });
                   } finally {
                     session.closeScope(scopeId);
@@ -1364,6 +1378,20 @@ export class WorkflowsExecutionEnginePlugin
       workflowsExtensions: plugins.workflowsExtensions,
       config: this.config,
     };
+
+    if (this.config.remoteExecution.enabled && this.coreSetup) {
+      this.coreSetup.remote.bind(WorkflowStepRunnerToken, (scopes) => {
+        const runner = new WorkflowStepRunner(
+          dependencies,
+          workflowExecutionRepository,
+          stepExecutionRepository,
+          scopes,
+          this.logger
+        );
+        this.remoteStepRunners.push(runner);
+        return runner;
+      });
+    }
 
     // Re-check that a workflow is still enabled right before persisting an
     // execution document.  The route-level check may have read a stale value
@@ -2220,6 +2248,9 @@ export class WorkflowsExecutionEnginePlugin
   }
 
   public stop() {
+    for (const runner of this.remoteStepRunners) runner.stop();
+    this.remoteStepRunners.length = 0;
+
     void this.dataClientBundle.stop();
   }
 

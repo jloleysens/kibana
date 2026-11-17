@@ -13,6 +13,7 @@ import {
   WorkflowDataPlaneToken,
   WorkflowExecutorToken,
   WorkflowLogToken,
+  WorkflowStepRunnerToken,
   WorkflowStorageToken,
 } from './tokens';
 
@@ -20,6 +21,7 @@ export {
   WorkflowExecutorToken,
   WorkflowLogToken,
   WorkflowStorageToken,
+  WorkflowStepRunnerToken,
   WorkflowDataPlaneToken,
   WorkflowControlToken,
 } from './tokens';
@@ -27,6 +29,12 @@ export type { WorkflowExecutorApi, WorkflowLogApi, WorkflowStorageApi } from './
 
 export const remoteModule: RemoteModule = {
   providers: [
+    {
+      token: WorkflowStepRunnerToken,
+      placement: 'coordinator',
+      modulePath: require.resolve('./workflow_step_runner'),
+      exportName: 'WorkflowStepRunner',
+    },
     {
       token: WorkflowDataPlaneToken,
       placement: 'executor',

@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { randomUUID } from 'node:crypto';
 import type { CoreStart, ElasticsearchClient, KibanaRequest } from '@kbn/core/server';
 import {
   type EsWorkflowExecution,
@@ -14,8 +15,17 @@ import {
   type WorkflowYaml,
 } from '@kbn/workflows';
 import { WorkflowGraph } from '@kbn/workflows/graph';
+import type { StepHandlerContext } from '@kbn/workflows-extensions/server';
 import { noopLogger } from './noop_logger';
-import type { WorkflowLogApi, WorkflowStepCatalogApi, WorkflowStorageApi } from './tokens';
+import { createRemoteStepDefinition } from './remote_step_definition';
+import type {
+  WorkflowDispatchFacts,
+  WorkflowLogApi,
+  WorkflowStepCatalogApi,
+  WorkflowStepDescription,
+  WorkflowStepRunnerApi,
+  WorkflowStorageApi,
+} from './tokens';
 import type { ConnectorExecutor } from '../connector_executor';
 import { defaultWorkflowSettings } from '../default_workflow_settings';
 import type { LogsRepository } from '../repositories/logs_repository';
@@ -29,6 +39,7 @@ import { WorkflowExecutionCursor } from '../workflow_context_manager/workflow_ex
 import { WorkflowExecutionRuntimeManager } from '../workflow_context_manager/workflow_execution_runtime_manager';
 import { WorkflowExecutionState } from '../workflow_context_manager/workflow_execution_state';
 import { WorkflowRuntimeGraph } from '../workflow_context_manager/workflow_runtime_graph';
+import type { IWorkflowEventLogger } from '../workflow_event_logger/types';
 import { WorkflowEventLoggerFactory } from '../workflow_event_logger/workflow_event_logger_factory';
 import { WorkflowEventQueue } from '../workflow_event_logger/workflow_event_queue';
 import { workflowExecutionLoop } from '../workflow_execution_loop/workflow_execution_loop';
@@ -42,6 +53,8 @@ interface EngineLoopRequest {
   log: WorkflowLogApi;
   resume: boolean;
   esClient?: ElasticsearchClient;
+  facts?: WorkflowDispatchFacts;
+  remoteSteps?: { runner: WorkflowStepRunnerApi; descriptions: WorkflowStepDescription[] };
 }
 
 /**
@@ -69,7 +82,7 @@ export async function runWorkflowEngineInWorker(request: EngineLoopRequest): Pro
     state: workflowExecutionState,
     // Finite so a later job reloads step outputs from storage. Infinity skips that fetch
     // and assumes the outputs are still in this isolate, which they are not after a pause.
-    evictionMinBytes: 0,
+    evictionMinBytes: request.facts?.evictionMinBytes ?? 0,
     logger,
   });
   const eventQueue = new WorkflowEventQueue(logsRepository(log), logger);
@@ -81,7 +94,12 @@ export async function runWorkflowEngineInWorker(request: EngineLoopRequest): Pro
   );
   const fakeRequest = {} as KibanaRequest;
   const coreStart = {
-    http: { basePath: { publicBaseUrl: 'http://127.0.0.1:5601', serverBasePath: '' } },
+    http: {
+      basePath: {
+        publicBaseUrl: request.facts?.kibanaUrl ?? 'http://127.0.0.1:5601',
+        serverBasePath: '',
+      },
+    },
   } as unknown as CoreStart;
   const esClient = request.esClient ?? blockedEsClient();
   const dependencies = contextDependencies({
@@ -90,6 +108,9 @@ export async function runWorkflowEngineInWorker(request: EngineLoopRequest): Pro
     execution,
     steps,
     scopeId,
+    stepIoService,
+    remoteSteps: request.remoteSteps,
+    facts: request.facts,
   });
   const workflowExecutionCursor = new WorkflowExecutionCursor({
     workflowExecutionGraph,
@@ -117,7 +138,7 @@ export async function runWorkflowEngineInWorker(request: EngineLoopRequest): Pro
     dependencies,
   });
   const nodesFactory = new NodesFactory(
-    connectorStandIn(scopeId, storage),
+    connectorStandIn(scopeId, storage, workflowLogger, request.remoteSteps?.runner),
     workflowRuntime,
     workflowLogger,
     workflowExecutionGraph,
@@ -208,13 +229,39 @@ function taskManagerStandIn(scopeId: string, storage: WorkflowStorageApi): Workf
   } as unknown as WorkflowTaskManager;
 }
 
-function connectorStandIn(scopeId: string, storage: WorkflowStorageApi): ConnectorExecutor {
+function connectorStandIn(
+  scopeId: string,
+  storage: WorkflowStorageApi,
+  logger: Pick<IWorkflowEventLogger, 'logWarn'>,
+  runner?: WorkflowStepRunnerApi
+): ConnectorExecutor {
   return {
-    execute: (params: {
-      connectorType: string;
-      connectorNameOrId: string;
-      input: Record<string, unknown>;
-    }) => storage.executeConnector(scopeId, params),
+    execute: async (params: Parameters<ConnectorExecutor['execute']>[0]) => {
+      if (!runner) return storage.executeConnector(scopeId, params);
+      params.abortController.signal.throwIfAborted();
+      const invocationId = randomUUID();
+      const pending = runner.invoke({
+        invocationId,
+        scopeId,
+        phase: 'connector',
+        connectorType: params.connectorType,
+        connectorNameOrId: params.connectorNameOrId,
+        input: params.input,
+        aborted: params.abortController.signal.aborted,
+      });
+      const onAbort = () => {
+        void runner
+          .cancel(invocationId)
+          .catch(() => logger.logWarn('Remote connector cancellation failed'));
+      };
+      params.abortController.signal.addEventListener('abort', onAbort, { once: true });
+      try {
+        const result = await pending;
+        return result?.output;
+      } finally {
+        params.abortController.signal.removeEventListener('abort', onAbort);
+      }
+    },
   } as unknown as ConnectorExecutor;
 }
 
@@ -224,12 +271,18 @@ function contextDependencies({
   execution,
   steps,
   scopeId,
+  stepIoService,
+  remoteSteps,
+  facts,
 }: {
   coreStart: CoreStart;
   fakeRequest: KibanaRequest;
   execution: EsWorkflowExecution;
   steps: WorkflowStepCatalogApi;
   scopeId: string;
+  stepIoService: StepIoService;
+  remoteSteps?: EngineLoopRequest['remoteSteps'];
+  facts?: WorkflowDispatchFacts;
 }): ContextDependencies {
   const attribution = {
     type: 'workflow',
@@ -242,8 +295,45 @@ function contextDependencies({
     coreStart,
     actions: {} as ContextDependencies['actions'],
     taskManager: {} as ContextDependencies['taskManager'],
+    ...(remoteSteps
+      ? {
+          remoteStepDefinition: (stepType, runtime) => {
+            const description = remoteSteps.descriptions.find(({ type }) => type === stepType);
+            if (!description || (description.mode !== 'handler' && description.mode !== 'poll'))
+              return;
+            const definition = createRemoteStepDefinition({
+              description,
+              runner: remoteSteps.runner,
+              runtime,
+              scopeId,
+              flush: () => stepIoService.flush(),
+            });
+            if (steps.supports(stepType) && 'handler' in definition) {
+              return {
+                ...definition,
+                handler: async (context: StepHandlerContext) => ({
+                  output: unwrapOutput(
+                    await steps.run(
+                      stepType,
+                      scopeId,
+                      { with: context.input, config: context.config },
+                      { attribution }
+                    )
+                  ),
+                }),
+              };
+            }
+            return definition;
+          },
+        }
+      : {}),
     workflowsExtensions: {
-      hasStepDefinition: (stepType: string) => steps.supports(stepType),
+      hasStepDefinition: (stepType: string) =>
+        steps.supports(stepType) ||
+        (remoteSteps?.descriptions.some(
+          ({ type, mode }) => type === stepType && (mode === 'handler' || mode === 'poll')
+        ) ??
+          false),
       getStepDefinition: (stepType: string) => ({
         id: stepType,
         handler: async (context: { input: unknown; config: unknown }) => {
@@ -257,6 +347,7 @@ function contextDependencies({
         },
       }),
     } as unknown as ContextDependencies['workflowsExtensions'],
+    dispatchFacts: facts,
     config: { logging: { console: false } } as ContextDependencies['config'],
     spaceId: execution.spaceId,
     request: fakeRequest,

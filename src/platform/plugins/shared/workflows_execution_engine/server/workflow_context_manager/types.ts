@@ -13,10 +13,13 @@ import type { CoreStart, KibanaRequest } from '@kbn/core/server';
 import type { TaskManagerStartContract } from '@kbn/task-manager-plugin/server';
 import type { WorkflowRepository } from '@kbn/workflows';
 import type { WorkflowsExtensionsServerPluginStart } from '@kbn/workflows-extensions/server';
+import type { StepExecutionRuntime } from './step_execution_runtime';
 import type { WorkflowsExecutionEngineConfig } from '../config';
+import type { WorkflowDispatchFacts } from '../remote/tokens';
 import type { WorkflowLogEvent } from '../repositories/logs_repository';
 import type { StepExecutionRepository } from '../repositories/step_execution_repository';
 import type { WorkflowExecutionRepository } from '../repositories/workflow_execution_repository';
+import type { RuntimeStepDefinition } from '../step/custom_step_impl/types';
 import type { WorkflowsExecutionEnginePluginStart } from '../types';
 
 export interface ContextDependencies {
@@ -25,6 +28,11 @@ export interface ContextDependencies {
   actions: ActionsPluginStartContract;
   taskManager: TaskManagerStartContract;
   workflowsExtensions: WorkflowsExtensionsServerPluginStart;
+  dispatchFacts?: WorkflowDispatchFacts;
+  remoteStepDefinition?: (
+    stepType: string,
+    runtime: StepExecutionRuntime
+  ) => RuntimeStepDefinition | undefined;
   config: WorkflowsExecutionEngineConfig;
   workflowRepository?: WorkflowRepository;
   workflowExecutionRepository?: WorkflowExecutionRepository;
