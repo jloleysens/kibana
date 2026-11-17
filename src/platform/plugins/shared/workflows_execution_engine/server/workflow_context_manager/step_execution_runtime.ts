@@ -14,9 +14,9 @@ import type {
   StackFrame,
   WorkflowTokenUsage,
 } from '@kbn/workflows';
-import { ExecutionStatus } from '@kbn/workflows';
 import type { GraphNodeUnion } from '@kbn/workflows/graph';
 import { ExecutionError } from '@kbn/workflows/server';
+import { ExecutionStatus } from '@kbn/workflows-runtime';
 import type { StepIoService } from './step_io_service';
 import type { WorkflowContextManager } from './workflow_context_manager';
 import type { WorkflowExecutionState } from './workflow_execution_state';

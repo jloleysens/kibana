@@ -19,6 +19,16 @@ export function createBridge(): {
   } = { loaded: [] };
 
   class Bridge extends RpcTarget {
+    memoryUsage(): { pid: number; gcAvailable: boolean; usage: NodeJS.MemoryUsage } {
+      global.gc?.();
+      global.gc?.();
+      return {
+        pid: process.pid,
+        gcAvailable: typeof global.gc === 'function',
+        usage: process.memoryUsage(),
+      };
+    }
+
     loadedModules(): string[] {
       return state.loaded;
     }

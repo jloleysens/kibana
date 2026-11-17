@@ -7,8 +7,8 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { ExecutionStatus, isTerminalStatus } from '@kbn/workflows';
 import { ExecutionError } from '@kbn/workflows/server';
+import { ExecutionStatus, isTerminalStatus } from '@kbn/workflows-runtime';
 import { isResumeTaskSchedulingError } from './resume_task_scheduling_error';
 import type { WorkflowExecutionLoopParams } from './types';
 import type { NodeWithErrorCatching } from '../step/node_implementation';
@@ -131,7 +131,7 @@ export async function catchError(
         nodeId: scopeEntry.nodeId,
         stackFrames: newWorkflowScopeStack.stackFrames,
       });
-      const stepImplementation = nodesFactory.create(stepExecutionRuntime);
+      const stepImplementation = await nodesFactory.create(stepExecutionRuntime);
 
       if (!isUnrecoverable && (stepImplementation as unknown as NodeWithErrorCatching).catchError) {
         const stepErrorCatcher = stepImplementation as unknown as NodeWithErrorCatching;

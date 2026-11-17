@@ -73,9 +73,11 @@ const main = async (): Promise<void> => {
     } finally {
       clearTimeout(deadline);
       session.close();
-      const exited = once(child, 'exit');
-      child.kill();
-      await exited;
+      if (child.exitCode === null && child.signalCode === null) {
+        const exited = once(child, 'exit');
+        child.kill();
+        await exited;
+      }
     }
   }
   process.stdout.write(`${JSON.stringify({ node: process.version, samples }, null, 2)}\n`);

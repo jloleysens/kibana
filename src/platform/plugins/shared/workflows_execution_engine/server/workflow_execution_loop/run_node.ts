@@ -8,7 +8,7 @@
  */
 
 import apm from 'elastic-apm-node';
-import { ExecutionStatus } from '@kbn/workflows';
+import { ExecutionStatus } from '@kbn/workflows-runtime';
 import { cancelWorkflowIfRequested } from './cancel_workflow_if_requested';
 import { catchError } from './catch_error';
 import { handleExecutionDelay } from './handle_execution_delay';
@@ -108,7 +108,7 @@ export async function runNode(params: WorkflowExecutionLoopParams): Promise<void
 
     // Build the node implementation before the cancel short-circuit so cancellable nodes
     // (e.g. workflow.execute holding a child execution) still get their onCancel hook.
-    nodeImplementation = params.nodesFactory.create(stepExecutionRuntime);
+    nodeImplementation = await params.nodesFactory.create(stepExecutionRuntime);
 
     if (params.workflowExecutionState.getWorkflowExecution().cancelRequested) {
       await cancelWorkflowIfRequested(

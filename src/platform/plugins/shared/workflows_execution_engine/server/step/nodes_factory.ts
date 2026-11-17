@@ -45,54 +45,7 @@ import {
   isExitWorkflowTimeoutZone,
 } from '@kbn/workflows/graph';
 import type { ElasticsearchGraphNode, KibanaGraphNode } from '@kbn/workflows/graph/types';
-import { AtomicStepImpl } from './atomic_step/atomic_step_impl';
-import { CustomStepImpl } from './custom_step_impl';
-import { DataSetStepImpl } from './data_set_step';
-import { ElasticsearchActionStepImpl } from './elasticsearch_action_step';
-import { LoopBreakNodeImpl, LoopContinueNodeImpl } from './flow_control_step';
-import {
-  EnterForeachIterationNodeImpl,
-  EnterForeachNodeImpl,
-  ExitForeachIterationNodeImpl,
-  ExitForeachNodeImpl,
-} from './foreach_step';
-import {
-  EnterConditionBranchNodeImpl,
-  EnterIfNodeImpl,
-  ExitConditionBranchNodeImpl,
-  ExitIfNodeImpl,
-} from './if_step';
-import { KibanaActionStepImpl } from './kibana_action_step';
 import type { NodeImplementation } from './node_implementation';
-import { EnterContinueNodeImpl, ExitContinueNodeImpl } from './on_failure/continue_step';
-import {
-  EnterFallbackPathNodeImpl,
-  EnterNormalPathNodeImpl,
-  EnterTryBlockNodeImpl,
-  ExitFallbackPathNodeImpl,
-  ExitNormalPathNodeImpl,
-  ExitTryBlockNodeImpl,
-} from './on_failure/fallback_step';
-import { EnterRetryNodeImpl, ExitRetryNodeImpl } from './on_failure/retry_step';
-import { EnterParallelNodeImpl, ExitParallelNodeImpl } from './parallel_step';
-import {
-  EnterBranchNodeImpl,
-  EnterSwitchNodeImpl,
-  ExitBranchNodeImpl,
-  ExitSwitchNodeImpl,
-} from './switch_step';
-import {
-  EnterStepTimeoutZoneNodeImpl,
-  EnterWorkflowTimeoutZoneNodeImpl,
-  ExitStepTimeoutZoneNodeImpl,
-  ExitWorkflowTimeoutZoneNodeImpl,
-} from './timeout_zone_step';
-import { WaitForApprovalStepImpl } from './wait_for_approval_step/wait_for_approval_step';
-import { WaitForInputStepImpl } from './wait_for_input_step/wait_for_input_step';
-import { WaitStepImpl } from './wait_step/wait_step';
-import { EnterWhileNodeImpl, ExitWhileNodeImpl } from './while_step';
-import { WorkflowExecuteStepImpl } from './workflow_execute_step/workflow_execute_step_impl';
-import { WorkflowOutputStepImpl } from './workflow_output_step/workflow_output_step_impl';
 import type { ConnectorExecutor } from '../connector_executor';
 import type { StepExecutionRuntime } from '../workflow_context_manager/step_execution_runtime';
 import type { StepExecutionRuntimeFactory } from '../workflow_context_manager/step_execution_runtime_factory';
@@ -113,7 +66,7 @@ export class NodesFactory {
     private stepIoService: StepIoService
   ) {}
 
-  public create(stepExecutionRuntime: StepExecutionRuntime): NodeImplementation {
+  public async create(stepExecutionRuntime: StepExecutionRuntime): Promise<NodeImplementation> {
     const { node } = stepExecutionRuntime;
 
     // Built-in steps - checked first before workflows_extensions
@@ -128,7 +81,7 @@ export class NodesFactory {
         event: { action: 'internal-action-creation', outcome: 'success' },
         tags: ['step-factory', 'elasticsearch', 'internal-action'],
       });
-      return new ElasticsearchActionStepImpl(
+      return new (await import('./elasticsearch_action_step')).ElasticsearchActionStepImpl(
         node as ElasticsearchGraphNode,
         stepExecutionRuntime,
         this.workflowRuntime,
@@ -141,7 +94,7 @@ export class NodesFactory {
         event: { action: 'internal-action-creation', outcome: 'success' },
         tags: ['step-factory', 'kibana', 'internal-action'],
       });
-      return new KibanaActionStepImpl(
+      return new (await import('./kibana_action_step')).KibanaActionStepImpl(
         node as KibanaGraphNode,
         stepExecutionRuntime,
         this.workflowRuntime,
@@ -155,7 +108,7 @@ export class NodesFactory {
         event: { action: 'internal-step-creation', outcome: 'success' },
         tags: ['step-factory', 'data-set', 'internal-step'],
       });
-      return new DataSetStepImpl(
+      return new (await import('./data_set_step')).DataSetStepImpl(
         node,
         stepExecutionRuntime,
         this.workflowRuntime,
@@ -172,7 +125,7 @@ export class NodesFactory {
           event: { action: 'custom-step-creation', outcome: 'success' },
           tags: ['step-handler', 'custom-step', 'extension'],
         });
-        return new CustomStepImpl(
+        return new (await import('./custom_step_impl')).CustomStepImpl(
           node as AtomicGraphNode,
           stepDefinition,
           stepExecutionRuntime,
@@ -187,12 +140,14 @@ export class NodesFactory {
   }
 
   // eslint-disable-next-line complexity
-  private createGenericStepNode(stepExecutionRuntime: StepExecutionRuntime): NodeImplementation {
+  private async createGenericStepNode(
+    stepExecutionRuntime: StepExecutionRuntime
+  ): Promise<NodeImplementation> {
     const node = stepExecutionRuntime.node;
     const stepLogger = stepExecutionRuntime.stepLogger;
     switch (node.type) {
       case 'enter-foreach':
-        return new EnterForeachNodeImpl(
+        return new (await import('./foreach_step')).EnterForeachNodeImpl(
           node as EnterForeachNode,
           this.workflowRuntime,
           stepExecutionRuntime,
@@ -200,16 +155,19 @@ export class NodesFactory {
           this.stepIoService
         );
       case 'enter-foreach-iteration':
-        return new EnterForeachIterationNodeImpl(
+        return new (await import('./foreach_step')).EnterForeachIterationNodeImpl(
           node,
           this.workflowRuntime,
           stepExecutionRuntime,
           this.stepExecutionRuntimeFactory
         );
       case 'exit-foreach-iteration':
-        return new ExitForeachIterationNodeImpl(stepExecutionRuntime, this.workflowRuntime);
+        return new (await import('./foreach_step')).ExitForeachIterationNodeImpl(
+          stepExecutionRuntime,
+          this.workflowRuntime
+        );
       case 'exit-foreach':
-        return new ExitForeachNodeImpl(
+        return new (await import('./foreach_step')).ExitForeachNodeImpl(
           node as ExitForeachNode,
           stepExecutionRuntime,
           this.workflowRuntime,
@@ -218,7 +176,7 @@ export class NodesFactory {
           this.workflowGraph
         );
       case 'enter-while':
-        return new EnterWhileNodeImpl(
+        return new (await import('./while_step')).EnterWhileNodeImpl(
           node as EnterWhileNode,
           this.workflowRuntime,
           stepExecutionRuntime,
@@ -226,7 +184,7 @@ export class NodesFactory {
           this.stepIoService
         );
       case 'exit-while':
-        return new ExitWhileNodeImpl(
+        return new (await import('./while_step')).ExitWhileNodeImpl(
           node as ExitWhileNode,
           stepExecutionRuntime,
           this.workflowRuntime,
@@ -235,7 +193,7 @@ export class NodesFactory {
           this.workflowGraph
         );
       case 'enter-parallel':
-        return new EnterParallelNodeImpl(
+        return new (await import('./parallel_step')).EnterParallelNodeImpl(
           node as EnterParallelNode,
           this.workflowRuntime,
           stepExecutionRuntime,
@@ -245,9 +203,9 @@ export class NodesFactory {
           this.workflowGraph
         );
       case 'exit-parallel':
-        return new ExitParallelNodeImpl(this.workflowRuntime);
+        return new (await import('./parallel_step')).ExitParallelNodeImpl(this.workflowRuntime);
       case 'loop-break':
-        return new LoopBreakNodeImpl(
+        return new (await import('./flow_control_step')).LoopBreakNodeImpl(
           node as LoopBreakNode,
           stepExecutionRuntime,
           this.workflowRuntime,
@@ -257,7 +215,7 @@ export class NodesFactory {
           this.workflowGraph
         );
       case 'loop-continue':
-        return new LoopContinueNodeImpl(
+        return new (await import('./flow_control_step')).LoopContinueNodeImpl(
           node as LoopContinueNode,
           stepExecutionRuntime,
           this.workflowRuntime,
@@ -267,46 +225,61 @@ export class NodesFactory {
           this.workflowGraph
         );
       case 'enter-retry':
-        return new EnterRetryNodeImpl(
+        return new (await import('./on_failure/retry_step')).EnterRetryNodeImpl(
           node as EnterRetryNode,
           stepExecutionRuntime,
           this.workflowRuntime,
           stepLogger
         );
       case 'exit-retry':
-        return new ExitRetryNodeImpl(
+        return new (await import('./on_failure/retry_step')).ExitRetryNodeImpl(
           node as ExitRetryNode,
           stepExecutionRuntime,
           this.workflowRuntime,
           stepLogger
         );
       case 'enter-continue':
-        return new EnterContinueNodeImpl(
+        return new (await import('./on_failure/continue_step')).EnterContinueNodeImpl(
           node as EnterContinueNode,
           this.workflowRuntime,
           stepLogger
         );
       case 'exit-continue':
-        return new ExitContinueNodeImpl(this.workflowRuntime);
+        return new (await import('./on_failure/continue_step')).ExitContinueNodeImpl(
+          this.workflowRuntime
+        );
       case 'enter-try-block':
-        return new EnterTryBlockNodeImpl(
+        return new (await import('./on_failure/fallback_step')).EnterTryBlockNodeImpl(
           node as EnterTryBlockNode,
           stepExecutionRuntime,
           this.workflowRuntime
         );
       case 'exit-try-block':
-        return new ExitTryBlockNodeImpl(stepExecutionRuntime, this.workflowRuntime);
+        return new (await import('./on_failure/fallback_step')).ExitTryBlockNodeImpl(
+          stepExecutionRuntime,
+          this.workflowRuntime
+        );
       case 'enter-normal-path':
-        return new EnterNormalPathNodeImpl(this.workflowRuntime);
+        return new (await import('./on_failure/fallback_step')).EnterNormalPathNodeImpl(
+          this.workflowRuntime
+        );
       case 'enter-fallback-path':
-        return new EnterFallbackPathNodeImpl(this.workflowRuntime);
+        return new (await import('./on_failure/fallback_step')).EnterFallbackPathNodeImpl(
+          this.workflowRuntime
+        );
       case 'exit-normal-path':
-        return new ExitNormalPathNodeImpl(node as ExitNormalPathNode, this.workflowRuntime);
+        return new (await import('./on_failure/fallback_step')).ExitNormalPathNodeImpl(
+          node as ExitNormalPathNode,
+          this.workflowRuntime
+        );
       case 'exit-fallback-path':
-        return new ExitFallbackPathNodeImpl(node as ExitFallbackPathNode, this.workflowRuntime);
+        return new (await import('./on_failure/fallback_step')).ExitFallbackPathNodeImpl(
+          node as ExitFallbackPathNode,
+          this.workflowRuntime
+        );
       case 'enter-timeout-zone':
         if (isEnterWorkflowTimeoutZone(node)) {
-          return new EnterWorkflowTimeoutZoneNodeImpl(
+          return new (await import('./timeout_zone_step')).EnterWorkflowTimeoutZoneNodeImpl(
             node,
             this.workflowRuntime,
             this.stepExecutionRuntimeFactory
@@ -314,18 +287,27 @@ export class NodesFactory {
         }
 
         if (isEnterStepTimeoutZone(node)) {
-          return new EnterStepTimeoutZoneNodeImpl(node, this.workflowRuntime, stepExecutionRuntime);
+          return new (await import('./timeout_zone_step')).EnterStepTimeoutZoneNodeImpl(
+            node,
+            this.workflowRuntime,
+            stepExecutionRuntime
+          );
         }
       case 'exit-timeout-zone':
         if (isExitWorkflowTimeoutZone(node)) {
-          return new ExitWorkflowTimeoutZoneNodeImpl(this.workflowRuntime);
+          return new (await import('./timeout_zone_step')).ExitWorkflowTimeoutZoneNodeImpl(
+            this.workflowRuntime
+          );
         }
 
         if (isExitStepTimeoutZone(node)) {
-          return new ExitStepTimeoutZoneNodeImpl(stepExecutionRuntime, this.workflowRuntime);
+          return new (await import('./timeout_zone_step')).ExitStepTimeoutZoneNodeImpl(
+            stepExecutionRuntime,
+            this.workflowRuntime
+          );
         }
       case 'enter-if':
-        return new EnterIfNodeImpl(
+        return new (await import('./if_step')).EnterIfNodeImpl(
           node as EnterIfNode,
           this.workflowRuntime,
           this.workflowGraph,
@@ -334,21 +316,24 @@ export class NodesFactory {
         );
       case 'enter-then-branch':
       case 'enter-else-branch':
-        return new EnterConditionBranchNodeImpl(
+        return new (await import('./if_step')).EnterConditionBranchNodeImpl(
           node as EnterConditionBranchNode,
           this.workflowRuntime
         );
       case 'exit-then-branch':
       case 'exit-else-branch':
-        return new ExitConditionBranchNodeImpl(
+        return new (await import('./if_step')).ExitConditionBranchNodeImpl(
           node as ExitConditionBranchNode,
           this.workflowGraph,
           this.workflowRuntime
         );
       case 'exit-if':
-        return new ExitIfNodeImpl(stepExecutionRuntime, this.workflowRuntime);
+        return new (await import('./if_step')).ExitIfNodeImpl(
+          stepExecutionRuntime,
+          this.workflowRuntime
+        );
       case 'enter-switch':
-        return new EnterSwitchNodeImpl(
+        return new (await import('./switch_step')).EnterSwitchNodeImpl(
           node as EnterSwitchNode,
           this.workflowRuntime,
           this.workflowGraph,
@@ -357,29 +342,32 @@ export class NodesFactory {
         );
       case 'enter-case-branch':
       case 'enter-default-branch':
-        return new EnterBranchNodeImpl(
+        return new (await import('./switch_step')).EnterBranchNodeImpl(
           node as EnterCaseBranchNode | EnterDefaultBranchNode,
           this.workflowRuntime,
           stepExecutionRuntime
         );
       case 'exit-case-branch':
       case 'exit-default-branch':
-        return new ExitBranchNodeImpl(
+        return new (await import('./switch_step')).ExitBranchNodeImpl(
           node as ExitCaseBranchNode | ExitDefaultBranchNode,
           this.workflowGraph,
           this.workflowRuntime
         );
       case 'exit-switch':
-        return new ExitSwitchNodeImpl(stepExecutionRuntime, this.workflowRuntime);
+        return new (await import('./switch_step')).ExitSwitchNodeImpl(
+          stepExecutionRuntime,
+          this.workflowRuntime
+        );
       case 'wait':
-        return new WaitStepImpl(
+        return new (await import('./wait_step/wait_step')).WaitStepImpl(
           node as WaitGraphNode,
           stepExecutionRuntime,
           this.workflowRuntime,
           stepLogger
         );
       case 'waitForInput':
-        return new WaitForInputStepImpl(
+        return new (await import('./wait_for_input_step/wait_for_input_step')).WaitForInputStepImpl(
           node as WaitForInputGraphNode,
           stepExecutionRuntime,
           this.workflowRuntime,
@@ -388,7 +376,9 @@ export class NodesFactory {
           this.dependencies
         );
       case 'waitForApproval':
-        return new WaitForApprovalStepImpl(
+        return new (
+          await import('./wait_for_approval_step/wait_for_approval_step')
+        ).WaitForApprovalStepImpl(
           node as WaitForApprovalGraphNode,
           stepExecutionRuntime,
           this.workflowRuntime,
@@ -397,7 +387,7 @@ export class NodesFactory {
           this.dependencies
         );
       case 'atomic':
-        return new AtomicStepImpl(
+        return new (await import('./atomic_step/atomic_step_impl')).AtomicStepImpl(
           node as AtomicGraphNode,
           stepExecutionRuntime,
           this.connectorExecutor,
@@ -424,7 +414,9 @@ export class NodesFactory {
         if (!this.dependencies.request) {
           throw new Error('request is not available in dependencies');
         }
-        return new WorkflowExecuteStepImpl({
+        return new (
+          await import('./workflow_execute_step/workflow_execute_step_impl')
+        ).WorkflowExecuteStepImpl({
           node: node as WorkflowExecuteGraphNode | WorkflowExecuteAsyncGraphNode,
           stepExecutionRuntime,
           workflowExecutionRuntime: this.workflowRuntime,
@@ -442,7 +434,9 @@ export class NodesFactory {
           event: { action: 'workflow-output-step-creation', outcome: 'success' },
           tags: ['step-factory', 'workflow-output', 'core-step'],
         });
-        return new WorkflowOutputStepImpl(
+        return new (
+          await import('./workflow_output_step/workflow_output_step_impl')
+        ).WorkflowOutputStepImpl(
           node as WorkflowOutputGraphNode,
           stepExecutionRuntime,
           this.workflowRuntime,

@@ -11,18 +11,14 @@ import omit from 'lodash/omit';
 import type { KibanaRequest } from '@kbn/core/server';
 import type { JsonValue } from '@kbn/utility-types';
 import type { EsWorkflow } from '@kbn/workflows';
-import {
-  ExecutionStatus,
-  isTerminalStatus,
-  toWorkflowExecutionEngineModel,
-  WORKFLOW_STEP_TRIGGER_SOURCE,
-} from '@kbn/workflows';
+import { toWorkflowExecutionEngineModel, WORKFLOW_STEP_TRIGGER_SOURCE } from '@kbn/workflows';
 import { ExecutionError } from '@kbn/workflows/server';
 import type {
   EsWorkflowExecution,
   EsWorkflowStepExecution,
   WorkflowStepExecutionDto,
 } from '@kbn/workflows/types/v1';
+import { ExecutionStatus, isTerminalStatus } from '@kbn/workflows-runtime';
 import type { StepExecutionRepository } from '../../../repositories/step_execution_repository';
 import type { WorkflowExecutionRepository } from '../../../repositories/workflow_execution_repository';
 import type { WorkflowsExecutionEnginePluginStart } from '../../../types';

@@ -8,10 +8,10 @@
  */
 
 import omit from 'lodash/omit';
+import { DEFAULT_LOOP_MAX_ITERATIONS } from '@kbn/workflows-runtime';
 import { GraphBuildError } from './graph_build_error';
 import { isHitlWaitStepType } from '../../common/hitl';
 import { DEFAULT_WAIT_FOR_APPROVAL_TIMEOUT } from '../../common/wait_for_approval';
-import { DEFAULT_LOOP_MAX_ITERATIONS } from '../../spec/schema';
 import type {
   BaseStep,
   DataSetStep,

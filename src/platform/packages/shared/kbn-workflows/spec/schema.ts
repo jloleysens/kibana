@@ -258,7 +258,7 @@ export const MaxIterationsSchema = z.union([
 ]);
 export type MaxIterations = z.infer<typeof MaxIterationsSchema>;
 
-export const DEFAULT_LOOP_MAX_ITERATIONS = 2000;
+export { DEFAULT_LOOP_MAX_ITERATIONS } from '@kbn/workflows-runtime';
 
 export const LoopStepPropsSchema = z.object({
   'max-iterations': MaxIterationsSchema.optional(),

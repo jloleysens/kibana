@@ -10,8 +10,7 @@
 import { inject } from 'inversify';
 import { isMainThread, threadId } from 'node:worker_threads';
 import { recordRemoteHeap, remotable } from '@kbn/core-remote-common';
-import { ExecutionStatus, isTerminalStatus } from '@kbn/workflows';
-import { runWorkflowEngineInWorker } from './assemble_engine_loop';
+import { ExecutionStatus, isTerminalStatus } from '@kbn/workflows-runtime';
 import {
   type WorkflowExecutorApi,
   type WorkflowLogApi,
@@ -103,6 +102,7 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
         execution.status === ExecutionStatus.WAITING ||
         execution.status === ExecutionStatus.WAITING_FOR_INPUT ||
         (execution.status === ExecutionStatus.RUNNING && Boolean(execution.currentNodeId));
+      const { runWorkflowEngineInWorker } = await import('./assemble_engine_loop');
       const status = await runWorkflowEngineInWorker({
         execution,
         scopeId: request.scopeId,
