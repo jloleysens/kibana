@@ -51,48 +51,65 @@ export class WorkflowStepRunner implements WorkflowStepRunnerApi {
     private readonly logger: Logger
   ) {}
 
-  async describe(stepTypes: readonly string[]): Promise<WorkflowStepDescription[]> {
+  /**
+   * Describes coordinator-side step types. Types listed in `optional` are natively supported by
+   * the worker's own catalog; they are described when the coordinator also knows them and are
+   * skipped (not rejected) otherwise, so catalog-only native contributions keep working.
+   */
+  async describe(
+    stepTypes: readonly string[],
+    { optional = [] }: { optional?: readonly string[] } = {}
+  ): Promise<WorkflowStepDescription[]> {
     await this.dependencies.workflowsExtensions.isReady();
-    return [...new Set(stepTypes)].map((type) => {
-      const definition = this.dependencies.workflowsExtensions.getStepDefinition(type);
-      const mode = definition
-        ? 'poll' in definition
-          ? 'poll'
-          : 'handler'
-        : this.esTypes.has(type) || type === 'elasticsearch.request'
-        ? 'native'
-        : type === 'console' || type === 'http'
-        ? 'connector'
-        : undefined;
-      if (!mode) throw new Error(`Unsupported workflow step type "${type}"`);
-      const metadata: Omit<WorkflowStepDescription, 'digest'> = {
-        type,
-        mode,
-        ...(mode === 'native'
-          ? {
-              elasticsearch: this.dependencies.runtimeMetadata.elasticsearchDefinition(type),
-            }
-          : {}),
-        ...(mode === 'connector'
-          ? {
-              isSpecConnector: this.dependencies.runtimeMetadata.isSpecConnector(type),
-            }
-          : {}),
-        configKeys: Object.keys(definition?.configSchema?.shape ?? {}),
-        hasStart:
-          definition !== undefined &&
-          'start' in definition &&
-          typeof definition.start === 'function',
-        hasOnCancel: typeof definition?.onCancel === 'function',
-        ...(definition && 'poll' in definition
-          ? { policy: definition.policy, ceilings: definition.ceilings }
-          : {}),
-      };
-      return {
-        ...metadata,
-        digest: createHash('sha256').update(JSON.stringify(metadata)).digest('hex'),
-      };
-    });
+    const optionalTypes = new Set(optional);
+    const descriptions: WorkflowStepDescription[] = [];
+    for (const type of new Set(stepTypes)) {
+      const description = this.describeType(type, optionalTypes.has(type));
+      if (description) descriptions.push(description);
+    }
+    return descriptions;
+  }
+
+  private describeType(type: string, optional: boolean): WorkflowStepDescription | undefined {
+    const definition = this.dependencies.workflowsExtensions.getStepDefinition(type);
+    const mode = definition
+      ? 'poll' in definition
+        ? 'poll'
+        : 'handler'
+      : this.esTypes.has(type) || type === 'elasticsearch.request'
+      ? 'native'
+      : type === 'console' || type === 'http'
+      ? 'connector'
+      : undefined;
+    if (!mode) {
+      if (optional) return undefined;
+      throw new Error(`Unsupported workflow step type "${type}"`);
+    }
+    const metadata: Omit<WorkflowStepDescription, 'digest'> = {
+      type,
+      mode,
+      ...(mode === 'native'
+        ? {
+            elasticsearch: this.dependencies.runtimeMetadata.elasticsearchDefinition(type),
+          }
+        : {}),
+      ...(mode === 'connector'
+        ? {
+            isSpecConnector: this.dependencies.runtimeMetadata.isSpecConnector(type),
+          }
+        : {}),
+      configKeys: Object.keys(definition?.configSchema?.shape ?? {}),
+      hasStart:
+        definition !== undefined && 'start' in definition && typeof definition.start === 'function',
+      hasOnCancel: typeof definition?.onCancel === 'function',
+      ...(definition && 'poll' in definition
+        ? { policy: definition.policy, ceilings: definition.ceilings }
+        : {}),
+    };
+    return {
+      ...metadata,
+      digest: createHash('sha256').update(JSON.stringify(metadata)).digest('hex'),
+    };
   }
 
   stop(): void {

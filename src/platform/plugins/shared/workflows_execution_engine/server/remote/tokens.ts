@@ -204,7 +204,10 @@ export interface WorkflowStepResult {
 }
 
 export interface WorkflowStepRunnerApi {
-  describe(stepTypes: readonly string[]): Promise<WorkflowStepDescription[]>;
+  describe(
+    stepTypes: readonly string[],
+    options?: { optional?: readonly string[] }
+  ): Promise<WorkflowStepDescription[]>;
   invoke(
     request: WorkflowStepInvocation | WorkflowConnectorInvocation
   ): Promise<WorkflowStepResult | undefined>;

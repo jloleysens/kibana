@@ -232,7 +232,12 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
     const describedTypes = references
       .map(({ type }) => type ?? '')
       .filter((type) => !CORE_STEP_TYPES.has(type));
-    return this.stepRunner && describedTypes.length ? this.stepRunner.describe(describedTypes) : [];
+    // Catalog-supported (native contribution) types are optional: the coordinator describes them
+    // when it also has a definition, but a catalog-only contribution must not be rejected.
+    const optional = describedTypes.filter((type) => this.steps.supports(type));
+    return this.stepRunner && describedTypes.length
+      ? this.stepRunner.describe(describedTypes, { optional })
+      : [];
   }
 }
 

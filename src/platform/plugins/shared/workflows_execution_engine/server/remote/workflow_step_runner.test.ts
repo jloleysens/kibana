@@ -235,6 +235,27 @@ it('rejects unknown registrations before reading execution data', async () => {
   expect(executions.getWorkflowExecutionById).not.toHaveBeenCalled();
 });
 
+it('skips optional catalog-only native types instead of rejecting them', async () => {
+  const { runner, definition } = setup(async () => ({ output: {} }));
+  const descriptions = await runner.describe([definition.id, 'catalog.only'], {
+    optional: ['catalog.only'],
+  });
+  expect(descriptions.map(({ type }) => type)).toEqual([definition.id]);
+});
+
+it('still describes optional types the coordinator also knows', async () => {
+  const { runner, definition } = setup(async () => ({ output: {} }));
+  const descriptions = await runner.describe([definition.id], { optional: [definition.id] });
+  expect(descriptions.map(({ type }) => type)).toEqual([definition.id]);
+});
+
+it('keeps rejecting unknown types that are not optional', async () => {
+  const { runner } = setup(async () => ({ output: {} }));
+  await expect(
+    runner.describe(['not.registered', 'catalog.only'], { optional: ['catalog.only'] })
+  ).rejects.toThrow('Unsupported workflow step type "not.registered"');
+});
+
 it('uses persisted durable author state for poll and onCancel without a state snapshot in the DTO', async () => {
   const { runner, reference, dependencies, docs, definition } = setup(async () => ({ output: {} }));
   docs[1].state = {
