@@ -65,6 +65,29 @@ it.each([
   ).toEqual([]);
 });
 
+it('keeps field conversion free of authoring schema construction', async () => {
+  const result = await build({
+    entryPoints: [
+      resolve(
+        __dirname,
+        '../../platform/packages/shared/kbn-workflows/spec/lib/field_conversion.ts'
+      ),
+    ],
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    metafile: true,
+    write: false,
+  });
+  expect(
+    Object.keys(result.metafile.inputs).filter((path) =>
+      /(?:node_modules\/(?:zod|joi)\/|kbn-workflows\/spec\/schema\/.*_schema\.ts|kbn-i18n)/.test(
+        path
+      )
+    )
+  ).toEqual([]);
+});
+
 it('keeps workflow graph runtime free of the authoring schema closure', async () => {
   const result = await build({
     entryPoints: [

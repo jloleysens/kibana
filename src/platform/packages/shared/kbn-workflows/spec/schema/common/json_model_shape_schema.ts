@@ -8,125 +8,17 @@
  */
 
 import { z } from '@kbn/zod/v4';
+
+import { JSON_SCHEMA_FORMAT_VALUES, JSON_SCHEMA_TYPE_VALUES } from './json_model_shape';
+import type { JsonSchema } from './json_model_shape';
 import { builtinWorkflowInputDefinitionRefSchema } from '../../builtin_workflow_input_definitions';
-
-/**
- * JSON Schema type values (Draft 7 / 2020-12 standard).
- * Single source of truth – used in both the Zod schema definition
- * and YAML editor autocomplete suggestions.
- */
-export const JSON_SCHEMA_TYPE_VALUES = [
-  'object',
-  'array',
-  'string',
-  'number',
-  'integer',
-  'boolean',
-  'null',
-] as const;
-
-export type JsonSchemaType = (typeof JSON_SCHEMA_TYPE_VALUES)[number];
-
-/**
- * Common JSON Schema format annotation values (Draft 7 / 2020-12 standard).
- * Single source of truth for autocomplete suggestions.
- * Reference: https://json-schema.org/draft-07/schema#section-7.3
- *
- * Only formats that fromJSONSchema actively validates are listed here.
- * Omitted formats (ipv4, ipv6, hostname, regex, etc.) are not enforced by the
- * converter, so we don't suggest them — users can use `pattern` instead.
- */
-export const JSON_SCHEMA_FORMAT_VALUES = [
-  'date-time',
-  'date',
-  'time',
-  'email',
-  'uuid',
-  'uri',
-] as const;
-
-export interface JsonSchema {
-  [key: string]: unknown;
-  type?: JsonSchemaType | JsonSchemaType[];
-  title?: string;
-  description?: string;
-  format?: string;
-  default?: string | number | boolean | null | object;
-  $ref?: string;
-
-  // Logical Composition (allOf is omitted)
-  anyOf?: JsonSchema[];
-  oneOf?: JsonSchema[];
-
-  // Structure
-  properties?: Record<string, JsonSchema>;
-  /** `true`/`false`, or a schema describing the value of unknown keys (typed maps). */
-  additionalProperties?: boolean | JsonSchema;
-  items?: JsonSchema | JsonSchema[];
-  required?: string[];
-
-  // Reusability
-  definitions?: Record<string, JsonSchema>;
-  $defs?: Record<string, JsonSchema>;
-
-  // Constraints
-  enum?: (string | number | boolean | null | object)[];
-  const?: string | number | boolean | null | object;
-  multipleOf?: number;
-  minimum?: number;
-  exclusiveMinimum?: number;
-  maximum?: number;
-  exclusiveMaximum?: number;
-  minLength?: number;
-  maxLength?: number;
-  pattern?: string;
-  minItems?: number;
-  maxItems?: number;
-  uniqueItems?: boolean;
-}
-
-/** True when `additionalProperties` is a value schema rather than a boolean. */
-export const isSchemaValuedAdditionalProperties = (
-  additionalProperties: unknown
-): additionalProperties is JsonSchema =>
-  typeof additionalProperties === 'object' &&
-  additionalProperties !== null &&
-  !Array.isArray(additionalProperties);
-
-/**
- * JSON Schema property keywords available for autocomplete.
- * Derived from JsonSchema type – the `satisfies` clause ensures
- * every entry is a valid key of JsonSchema.
- * Update this list when adding new fields to the JsonSchema type.
- */
-export const JSON_SCHEMA_PROPERTY_KEYS = [
-  'type',
-  'title',
-  'description',
-  'format',
-  'default',
-  'enum',
-  'const',
-  'properties',
-  'additionalProperties',
-  'required',
-  'items',
-  'anyOf',
-  'oneOf',
-  '$ref',
-  'definitions',
-  'minimum',
-  'exclusiveMinimum',
-  'maximum',
-  'exclusiveMaximum',
-  'minLength',
-  'maxLength',
-  'pattern',
-  'multipleOf',
-  'minItems',
-  'maxItems',
-  'uniqueItems',
-] as const satisfies readonly (keyof JsonSchema)[];
+export {
+  JSON_SCHEMA_TYPE_VALUES,
+  JSON_SCHEMA_FORMAT_VALUES,
+  JSON_SCHEMA_PROPERTY_KEYS,
+  isSchemaValuedAdditionalProperties,
+} from './json_model_shape';
+export type { JsonSchemaType, JsonSchema } from './json_model_shape';
 
 /** Shared `type` keyword (single type or array of types). */
 const jsonSchemaTypeField = z
