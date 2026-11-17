@@ -172,3 +172,16 @@ describe('createWorkflowLiquidEngine', () => {
     });
   });
 });
+
+it('preserves every historical Liquid engine export through the compatibility module', async () => {
+  const compatibility = await import('./create_workflow_liquid_engine');
+  const runtime = await import('@kbn/workflows-template-runtime');
+  expect(Object.keys(compatibility).sort()).toEqual([
+    'LIQUID_ALLOWED_TAGS',
+    'createWorkflowLiquidEngine',
+    'registerWorkflowLiquidFilters',
+  ]);
+  for (const name of Object.keys(compatibility) as Array<keyof typeof compatibility>) {
+    expect(compatibility[name]).toBe(runtime[name]);
+  }
+});

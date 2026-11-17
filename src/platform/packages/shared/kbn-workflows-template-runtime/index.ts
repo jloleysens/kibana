@@ -7,5 +7,9 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-export { createWorkflowLiquidEngine, LIQUID_ALLOWED_TAGS } from './create_workflow_liquid_engine';
+export {
+  createWorkflowLiquidEngine,
+  LIQUID_ALLOWED_TAGS,
+  registerWorkflowLiquidFilters,
+} from './create_workflow_liquid_engine';
 export { pickObjectFields } from './pick_object_fields';

@@ -268,6 +268,51 @@ describe('WorkflowExecutor', () => {
     expect(steps.run).not.toHaveBeenCalled();
     expect(store.completed).toEqual([ExecutionStatus.FAILED]);
   });
+  it('aborts an active native step and closes clients when its host is disposed', async () => {
+    const store = createStore(execution([{ name: 'native', type: GRAPH, with: {} }]));
+    const steps = catalog([]);
+    let started: () => void = () => {};
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let signal: AbortSignal | undefined;
+    steps.run.mockImplementation(async (_type, _scope, _input, context) => {
+      if (!context.handlerContext) throw new Error('Missing handler context');
+      signal = context.handlerContext.abortSignal;
+      started();
+      await new Promise<void>((resolve) =>
+        signal?.addEventListener('abort', () => resolve(), { once: true })
+      );
+      return { output: null };
+    });
+    const data: WorkflowDataPlaneApi = {
+      open: jest.fn(),
+      close: jest.fn(),
+      internal: jest.fn(),
+      user: jest.fn(),
+    };
+    const executor = new WorkflowExecutor(steps, store.storage, log(), data);
+    const running = executor.run({
+      dependencyPlan: store.dependencyPlan,
+      scopeId: 'scope',
+      workflowRunId: 'run-1',
+      spaceId: 'default',
+    });
+    await ready;
+    await executor[Symbol.asyncDispose]();
+    expect(data.close).toHaveBeenCalledWith('scope');
+    await running;
+    expect(signal?.aborted).toBe(true);
+    await expect(
+      executor.run({
+        dependencyPlan: store.dependencyPlan,
+        scopeId: 'scope',
+        workflowRunId: 'run-1',
+        spaceId: 'default',
+      })
+    ).rejects.toThrow('disposed');
+  });
+
   it('closes dispatch-scoped clients when the initial execution read fails', async () => {
     const store = createStore(execution());
     jest.spyOn(store.storage, 'getExecution').mockRejectedValue(new Error('read failed'));

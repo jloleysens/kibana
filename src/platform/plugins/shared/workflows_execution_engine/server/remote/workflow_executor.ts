@@ -66,6 +66,7 @@ const UNSUPPORTED_CORE_STEP_TYPES = new Set([
  */
 @remotable()
 export class WorkflowExecutor implements WorkflowExecutorApi {
+  private stopped = false;
   private readonly active = new Map<string, AbortController>();
   constructor(
     @inject(WorkflowStepCatalogToken)
@@ -102,7 +103,17 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
       ?.abort(reason === 'task_manager' ? new WorkflowTaskManagerAbortError() : undefined);
   }
 
+  async [Symbol.asyncDispose](): Promise<void> {
+    this.stopped = true;
+    const scopeIds = [...this.active.keys()];
+    for (const controller of this.active.values()) {
+      controller.abort(new Error('Workflow coordinator disconnected'));
+    }
+    await Promise.all(scopeIds.map((scopeId) => this.data?.close(scopeId)));
+  }
+
   async run(request: WorkflowRunRequest): Promise<WorkflowRunOutcome> {
+    if (this.stopped) throw new Error('Workflow executor is disposed');
     recordRemoteTiming('received', {
       executionId: request.workflowRunId,
       scopeId: request.scopeId,

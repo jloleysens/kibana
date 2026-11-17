@@ -7,10 +7,15 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, fork } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { once } from 'node:events';
+import { setTimeout as delay } from 'node:timers/promises';
+import { build } from 'esbuild';
+import { graphSignature } from '@kbn/core-remote-server-internal/src/graph_signature';
+import { openIpcSession } from '@kbn/core-remote-server-internal/src/ipc_session';
 import { buildRemoteBundle } from './build';
 
 const manifest = resolve(
@@ -88,3 +93,85 @@ it('fails closed when an executor imports a coordinator implementation', async (
     rmSync(directory, { recursive: true });
   }
 });
+
+it('disconnect aborts active work, closes its data capability and forces exit despite live timers', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'runner-disconnect-'));
+  const effects = join(directory, 'writes');
+  const spec = {
+    id: 'disconnect',
+    root: { tokenId: 'root', modulePath: 'root', exportName: 'Root' },
+    executorProviders: [],
+    coordinatorTokenIds: [],
+    contributions: [],
+  };
+  const entry = join(directory, 'graph.cjs');
+  await build({
+    stdin: {
+      contents: `
+      import { appendFileSync } from 'node:fs';
+      import { serveProcess } from ${JSON.stringify(
+        resolve(__dirname, '../../core/packages/remote/server-internal/src/remote_process_entry.ts')
+      )};
+      class Root {
+        controller = new AbortController();
+        closed = false;
+        async run() {
+          setInterval(() => { if (!this.closed) appendFileSync(${JSON.stringify(
+            effects
+          )}, 'write\\n'); }, 20);
+          process.send({ kind: 'running' });
+          await new Promise(resolve => this.controller.signal.addEventListener('abort', resolve, { once: true }));
+          appendFileSync(${JSON.stringify(effects)}, 'aborted\\n');
+          await new Promise(() => {});
+        }
+        async [Symbol.asyncDispose]() { this.controller.abort(); this.closed = true; }
+      }
+      serveProcess(${JSON.stringify(spec)}, { root: async () => ({ Root }) });
+    `,
+      resolveDir: process.cwd(),
+    },
+    outfile: entry,
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+  });
+  const child = fork(entry, [], { stdio: ['ignore', 'ignore', 'inherit', 'ipc'] });
+  const session = openIpcSession<{ run(): Promise<void> }>(child);
+  const message = (kind: string) =>
+    new Promise<void>((resolveMessage) => {
+      const listener = (value: { kind?: string }) => {
+        if (value.kind === kind) {
+          child.off('message', listener);
+          resolveMessage();
+        }
+      };
+      child.on('message', listener);
+    });
+  try {
+    const ready = message('ready');
+    child.send({ kind: 'init', signature: graphSignature(spec) });
+    await ready;
+    const running = message('running');
+    void session.remote.run().catch(() => undefined);
+    await running;
+    await delay(80);
+    const exited = once(child, 'exit');
+    const timeout = setTimeout(() => child.kill(), 2000);
+    const disconnectedAt = Date.now();
+    child.disconnect();
+    await exited;
+    clearTimeout(timeout);
+    expect(Date.now() - disconnectedAt).toBeLessThan(2000);
+    expect(child.exitCode).toBe(0);
+    const writes = readFileSync(effects, 'utf8');
+    expect(writes).toContain('write');
+    expect(writes).toContain('aborted');
+    expect(writes.slice(writes.indexOf('aborted'))).not.toContain('write');
+    await delay(100);
+    expect(readFileSync(effects, 'utf8')).toBe(writes);
+  } finally {
+    session.close();
+    if (child.exitCode === null) child.kill();
+    rmSync(directory, { recursive: true });
+  }
+}, 10000);

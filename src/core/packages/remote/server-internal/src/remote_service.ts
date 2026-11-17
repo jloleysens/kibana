@@ -471,7 +471,7 @@ export class RemoteService implements RemoteSetup {
       );
     } catch (error) {
       session.close();
-      if (child.exitCode === null && child.signalCode === null) {
+      if (child.pid !== undefined && child.exitCode === null && child.signalCode === null) {
         const exited = once(child, 'exit');
         child.kill();
         await exited;

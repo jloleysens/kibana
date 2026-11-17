@@ -33,9 +33,14 @@ export const serveProcess = (
   };
   const bridge = createBridge();
   const session = openIpcSession<CoordinatorApi>(channel, bridge.rpc);
+  let executor: (object & { [Symbol.asyncDispose]?: () => Promise<void> }) | undefined;
+  let disconnected = false;
   process.once('disconnect', () => {
+    disconnected = true;
+    // Keep this timer referenced: active RPC methods need not settle when the session closes.
+    setTimeout(() => process.exit(0), 1000);
+    void executor?.[Symbol.asyncDispose]?.().catch(() => undefined);
     session.close();
-    process.exitCode = 0;
   });
   const onInit = async (message: { kind: string; signature: string }): Promise<void> => {
     if (message.kind !== 'init') return;
@@ -48,7 +53,7 @@ export const serveProcess = (
         spec.coordinatorTokenIds.map((tokenId) => [tokenId, session.remote.getCapability(tokenId)])
       );
       const loaded: string[] = [];
-      const executor = await buildExecutor(spec, coordinator, loaded, async (path, exportName) => {
+      executor = await buildExecutor(spec, coordinator, loaded, async (path, exportName) => {
         const load = implementations[path];
         if (!load) throw new Error(`Implementation absent from worker bundle: ${path}`);
         const implementation = (await load())[exportName];
@@ -56,6 +61,10 @@ export const serveProcess = (
         loaded.push(path);
         return implementation;
       });
+      if (disconnected) {
+        await executor[Symbol.asyncDispose]?.();
+        return;
+      }
       bridge.attach(executor, loaded);
       channel.send({ kind: 'ready' });
     } catch (error) {

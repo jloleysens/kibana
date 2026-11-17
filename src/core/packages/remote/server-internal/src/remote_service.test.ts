@@ -7,6 +7,9 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import * as childProcess from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Logger } from '@kbn/logging';
 import { RemoteService } from './remote_service';
@@ -34,11 +37,12 @@ const logger = {
   get: () => logger,
 } as unknown as Logger;
 
-function createService(): RemoteService {
+function createService(maxRuns = 100): RemoteService {
   const service = new RemoteService(logger, { maxOldGenerationSizeMb: 256 });
   service.discover([FIXTURE]);
   service.register({
     id: 'demo',
+    reuse: { maxRuns, maxAgeMs: 60_000 },
     root: DemoRootToken,
     contributions: [DemoStepKind],
     dependencies: [DemoCatalogToken],
@@ -139,3 +143,58 @@ describe('RemoteService', () => {
     await service.stop();
   });
 });
+
+it('reuses coordinator bindings across retired and replacement hosts', async () => {
+  const service = createService(1);
+  const factory = jest.fn(() => new Echo());
+  service.bind(EchoToken, factory);
+  try {
+    await service.start('in_process');
+    for (let index = 0; index < 12; index++) {
+      const lease = await service.lease('demo');
+      await lease.release();
+    }
+    expect(factory).toHaveBeenCalledTimes(1);
+  } finally {
+    await service.stop();
+  }
+});
+
+it('rejects an unspawned child promptly without waiting for exit and can stop', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'remote-spawn-failure-'));
+  mkdirSync(join(directory, 'demo'));
+  writeFileSync(join(directory, 'demo', 'graph.mjs'), '');
+  const child = Object.assign(new childProcess.ChildProcess(), {
+    pid: undefined,
+    exitCode: null,
+    signalCode: null,
+    send: jest.fn(() => {
+      queueMicrotask(() => child.emit('error', new Error('spawn EAGAIN')));
+      return false;
+    }),
+    kill: jest.fn(),
+  });
+  const fork = jest
+    .spyOn(jest.requireActual<typeof childProcess>('node:child_process'), 'fork')
+    .mockReturnValue(child);
+  const service = new RemoteService(logger, {
+    maxOldGenerationSizeMb: 256,
+    bundleDirectory: directory,
+  });
+  service.discover([FIXTURE]);
+  service.register({
+    id: 'demo',
+    root: DemoRootToken,
+    contributions: [DemoStepKind],
+    dependencies: [DemoCatalogToken],
+  });
+  service.bind(EchoToken, () => new Echo());
+  try {
+    await expect(service.start('child_process')).rejects.toThrow('spawn EAGAIN');
+    await service.stop();
+    expect(child.kill).not.toHaveBeenCalled();
+  } finally {
+    fork.mockRestore();
+    rmSync(directory, { recursive: true });
+  }
+}, 2000);

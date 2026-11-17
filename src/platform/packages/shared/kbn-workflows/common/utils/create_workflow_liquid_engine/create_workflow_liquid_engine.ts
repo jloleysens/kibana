@@ -7,4 +7,8 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-export { createWorkflowLiquidEngine, LIQUID_ALLOWED_TAGS } from '@kbn/workflows-template-runtime';
+export {
+  createWorkflowLiquidEngine,
+  LIQUID_ALLOWED_TAGS,
+  registerWorkflowLiquidFilters,
+} from '@kbn/workflows-template-runtime';
