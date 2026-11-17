@@ -8,6 +8,8 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { fork, type ChildProcess } from 'node:child_process';
+import { once } from 'node:events';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
@@ -30,6 +32,9 @@ import type {
 import { createManagedWorker, type ManagedWorker } from '@kbn/core-threads-server-internal';
 import { buildExecutor } from './build_executor';
 import { CoordinatorGateway } from './coordinator_gateway';
+import { createBridge } from './executor_bridge';
+import { openIpcSession, type IpcSession } from './ipc_session';
+import { graphSignature } from './graph_signature';
 
 const loadModule = createRequire(__filename);
 const ENTRY = loadModule.resolve('./remote_worker_entry');
@@ -47,6 +52,7 @@ export class RemoteService implements RemoteSetup {
   private readonly resolvers = new Map<string, (session: RemoteSession<unknown>) => void>();
   private readonly workers: ManagedWorker[] = [];
   private readonly ports: MessagePort[] = [];
+  private readonly children: Array<{ child: ChildProcess; session: IpcSession<object> }> = [];
   private started = false;
   private readonly lookup: ScopeLookup = {
     get: <T>(scopeId: string): T => {
@@ -59,7 +65,9 @@ export class RemoteService implements RemoteSetup {
 
   constructor(
     private readonly logger: Logger,
-    private readonly limits: { maxOldGenerationSizeMb: number } = { maxOldGenerationSizeMb: 1024 }
+    private readonly limits: { maxOldGenerationSizeMb: number; bundleDirectory?: string } = {
+      maxOldGenerationSizeMb: 1024,
+    }
   ) {}
 
   public discover(pluginPaths: readonly string[]): void {
@@ -115,7 +123,9 @@ export class RemoteService implements RemoteSetup {
       const spec = this.buildSpec(registration);
       const coordinator = this.materializeCoordinator(spec);
       if (backend === 'in_process') {
-        this.startInProcess(registration.id, spec, coordinator);
+        await this.startInProcess(registration.id, spec, coordinator);
+      } else if (backend === 'child_process') {
+        await this.startProcess(registration.id, spec, coordinator);
       } else {
         await this.startWorker(registration.id, spec, coordinator);
       }
@@ -129,6 +139,17 @@ export class RemoteService implements RemoteSetup {
     this.ports.length = 0;
     await Promise.all(this.workers.map((worker) => worker.stop()));
     this.workers.length = 0;
+    await Promise.all(
+      this.children.map(async ({ child, session }) => {
+        session.close();
+        if (child.exitCode !== null || child.signalCode !== null) return;
+        const exited = once(child, 'exit');
+        child.kill();
+        await exited;
+      })
+    );
+    this.children.length = 0;
+    this.scopes.clear();
   }
 
   private buildSpec(registration: RemoteRegistration): RemoteWorkerSpec {
@@ -254,14 +275,78 @@ export class RemoteService implements RemoteSetup {
     resolve(session as RemoteSession<unknown>);
   }
 
-  private startInProcess(
+  private async startInProcess(
     id: string,
     spec: RemoteWorkerSpec,
     coordinator: Map<string, object>
-  ): void {
-    const executor = buildExecutor(spec, coordinator, []);
-    this.openSession(id, executor);
+  ): Promise<void> {
+    const { port1, port2 } = new MessageChannel();
+    this.ports.push(port1, port2);
+    const bridge = createBridge();
+    const stub = openPortSession(port1, new CoordinatorGateway(coordinator));
+    const gateway = openPortSession<{ getCapability(tokenId: string): object }>(port2, bridge.rpc);
+    const values = new Map(
+      spec.coordinatorTokenIds.map((tokenId) => [tokenId, gateway.getCapability(tokenId)])
+    );
+    const loaded: string[] = [];
+    const executor = await buildExecutor(spec, values, loaded);
+    bridge.attach(executor, loaded);
+    this.openSession(id, stub);
     this.logger.info(`Remote graph "${id}" ready in-process`);
+  }
+
+  private async startProcess(
+    id: string,
+    spec: RemoteWorkerSpec,
+    coordinator: Map<string, object>
+  ): Promise<void> {
+    const directory =
+      this.limits.bundleDirectory ?? process.env.KBN_REMOTE_BUNDLE_DIR ?? 'target/remote_bundles';
+    const entry = join(directory, id, 'graph.mjs');
+    if (!existsSync(entry)) throw new Error(`Remote bundle missing: ${entry}`);
+    const child = fork(entry, [], {
+      execArgv: [`--max-old-space-size=${this.limits.maxOldGenerationSizeMb}`],
+      stdio: ['ignore', 'ignore', 'inherit', 'ipc'],
+    });
+    const session = openIpcSession<object>(child, new CoordinatorGateway(coordinator));
+    this.children.push({ child, session });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(
+          () => finish(new Error(`Remote graph "${id}" boot timed out`)),
+          120_000
+        );
+        const onExit = (code: number | null) =>
+          finish(new Error(`Remote graph "${id}" exited before ready: ${code}`));
+        const onError = (error: Error) => finish(error);
+        const onMessage = (message: { kind?: string; message?: string }) => {
+          if (message.kind === 'ready') finish();
+          if (message.kind === 'boot-error') finish(new Error(message.message));
+        };
+        const finish = (error?: Error) => {
+          clearTimeout(timeout);
+          child.off('message', onMessage);
+          child.off('exit', onExit);
+          child.off('error', onError);
+          if (error) reject(error);
+          else resolve();
+        };
+        child.on('message', onMessage);
+        child.once('exit', onExit);
+        child.once('error', onError);
+        child.send({ kind: 'init', signature: graphSignature(spec) });
+      });
+      this.openSession(id, session.remote);
+      this.logger.info(`Remote graph "${id}" ready in process ${child.pid}`);
+    } catch (error) {
+      session.close();
+      if (child.exitCode === null && child.signalCode === null) {
+        const exited = once(child, 'exit');
+        child.kill();
+        await exited;
+      }
+      throw error;
+    }
   }
 
   private async startWorker(

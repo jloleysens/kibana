@@ -40,6 +40,14 @@ export class Root {
     };
   }
 
+  pid(): number {
+    return process.pid;
+  }
+
+  copy(value: { marker: string }): { marker: string } {
+    return value;
+  }
+
   async block(milliseconds: number): Promise<number> {
     const start = Date.now();
     while (Date.now() - start < milliseconds) {

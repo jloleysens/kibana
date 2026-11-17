@@ -103,12 +103,15 @@ export const buildRemoteBundle = async ({
       ...contributions,
     ].map(({ modulePath }) => modulePath)
   );
-  const entry = `export const spec = ${JSON.stringify(spec)};
+  const host = resolve('src/core/packages/remote/server-internal/src/remote_process_entry.ts');
+  const entry = `import { serveProcess } from ${JSON.stringify(host)};
+    export const spec = ${JSON.stringify(spec)};
     export const implementations = {
       ${[...implementations]
         .map((path) => `${JSON.stringify(path)}: () => import(${JSON.stringify(path)})`)
         .join(',\n')}
-    };`;
+    };
+    if (process.send) serveProcess(spec, implementations);`;
   mkdirSync(outdir, { recursive: true });
   const result = await build({
     stdin: { contents: entry, resolveDir: process.cwd(), sourcefile: `${graph.id}.ts` },
