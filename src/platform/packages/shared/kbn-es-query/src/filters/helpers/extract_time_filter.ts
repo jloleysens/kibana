@@ -7,7 +7,8 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { keys, partition } from 'lodash';
+import keys from 'lodash/keys';
+import partition from 'lodash/partition';
 import type { Filter, RangeFilter } from '../build_filters';
 import { isRangeFilter } from '../build_filters';
 import type { TimeRange } from './types';

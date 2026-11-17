@@ -7,7 +7,8 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { omit, get } from 'lodash';
+import omit from 'lodash/omit';
+import get from 'lodash/get';
 import { FilterStateStore } from '@kbn/es-query-constants';
 import type { Filter } from '../build_filters';
 

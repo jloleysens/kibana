@@ -25,7 +25,8 @@ import {
   type ResolvedValueInjectOptions,
   type ServiceIdentifier,
 } from 'inversify';
-import { once, wrap } from 'lodash';
+import once from 'lodash/once';
+import wrap from 'lodash/wrap';
 import { OnSetup, OnStart } from './services/plugin';
 
 /**

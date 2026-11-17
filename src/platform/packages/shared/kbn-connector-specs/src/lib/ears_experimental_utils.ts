@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { isString } from 'lodash';
+import isString from 'lodash/isString';
 import * as allSpecs from '../all_specs';
 import { EARS_AUTH_ID } from '../auth_types/ears';
 import type { AuthTypeDef } from '../connector_spec';

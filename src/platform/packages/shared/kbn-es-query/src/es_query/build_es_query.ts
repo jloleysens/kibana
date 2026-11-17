@@ -7,7 +7,9 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { groupBy, has, isEqual } from 'lodash';
+import groupBy from 'lodash/groupBy';
+import has from 'lodash/has';
+import isEqual from 'lodash/isEqual';
 import type { SerializableRecord } from '@kbn/utility-types';
 import { buildQueryFromKuery } from './from_kuery';
 import { buildQueryFromFilters } from './from_filters';

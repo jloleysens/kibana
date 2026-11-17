@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { isUndefined } from 'lodash';
+import isUndefined from 'lodash/isUndefined';
 import type { estypes } from '@elastic/elasticsearch';
 import { migrateFilter } from './migrate_filter';
 import { filterMatchesIndex } from './filter_matches_index';

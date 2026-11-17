@@ -7,7 +7,10 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { defaults, isEqual, omit, map } from 'lodash';
+import defaults from 'lodash/defaults';
+import isEqual from 'lodash/isEqual';
+import omit from 'lodash/omit';
+import map from 'lodash/map';
 import type { FilterMeta, Filter } from '../build_filters';
 import { isCombinedFilter } from '../build_filters';
 

@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { castArray } from 'lodash';
+import castArray from 'lodash/castArray';
 
 function isCrossCluster(pattern: string): boolean {
   if (pattern.startsWith('*:')) return true; // already wildcard cluster

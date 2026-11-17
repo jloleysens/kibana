@@ -6,7 +6,7 @@
  * your election, the "Elastic License 2.0", the "GNU Affero General Public
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
-import { memoize } from 'lodash';
+import memoize from 'lodash/memoize';
 import { parseDuration } from '@kbn/workflows';
 import { applyBackoffJitter } from '../backoff_jitter/backoff_jitter';
 

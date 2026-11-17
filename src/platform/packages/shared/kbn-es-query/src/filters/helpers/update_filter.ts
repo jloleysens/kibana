@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { get } from 'lodash';
+import get from 'lodash/get';
 import { isRangeFilterParams } from '../build_filters/range_filter';
 import type { Filter, FilterMeta } from '..';
 

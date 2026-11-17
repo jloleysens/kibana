@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { isString } from 'lodash';
+import isString from 'lodash/isString';
 import type { AuthMode } from './connector_spec';
 import * as allAuthTypes from './all_auth_types';
 

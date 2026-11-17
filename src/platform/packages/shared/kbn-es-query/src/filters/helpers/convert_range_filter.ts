@@ -8,7 +8,7 @@
  */
 
 import moment from 'moment';
-import { keys } from 'lodash';
+import keys from 'lodash/keys';
 import type { RangeFilter } from '../build_filters';
 import type { TimeRange } from './types';
 

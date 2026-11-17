@@ -7,7 +7,9 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { get, omit, pick } from 'lodash';
+import get from 'lodash/get';
+import omit from 'lodash/omit';
+import pick from 'lodash/pick';
 import { getConvertedValueForField } from '../filters';
 import type { Filter } from '../filters';
 import type { DataViewBase } from './types';

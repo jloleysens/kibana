@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { merge } from 'lodash';
+import merge from 'lodash/merge';
 import type { Logger } from '@kbn/core/server';
 import { ExecutionError } from '@kbn/workflows/server';
 import type {

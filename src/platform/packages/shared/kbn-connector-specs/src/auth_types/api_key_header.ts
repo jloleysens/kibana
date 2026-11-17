@@ -9,7 +9,7 @@
 
 import { z, lazySchema } from '@kbn/zod/v4';
 import type { AxiosInstance } from 'axios';
-import { isString } from 'lodash';
+import isString from 'lodash/isString';
 import type { AuthContext, AuthTypeSpec } from '../connector_spec';
 import * as i18n from './translations';
 

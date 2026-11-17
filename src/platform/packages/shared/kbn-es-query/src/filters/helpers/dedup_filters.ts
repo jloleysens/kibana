@@ -7,7 +7,8 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { filter, find } from 'lodash';
+import filter from 'lodash/filter';
+import find from 'lodash/find';
 import type { Filter } from '..';
 import type { FilterCompareOptions } from './compare_filters';
 import { compareFilters } from './compare_filters';

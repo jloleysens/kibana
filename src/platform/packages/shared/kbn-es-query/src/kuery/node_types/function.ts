@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import _ from 'lodash';
+import isUndefined from 'lodash/isUndefined';
 
 import type {
   KQL_FUNCTION_AND,
@@ -45,7 +45,7 @@ export function isNode(node: KueryNode): node is KqlFunctionNode {
 
 export function buildNode(functionName: KqlFunctionName, ...args: any[]): KqlFunctionNode {
   const kueryFunction = functions[functionName];
-  if (_.isUndefined(kueryFunction)) {
+  if (isUndefined(kueryFunction)) {
     throw new Error(`Unknown function "${functionName}"`);
   }
 
@@ -63,7 +63,7 @@ export function buildNodeWithArgumentNodes(
   functionName: KqlFunctionName,
   args: any[]
 ): KqlFunctionNode {
-  if (_.isUndefined(functions[functionName])) {
+  if (isUndefined(functions[functionName])) {
     throw new Error(`Unknown function "${functionName}"`);
   }
 

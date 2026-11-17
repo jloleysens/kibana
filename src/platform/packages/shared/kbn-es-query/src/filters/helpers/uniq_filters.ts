@@ -7,7 +7,8 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { each, union } from 'lodash';
+import each from 'lodash/each';
+import union from 'lodash/union';
 import type { Filter, FilterCompareOptions } from '..';
 import { dedupFilters } from './dedup_filters';
 
