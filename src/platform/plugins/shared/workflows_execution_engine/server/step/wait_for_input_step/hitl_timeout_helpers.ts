@@ -7,9 +7,12 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { DEFAULT_WAIT_FOR_APPROVAL_TIMEOUT, DEFAULT_WAIT_FOR_INPUT_TIMEOUT } from '@kbn/workflows';
 import type { GraphNodeUnion } from '@kbn/workflows/graph';
 import { isWaitForApproval, isWaitForInput } from '@kbn/workflows/graph';
+import {
+  DEFAULT_WAIT_FOR_APPROVAL_TIMEOUT,
+  DEFAULT_WAIT_FOR_INPUT_TIMEOUT,
+} from '@kbn/workflows-runtime';
 import { parseDuration, renderDuration } from '../../utils';
 import type { StepExecutionRuntime } from '../../workflow_context_manager/step_execution_runtime';
 

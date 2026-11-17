@@ -106,6 +106,7 @@ export const buildMockSetupDependenciesReturn = (options: {
   telemetryClient?: MockTelemetryClient;
 }): Awaited<ReturnType<typeof setupDependencies>> =>
   ({
+    dependencyPlan: { definitionHash: 'fixture', nodes: {}, loops: {} },
     workflowRuntime: options.workflowRuntime,
     stepExecutionRuntimeFactory: {},
     workflowExecutionState: {

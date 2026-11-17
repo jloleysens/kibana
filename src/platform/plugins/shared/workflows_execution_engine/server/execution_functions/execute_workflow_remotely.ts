@@ -14,21 +14,25 @@ import { emitWorkflowExecutionFailedEventIfFailed } from '../lib/emit_workflow_e
 import type { WorkflowRunOutcome } from '../remote/tokens';
 import type { WorkflowExecutionRepository } from '../repositories/workflow_execution_repository';
 import type { WorkflowsExecutionEnginePluginStart } from '../types';
+import type { StepDependencyPlan } from '../workflow_context_manager/step_dependency_plan';
 
 export type RemoteWorkflowExecution = (
   request: KibanaRequest,
-  signal: AbortSignal
+  signal: AbortSignal,
+  dependencyPlan: StepDependencyPlan
 ) => Promise<WorkflowRunOutcome>;
 
 /** Runs the remote loop only after shared identity and admission checks have succeeded. */
 export const executeWorkflowRemotely = async ({
   executeRemote,
+  dependencyPlan,
   fakeRequest,
   signal,
   workflowsExecutionEngine,
   ...postExecution
 }: Parameters<typeof handlePostExecutionLoop>[0] & {
   executeRemote: RemoteWorkflowExecution;
+  dependencyPlan: StepDependencyPlan;
   fakeRequest: KibanaRequest;
   signal: AbortSignal;
   workflowsExecutionEngine: WorkflowsExecutionEnginePluginStart;
@@ -37,7 +41,7 @@ export const executeWorkflowRemotely = async ({
 }): Promise<void> => {
   let outcome: WorkflowRunOutcome | undefined;
   try {
-    outcome = await executeRemote(fakeRequest, signal);
+    outcome = await executeRemote(fakeRequest, signal, dependencyPlan);
   } finally {
     const execution = await postExecution.workflowExecutionRepository.getWorkflowExecutionById(
       postExecution.workflowRunId,

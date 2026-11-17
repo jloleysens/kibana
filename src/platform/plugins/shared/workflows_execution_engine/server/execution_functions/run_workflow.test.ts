@@ -276,7 +276,11 @@ describe('runWorkflow', () => {
       it('calls only the remote loop after admission', async () => {
         const executeRemote = jest.fn().mockResolvedValue({ status: ExecutionStatus.COMPLETED });
         await runWorkflowWithDefaults({ executeRemote });
-        expect(executeRemote).toHaveBeenCalledWith(fakeRequest, taskAbortController.signal);
+        expect(executeRemote).toHaveBeenCalledWith(fakeRequest, taskAbortController.signal, {
+          definitionHash: 'fixture',
+          nodes: {},
+          loops: {},
+        });
         expect(mockHandleQueuedWorkflowRunAtTaskStart).toHaveBeenCalled();
         expect(workflowRuntime.start).not.toHaveBeenCalled();
         expect(mockWorkflowExecutionLoop).not.toHaveBeenCalled();
@@ -368,7 +372,11 @@ describe('runWorkflow', () => {
           .mockImplementation(async (_options, handler) => handler(scopedRequest));
         const executeRemote = jest.fn().mockResolvedValue({ status: ExecutionStatus.COMPLETED });
         await runWorkflowWithDefaults({ executeRemote });
-        expect(executeRemote).toHaveBeenCalledWith(scopedRequest, taskAbortController.signal);
+        expect(executeRemote).toHaveBeenCalledWith(scopedRequest, taskAbortController.signal, {
+          definitionHash: 'fixture',
+          nodes: {},
+          loops: {},
+        });
         expect(executeRemote.mock.calls[0][0]).not.toBe(fakeRequest);
         expect(mockSetupDependencies).toHaveBeenCalledWith(
           workflowRunId,

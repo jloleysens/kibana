@@ -27,6 +27,7 @@ import {
   type WorkflowStorageApi,
   WorkflowStorageToken,
 } from './tokens';
+import { workflowDefinitionHash } from '../workflow_context_manager/step_dependency_plan';
 import { WorkflowTaskManagerAbortError } from '../workflow_task_shutdown';
 
 interface ExecutableStep {
@@ -109,12 +110,16 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
     if (this.active.has(request.scopeId)) throw new Error('Remote scope is already executing');
     const controller = new AbortController();
     this.active.set(request.scopeId, controller);
+    let outcome = 'failed';
     try {
       await this.data?.open(request.scopeId, request.credentials);
-      return await this.execute(request, controller.signal);
+      const result = await this.execute(request, controller.signal);
+      outcome = result.status;
+      return result;
     } finally {
       this.active.delete(request.scopeId);
       await this.data?.close(request.scopeId);
+      recordRemoteHeap('REMOTE_WORKER_HEAP', outcome);
     }
   }
 
@@ -136,6 +141,13 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
       if (execution.status === ExecutionStatus.PENDING && !execution.startedAt) {
         throw new Error('Remote workflow execution requires a durable start barrier');
       }
+      if (
+        !request.dependencyPlan ||
+        request.dependencyPlan.definitionHash !==
+          workflowDefinitionHash(execution.workflowDefinition)
+      ) {
+        throw new Error('Workflow dependency plan does not match the execution definition');
+      }
       const descriptions = await this.assertRunnable(execution.workflowDefinition);
       const resume =
         execution.status === ExecutionStatus.WAITING ||
@@ -149,6 +161,7 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
       });
       const outcome = await runWorkflowEngineInWorker({
         execution,
+        dependencyPlan: request.dependencyPlan,
         signal,
         scopeId: request.scopeId,
         steps: this.steps,
@@ -159,7 +172,6 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
         facts: request.facts,
         remoteSteps: this.stepRunner ? { runner: this.stepRunner, descriptions } : undefined,
       });
-      recordRemoteHeap('REMOTE_WORKER_HEAP', outcome.status);
       return outcome;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -169,7 +181,6 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
         error: { type: 'RemoteExecutionError', message },
         startedAt: execution.startedAt,
       });
-      recordRemoteHeap('REMOTE_WORKER_HEAP', 'failed');
       throw error;
     }
   }

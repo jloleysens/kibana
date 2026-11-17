@@ -93,6 +93,7 @@ async function resumeWorkflowWithRequest({
   }
 
   const {
+    dependencyPlan,
     workflowRuntime,
     stepExecutionRuntimeFactory,
     workflowExecutionState,
@@ -145,6 +146,7 @@ async function resumeWorkflowWithRequest({
   if (executeRemote) {
     await executeWorkflowRemotely({
       executeRemote,
+      dependencyPlan,
       fakeRequest,
       signal,
       workflowsExecutionEngine,

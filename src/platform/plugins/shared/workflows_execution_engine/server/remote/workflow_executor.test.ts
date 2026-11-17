@@ -19,6 +19,7 @@ import type {
   WorkflowStorageApi,
 } from './tokens';
 import { WorkflowExecutor } from './workflow_executor';
+import { workflowDefinitionHash } from '../workflow_context_manager/step_dependency_plan';
 
 jest.setTimeout(60_000);
 
@@ -33,6 +34,7 @@ describe('WorkflowExecutor', () => {
     const executor = new WorkflowExecutor(steps, store.storage, log());
 
     const parked = await executor.run({
+      dependencyPlan: store.dependencyPlan,
       scopeId: 'scope-1',
       workflowRunId: 'run-1',
       spaceId: 'default',
@@ -43,6 +45,7 @@ describe('WorkflowExecutor', () => {
     expect(caseTitles).toEqual([]);
 
     const continued = await executor.run({
+      dependencyPlan: store.dependencyPlan,
       scopeId: 'scope-2',
       workflowRunId: 'run-1',
       spaceId: 'default',
@@ -59,11 +62,26 @@ describe('WorkflowExecutor', () => {
     const steps = catalog([]);
     await expect(
       new WorkflowExecutor(steps, store.storage, log()).run({
+        dependencyPlan: store.dependencyPlan,
         scopeId: 'scope-1',
         workflowRunId: 'run-1',
         spaceId: 'default',
       })
     ).rejects.toThrow('durable start barrier');
+    expect(steps.run).not.toHaveBeenCalled();
+  });
+
+  it('rejects a dependency plan from a different definition before invoking steps', async () => {
+    const store = createStore(execution([{ name: 'native', type: GRAPH, with: {} }]));
+    const steps = catalog([]);
+    await expect(
+      new WorkflowExecutor(steps, store.storage, log()).run({
+        dependencyPlan: { ...store.dependencyPlan, definitionHash: 'stale' },
+        scopeId: 'scope',
+        workflowRunId: 'run-1',
+        spaceId: 'default',
+      })
+    ).rejects.toThrow('dependency plan does not match');
     expect(steps.run).not.toHaveBeenCalled();
   });
 
@@ -78,7 +96,12 @@ describe('WorkflowExecutor', () => {
       log(),
       undefined,
       stepRunner
-    ).run({ scopeId: 'scope-1', workflowRunId: 'run-1', spaceId: 'default' });
+    ).run({
+      dependencyPlan: store.dependencyPlan,
+      scopeId: 'scope-1',
+      workflowRunId: 'run-1',
+      spaceId: 'default',
+    });
     expect(result.status).toBe(ExecutionStatus.COMPLETED);
     expect(stepRunner.describe).not.toHaveBeenCalled();
   });
@@ -95,6 +118,7 @@ describe('WorkflowExecutor', () => {
       return { output: { native: true } };
     });
     const result = await new WorkflowExecutor(steps, store.storage, log()).run({
+      dependencyPlan: store.dependencyPlan,
       scopeId: 'scope-1',
       workflowRunId: 'run-1',
       spaceId: 'default',
@@ -121,6 +145,7 @@ describe('WorkflowExecutor', () => {
     });
     const executor = new WorkflowExecutor(steps, store.storage, log());
     const pending = executor.run({
+      dependencyPlan: store.dependencyPlan,
       scopeId: 'scope-1',
       workflowRunId: 'run-1',
       spaceId: 'default',
@@ -132,8 +157,14 @@ describe('WorkflowExecutor', () => {
     expect(persisted.cancellationReason).toBe('Cancelled because Task Manager aborted the task');
     expect(persisted.cancelledBy).toBe('system');
     expect(
-      (await executor.run({ scopeId: 'scope-1', workflowRunId: 'run-1', spaceId: 'default' }))
-        .status
+      (
+        await executor.run({
+          dependencyPlan: store.dependencyPlan,
+          scopeId: 'scope-1',
+          workflowRunId: 'run-1',
+          spaceId: 'default',
+        })
+      ).status
     ).toBe(ExecutionStatus.CANCELLED);
   });
 
@@ -142,6 +173,7 @@ describe('WorkflowExecutor', () => {
     const steps = catalog([]);
     steps.run.mockResolvedValue({ error: new Error('Native data validation failed') });
     const result = await new WorkflowExecutor(steps, store.storage, log()).run({
+      dependencyPlan: store.dependencyPlan,
       scopeId: 'scope-1',
       workflowRunId: 'run-1',
       spaceId: 'default',
@@ -165,7 +197,12 @@ describe('WorkflowExecutor', () => {
     const executor = new WorkflowExecutor(steps, store.storage, log());
 
     await expect(
-      executor.run({ scopeId: 'scope-1', workflowRunId: 'run-1', spaceId: 'default' })
+      executor.run({
+        dependencyPlan: store.dependencyPlan,
+        scopeId: 'scope-1',
+        workflowRunId: 'run-1',
+        spaceId: 'default',
+      })
     ).rejects.toThrow(/Unsupported remote step type "parallel"/);
     expect(steps.run).not.toHaveBeenCalled();
   });
@@ -181,7 +218,12 @@ describe('WorkflowExecutor', () => {
     const executor = new WorkflowExecutor(steps, store.storage, log());
 
     await expect(
-      executor.run({ scopeId: 'scope-1', workflowRunId: 'run-1', spaceId: 'default' })
+      executor.run({
+        dependencyPlan: store.dependencyPlan,
+        scopeId: 'scope-1',
+        workflowRunId: 'run-1',
+        spaceId: 'default',
+      })
     ).rejects.toThrow(/Unsupported remote step type "console"/);
     expect(steps.run).not.toHaveBeenCalled();
     expect(store.completed).toEqual([ExecutionStatus.FAILED]);
@@ -216,7 +258,12 @@ describe('WorkflowExecutor', () => {
     const steps = catalog([]);
     const executor = new WorkflowExecutor(steps, store.storage, log());
     await expect(
-      executor.run({ scopeId: 'scope', workflowRunId: 'run-1', spaceId: 'default' })
+      executor.run({
+        dependencyPlan: store.dependencyPlan,
+        scopeId: 'scope',
+        workflowRunId: 'run-1',
+        spaceId: 'default',
+      })
     ).rejects.toThrow('Unsupported remote step type "missing"');
     expect(steps.run).not.toHaveBeenCalled();
     expect(store.completed).toEqual([ExecutionStatus.FAILED]);
@@ -232,7 +279,12 @@ describe('WorkflowExecutor', () => {
     };
     const executor = new WorkflowExecutor(catalog([]), store.storage, log(), data);
     await expect(
-      executor.run({ scopeId: 'scope', workflowRunId: 'run-1', spaceId: 'default' })
+      executor.run({
+        dependencyPlan: store.dependencyPlan,
+        scopeId: 'scope',
+        workflowRunId: 'run-1',
+        spaceId: 'default',
+      })
     ).rejects.toThrow('read failed');
     expect(data.close).toHaveBeenCalledWith('scope');
   });
@@ -332,7 +384,16 @@ function createStore(initial: EsWorkflowExecution) {
     },
     whereAmI: () => ({ threadId: 0, isMainThread: true }),
   };
-  return { storage, scheduled, completed };
+  return {
+    storage,
+    scheduled,
+    completed,
+    dependencyPlan: {
+      definitionHash: workflowDefinitionHash(initial.workflowDefinition),
+      nodes: {},
+      loops: {},
+    },
+  };
 }
 
 function project(

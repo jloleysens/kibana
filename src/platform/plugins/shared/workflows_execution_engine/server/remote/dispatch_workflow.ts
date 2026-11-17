@@ -8,10 +8,11 @@
  */
 
 import type { KibanaRequest, Logger } from '@kbn/core/server';
-import { recordRemoteHeap, recordRemoteTiming } from '@kbn/core-remote-common';
+import { recordRemoteHeap, recordRemoteTiming, recordSeam } from '@kbn/core-remote-common';
 import type { RemoteSetup } from '@kbn/core-remote-server';
 import type { WorkflowDispatchFacts, WorkflowExecutorApi, WorkflowRunOutcome } from './tokens';
 import { workflowDispatchCredentials } from './workflow_dispatch_credentials';
+import type { StepDependencyPlan } from '../workflow_context_manager/step_dependency_plan';
 import { isWorkflowTaskManagerAbortSignal } from '../workflow_task_shutdown';
 
 /** Dispatches under an exclusive warm-host lease using the identity approved by shared guards. */
@@ -22,6 +23,7 @@ export const dispatchWorkflow = async ({
   workflowRunId,
   spaceId,
   facts,
+  dependencyPlan,
   logger,
   phase,
 }: {
@@ -31,6 +33,7 @@ export const dispatchWorkflow = async ({
   workflowRunId: string;
   spaceId: string;
   facts: WorkflowDispatchFacts;
+  dependencyPlan: StepDependencyPlan;
   logger: Logger;
   phase: 'run' | 'resume';
 }): Promise<WorkflowRunOutcome> => {
@@ -51,13 +54,17 @@ export const dispatchWorkflow = async ({
         .catch(() => logger.warn('Remote workflow cancellation failed'));
     };
     recordRemoteTiming('dispatched', { executionId: workflowRunId, scopeId });
-    const pending = lease.stub.run({
+    const runRequest = {
       scopeId,
       workflowRunId,
       spaceId,
       credentials: workflowDispatchCredentials(request),
       facts,
-    });
+      dependencyPlan,
+    };
+    recordSeam('WorkflowDependencyPlan', dependencyPlan);
+    recordSeam('WorkflowExecutor.run.request', runRequest);
+    const pending = lease.stub.run(runRequest);
     signal.addEventListener('abort', onAbort, { once: true });
     if (signal.aborted) onAbort();
     try {

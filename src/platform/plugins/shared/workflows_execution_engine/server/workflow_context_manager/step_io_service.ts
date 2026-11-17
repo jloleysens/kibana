@@ -10,15 +10,11 @@
 import type { Logger } from '@kbn/core/server';
 import type { JsonValue } from '@kbn/utility-types';
 import type { EsWorkflowStepExecution, SerializedError, StackFrame } from '@kbn/workflows';
-import { extractPropertyPathsFromKql, scanForTemplateVariables } from '@kbn/workflows/common/utils';
 import type { GraphNodeUnion, WorkflowGraph } from '@kbn/workflows/graph';
 import { ExecutionStatus, isTerminalStatus } from '@kbn/workflows-runtime';
-import {
-  extractReferencedStepIds,
-  extractReferencedStepIdsFromVariables,
-} from './extract_referenced_step_ids';
 import type { ParallelBranchScope } from './parallel_branch_scope';
 import { areParallelBranchesCompatible, getParallelBranchScopes } from './parallel_branch_scope';
+import type { StepDependencyAnalyzer } from './step_dependency_plan';
 import { EVICTION_EXEMPT_STEP_TYPES, LOOP_STEP_TYPES } from './step_io_pinned_types';
 import type { StepExecutionMetadata, StepIoStateAccessor } from './workflow_execution_state';
 import { WorkflowScopeStack } from './workflow_scope_stack';
@@ -34,6 +30,7 @@ import { buildStepExecutionId } from '../utils';
 export type PredecessorsResolver = (node: GraphNodeUnion) => ReadonlyArray<GraphNodeUnion>;
 
 export interface StepIoServiceInit {
+  dependencyAnalyzer: StepDependencyAnalyzer;
   stepRepository: StepExecutionRepository;
   state: StepIoStateAccessor;
   pinnedStepTypes?: ReadonlySet<string>;
@@ -152,6 +149,7 @@ export interface StepIoLifecycle {
  */
 export class StepIoService implements StepIoWriter, StepIoLifecycle {
   private readonly stepRepository: StepExecutionRepository;
+  private readonly dependencyAnalyzer: StepDependencyAnalyzer;
   private readonly state: StepIoStateAccessor;
   private readonly pinnedStepTypes: ReadonlySet<string>;
   private readonly evictionMinBytes: number;
@@ -288,6 +286,7 @@ export class StepIoService implements StepIoWriter, StepIoLifecycle {
   private readonly dataSetVariablesCache = new Map<string, Record<string, unknown>>();
 
   constructor(init: StepIoServiceInit) {
+    this.dependencyAnalyzer = init.dependencyAnalyzer;
     this.stepRepository = init.stepRepository;
     this.state = init.state;
     this.pinnedStepTypes = init.pinnedStepTypes ?? EVICTION_EXEMPT_STEP_TYPES;
@@ -780,10 +779,11 @@ export class StepIoService implements StepIoWriter, StepIoLifecycle {
     // `extractReferencedStepIdsFromValue` only sees Liquid expressions, so a
     // bare-KQL condition would resolve to an empty set and pin nothing —
     // KQL-parse string values too so while conditions are actually pinned.
-    const referencedStepIds =
-      typeof sourceValue === 'string'
-        ? this.extractReferencedStepIdsFromConditionValue(sourceValue)
-        : this.extractReferencedStepIdsFromValue(sourceValue);
+    const referencedStepIds = this.dependencyAnalyzer.forLoopSource(
+      loopStepId,
+      sourceValue,
+      'condition'
+    );
     if (referencedStepIds === null) {
       return;
     }
@@ -864,7 +864,7 @@ export class StepIoService implements StepIoWriter, StepIoLifecycle {
     stackFrames?: readonly StackFrame[]
   ): Set<string> {
     const neededIds = new Set<string>();
-    const referencedStepIds = extractReferencedStepIds(node);
+    const referencedStepIds = this.dependencyAnalyzer.forNode(node);
 
     const fallbackToPredecessors = (): void => {
       for (const pred of predecessorsResolver(node)) {
@@ -915,8 +915,8 @@ export class StepIoService implements StepIoWriter, StepIoLifecycle {
         // `input.condition` (often bare KQL, so KQL-parsed).
         const scopeInputStepIds =
           scopeStepType === 'while'
-            ? this.extractReferencedStepIdsFromCondition(scopeStepExecutionId)
-            : this.extractReferencedStepIdsFromForeach(scopeStepExecutionId);
+            ? this.extractReferencedStepIdsFromCondition(scopeStepExecutionId, frame.stepId)
+            : this.extractReferencedStepIdsFromForeach(scopeStepExecutionId, frame.stepId);
         if (scopeInputStepIds === null) {
           fallbackToPredecessors();
         } else {
@@ -970,7 +970,10 @@ export class StepIoService implements StepIoWriter, StepIoLifecycle {
     }
   }
 
-  private extractReferencedStepIdsFromForeach(scopeStepExecutionId: string): Set<string> | null {
+  private extractReferencedStepIdsFromForeach(
+    scopeStepExecutionId: string,
+    stepId: string
+  ): ReadonlySet<string> | null {
     const input = this.getStepInput(scopeStepExecutionId);
     if (input === null || typeof input !== 'object' || Array.isArray(input)) {
       return new Set();
@@ -981,7 +984,7 @@ export class StepIoService implements StepIoWriter, StepIoLifecycle {
       return new Set();
     }
 
-    return this.extractReferencedStepIdsFromValue(expression);
+    return this.dependencyAnalyzer.forLoopSource(stepId, expression, 'foreach');
   }
 
   /**
@@ -991,36 +994,16 @@ export class StepIoService implements StepIoWriter, StepIoLifecycle {
    * Mirrors the static analysis in `extractReferencedStepIds`. Returns `null`
    * on dynamic bracket access so the caller falls back conservatively.
    */
-  private extractReferencedStepIdsFromCondition(scopeStepExecutionId: string): Set<string> | null {
+  private extractReferencedStepIdsFromCondition(
+    scopeStepExecutionId: string,
+    stepId: string
+  ): ReadonlySet<string> | null {
     const input = this.getStepInput(scopeStepExecutionId) as { condition?: unknown } | undefined;
     const condition = input?.condition;
     if (typeof condition !== 'string') {
-      return this.extractReferencedStepIdsFromValue(input);
+      return this.dependencyAnalyzer.forLoopSource(stepId, input, 'condition');
     }
-    return this.extractReferencedStepIdsFromConditionValue(condition);
-  }
-
-  /**
-   * KQL-aware step-id extraction for a condition string. A while condition is
-   * frequently bare KQL (`steps.x.output.y: "z"`) with no Liquid markers, which
-   * {@link extractReferencedStepIdsFromValue} (Liquid-only) would miss.
-   * `extractPropertyPathsFromKql` handles both KQL field paths and embedded
-   * `{{ }}` templates. Returns `null` on dynamic bracket access.
-   */
-  private extractReferencedStepIdsFromConditionValue(condition: string): Set<string> | null {
-    try {
-      return extractReferencedStepIdsFromVariables(extractPropertyPathsFromKql(condition));
-    } catch {
-      return null;
-    }
-  }
-
-  private extractReferencedStepIdsFromValue(value: unknown): Set<string> | null {
-    try {
-      return extractReferencedStepIdsFromVariables(scanForTemplateVariables(value));
-    } catch {
-      return null;
-    }
+    return this.dependencyAnalyzer.forLoopSource(stepId, condition, 'condition');
   }
 
   private hasEvictedPredecessor(

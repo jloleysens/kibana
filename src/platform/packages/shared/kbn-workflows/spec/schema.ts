@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { LoopStepTypes } from '@kbn/workflows-runtime';
 import { z } from '@kbn/zod/v4';
 import { convertLegacyFieldsToJsonSchema } from './lib/field_conversion';
 import { BaseEventSchema } from './schema/common/base_event';
@@ -1294,11 +1295,8 @@ const StepSchema = z.lazy(() =>
 );
 export type Step = z.infer<typeof StepSchema>;
 
-export const LoopStepTypes = [
-  ForEachStepSchema.shape.type.value,
-  WhileStepSchema.shape.type.value,
-] as const;
-export type LoopStepType = (typeof LoopStepTypes)[number];
+export { LoopStepTypes } from '@kbn/workflows-runtime';
+export type { LoopStepType } from '@kbn/workflows-runtime';
 
 export const BuiltInStepTypes = [
   ...LoopStepTypes,

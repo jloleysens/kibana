@@ -34,6 +34,10 @@ import type { LogsRepository } from '../repositories/logs_repository';
 import type { StepExecutionRepository } from '../repositories/step_execution_repository';
 import type { WorkflowExecutionRepository } from '../repositories/workflow_execution_repository';
 import { NodesFactory } from '../step/nodes_factory';
+import {
+  createPlannedStepDependencyAnalyzer,
+  type StepDependencyPlan,
+} from '../workflow_context_manager/step_dependency_plan';
 import { StepExecutionRuntimeFactory } from '../workflow_context_manager/step_execution_runtime_factory';
 import { StepIoService } from '../workflow_context_manager/step_io_service';
 import type { ContextDependencies } from '../workflow_context_manager/types';
@@ -49,6 +53,7 @@ import type { WorkflowTaskManager } from '../workflow_task_manager/workflow_task
 
 interface EngineLoopRequest {
   execution: EsWorkflowExecution;
+  dependencyPlan: StepDependencyPlan;
   scopeId: string;
   steps: WorkflowStepCatalogApi;
   storage: WorkflowStorageApi;
@@ -84,6 +89,7 @@ export async function runWorkflowEngineInWorker(
     logger
   );
   const stepIoService = new StepIoService({
+    dependencyAnalyzer: createPlannedStepDependencyAnalyzer(request.dependencyPlan),
     stepRepository: stepExecutionRepository,
     state: workflowExecutionState,
     // Finite so a later job reloads step outputs from storage. Infinity skips that fetch

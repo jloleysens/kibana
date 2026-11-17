@@ -65,6 +65,26 @@ it.each([
   ).toEqual([]);
 });
 
+it('keeps workflow graph runtime free of the authoring schema closure', async () => {
+  const result = await build({
+    entryPoints: [
+      resolve(__dirname, '../../platform/packages/shared/kbn-workflows/graph/index.ts'),
+    ],
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    metafile: true,
+    write: false,
+  });
+  expect(
+    Object.keys(result.metafile.inputs).filter((path) =>
+      /(?:node_modules\/(?:zod|joi)\/|kbn-workflows\/spec\/schema|kbn-i18n|@elastic\/eui)/.test(
+        path
+      )
+    )
+  ).toEqual([]);
+});
+
 it('does not bundle the telemetry SDK for tracing suppression checks', async () => {
   const result = await build({
     entryPoints: [resolve(__dirname, '../../platform/packages/shared/kbn-tracing-utils/index.ts')],
@@ -128,6 +148,9 @@ it('keeps workflow runtime contracts free of authoring, schemas, catalogs, i18n 
       'pick_workflow_document_version',
       'well_known_trigger_sources',
       'elasticsearch_request_builder',
+      'loop_step_types',
+      'poll_step_defaults',
+      'hitl_defaults',
     ]
       .map((name) => resolve(directory, `${name}.ts`))
       .sort()

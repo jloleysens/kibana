@@ -460,10 +460,11 @@ export class WorkflowsExecutionEnginePlugin
                   meteringService: this.meteringService,
                   internalResumeWorkflowExecution: this.internalResumeWorkflowExecutionHandler,
                   executeRemote: config.remoteExecution.enabled
-                    ? (scopedRequest, workflowSignal) =>
+                    ? (scopedRequest, workflowSignal, dependencyPlan) =>
                         dispatchWorkflow({
                           remote: core.remote,
                           request: scopedRequest,
+                          dependencyPlan,
                           signal: workflowSignal,
                           workflowRunId,
                           spaceId,
@@ -765,10 +766,11 @@ export class WorkflowsExecutionEnginePlugin
                   meteringService: this.meteringService,
                   internalResumeWorkflowExecution: this.internalResumeWorkflowExecutionHandler,
                   executeRemote: config.remoteExecution.enabled
-                    ? (scopedRequest, workflowSignal) =>
+                    ? (scopedRequest, workflowSignal, dependencyPlan) =>
                         dispatchWorkflow({
                           remote: core.remote,
                           request: scopedRequest,
+                          dependencyPlan,
                           signal: workflowSignal,
                           workflowRunId,
                           spaceId,
@@ -1202,10 +1204,11 @@ export class WorkflowsExecutionEnginePlugin
                     workflowExecutionRepository,
                     stepExecutionRepository,
                     executeRemote: config.remoteExecution.enabled
-                      ? (scopedRequest, workflowSignal) =>
+                      ? (scopedRequest, workflowSignal, dependencyPlan) =>
                           dispatchWorkflow({
                             remote: core.remote,
                             request: scopedRequest,
+                            dependencyPlan,
                             signal: workflowSignal,
                             workflowRunId: workflowExecution.id,
                             spaceId: workflowExecution.spaceId,
@@ -1710,10 +1713,11 @@ export class WorkflowsExecutionEnginePlugin
           meteringService: this.meteringService,
           internalResumeWorkflowExecution: this.internalResumeWorkflowExecutionHandler,
           executeRemote: this.config.remoteExecution.enabled
-            ? (scopedRequest, workflowSignal) =>
+            ? (scopedRequest, workflowSignal, dependencyPlan) =>
                 dispatchWorkflow({
                   remote,
                   request: scopedRequest,
+                  dependencyPlan,
                   signal: workflowSignal,
                   workflowRunId: workflowExecution.id,
                   spaceId: workflowExecution.spaceId,

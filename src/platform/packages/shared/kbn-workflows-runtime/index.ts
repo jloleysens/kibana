@@ -99,3 +99,10 @@ export type {
   RequestOptions,
   ElasticsearchRequestDefinition,
 } from './elasticsearch_request_builder';
+
+export { LoopStepTypes } from './loop_step_types';
+export type { LoopStepType } from './loop_step_types';
+
+export { PollStepDefaults } from './poll_step_defaults';
+
+export { DEFAULT_WAIT_FOR_INPUT_TIMEOUT, DEFAULT_WAIT_FOR_APPROVAL_TIMEOUT } from './hitl_defaults';

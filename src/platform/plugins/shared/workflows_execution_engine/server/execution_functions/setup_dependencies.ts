@@ -8,10 +8,12 @@
  */
 
 import type { ElasticsearchClient, KibanaRequest, Logger } from '@kbn/core/server';
+import { recordRemoteTiming } from '@kbn/core-remote-common';
 import type { EsWorkflowExecution } from '@kbn/workflows';
 import { ExecutionStatus, WorkflowRepository } from '@kbn/workflows';
 import { isGraphBuildError, WorkflowGraph } from '@kbn/workflows/graph';
 import { setWorkflowEventChainContext } from '@kbn/workflows-extensions/server';
+import { prepareStepDependencyPlan } from './prepare_step_dependency_plan';
 import { WorkflowGraphSetupError } from './workflow_graph_setup_error';
 import type { WorkflowsExecutionEngineConfig } from '../config';
 
@@ -28,6 +30,7 @@ import type { StepExecutionRepository } from '../repositories/step_execution_rep
 import type { WorkflowExecutionRepository } from '../repositories/workflow_execution_repository';
 import { NodesFactory } from '../step/nodes_factory';
 import type { WorkflowsExecutionEnginePluginStart } from '../types';
+import { createPlannedStepDependencyAnalyzer } from '../workflow_context_manager/step_dependency_plan';
 import { StepExecutionRuntimeFactory } from '../workflow_context_manager/step_execution_runtime_factory';
 import { StepIoService } from '../workflow_context_manager/step_io_service';
 import type { ContextDependencies } from '../workflow_context_manager/types';
@@ -130,6 +133,17 @@ export async function setupDependencies(
     throw error;
   }
 
+  const dependencyStarted = performance.now();
+  const { plan: dependencyPlan, cached: dependencyCached } = prepareStepDependencyPlan(
+    workflowExecution.workflowDefinition,
+    compiledGraph
+  );
+  recordRemoteTiming('definition_dependencies', {
+    executionId: workflowExecution.id,
+    cached: dependencyCached,
+    durationMs: performance.now() - dependencyStarted,
+  });
+
   // If the execution is for a specific step, narrow the graph to that step
   if (workflowExecution.stepId) {
     compiledGraph = compiledGraph.getStepGraph(workflowExecution.stepId);
@@ -165,6 +179,7 @@ export async function setupDependencies(
   );
 
   const stepIoService = new StepIoService({
+    dependencyAnalyzer: createPlannedStepDependencyAnalyzer(dependencyPlan),
     stepRepository: stepExecutionRepository,
     state: workflowExecutionState,
     evictionMinBytes: config.eviction.minPayloadSize.getValueInBytes(),
@@ -230,6 +245,7 @@ export async function setupDependencies(
   );
 
   return {
+    dependencyPlan,
     workflowExecutionGraph,
     workflowRuntime,
     stepExecutionRuntimeFactory,

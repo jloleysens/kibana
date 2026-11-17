@@ -36,6 +36,7 @@ const setup = () => {
     facts: { kibanaUrl: 'http://kibana', maxResponseSizeBytes: 1024, evictionMinBytes: 128 },
     logger: loggerMock.create(),
     phase: 'run' as const,
+    dependencyPlan: { definitionHash: 'test-hash', nodes: {}, loops: {} },
   };
   return { lease, controller, params };
 };

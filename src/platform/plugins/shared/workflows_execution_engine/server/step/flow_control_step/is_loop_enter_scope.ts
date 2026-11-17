@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { LoopStepTypes } from '@kbn/workflows';
+import { LoopStepTypes } from '@kbn/workflows-runtime';
 import type { ScopeData } from '../../workflow_context_manager/workflow_scope_stack';
 
 const loopEnterNodeTypes = new Set<string>(LoopStepTypes.map((t) => `enter-${t}`));

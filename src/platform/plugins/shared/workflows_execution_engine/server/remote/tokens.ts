@@ -22,6 +22,9 @@ import type {
   StepHandlerContext,
 } from '@kbn/workflows-extensions/server';
 
+import type { ElasticsearchRequestDefinition } from '@kbn/workflows-runtime';
+import type { StepDependencyPlan } from '../workflow_context_manager/step_dependency_plan';
+
 /**
  * Same stable id as Workflows Extensions' catalogue token. Reconstructed independently in each
  * isolate so the executor does not import that plugin.
@@ -159,14 +162,13 @@ export const WorkflowDataPlaneToken = createToken<WorkflowDataPlaneApi>('workflo
 export const WorkflowControlToken = createToken<WorkflowControlApi>('workflows.control');
 
 export interface WorkflowRunRequest {
+  readonly dependencyPlan: StepDependencyPlan;
   readonly scopeId: string;
   readonly workflowRunId: string;
   readonly spaceId: string;
   readonly credentials?: WorkflowDispatchCredentials;
   readonly facts?: WorkflowDispatchFacts;
 }
-
-import type { ElasticsearchRequestDefinition } from '@kbn/workflows-runtime';
 
 export interface WorkflowStepDescription {
   readonly elasticsearch?: ElasticsearchRequestDefinition;

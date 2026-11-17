@@ -19,6 +19,7 @@ import type {
   WorkflowYaml,
 } from '@kbn/workflows';
 import { WorkflowGraph } from '@kbn/workflows/graph';
+import { sourceStepDependencyAnalyzer } from '../../execution_functions/prepare_step_dependency_plan';
 import type { StepExecutionRepository } from '../../repositories/step_execution_repository';
 import type { WorkflowExecutionRepository } from '../../repositories/workflow_execution_repository';
 import { buildStepExecutionId } from '../../utils';
@@ -54,6 +55,7 @@ function buildHarness(opts: { evictionMinBytes?: number; logger?: Logger } = {})
   // cast — set an empty stack here so prepareForRead can read it.
   state.updateWorkflowExecution({ scopeStack: [] });
   const service = new StepIoService({
+    dependencyAnalyzer: sourceStepDependencyAnalyzer,
     stepRepository: stepExecutionRepository,
     state,
     evictionMinBytes: opts.evictionMinBytes ?? Infinity,

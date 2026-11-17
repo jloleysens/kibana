@@ -523,7 +523,11 @@ describe('resumeWorkflow', () => {
     it('delegates only the admitted resume loop to the remote engine', async () => {
       const executeRemote = jest.fn().mockResolvedValue({ status: ExecutionStatus.COMPLETED });
       expect(await resumeWorkflowWithDefaults({ executeRemote })).toEqual({});
-      expect(executeRemote).toHaveBeenCalledWith(fakeRequest, taskAbortController.signal);
+      expect(executeRemote).toHaveBeenCalledWith(fakeRequest, taskAbortController.signal, {
+        definitionHash: 'fixture',
+        nodes: {},
+        loops: {},
+      });
       expect(workflowRuntime.resume).not.toHaveBeenCalled();
       expect(mockWorkflowExecutionLoop).not.toHaveBeenCalled();
     });

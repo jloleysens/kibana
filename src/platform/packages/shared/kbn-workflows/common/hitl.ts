@@ -9,7 +9,7 @@
 
 import { CONNECTOR_ID_MAX_LENGTH } from './constants';
 
-export const DEFAULT_WAIT_FOR_INPUT_TIMEOUT = '72h' as const;
+export { DEFAULT_WAIT_FOR_INPUT_TIMEOUT } from '@kbn/workflows-runtime';
 
 /** Max length for external resume tokens in HITL URLs. */
 export const MAX_HITL_EXTERNAL_RESUME_TOKEN_LENGTH = 128 as const;

@@ -32,6 +32,7 @@ export function recordRemoteHeap(label: string, outcome: string): void {
   }));
   const line = JSON.stringify({
     label,
+    pid: process.pid,
     phase: 'after-workflow-gc',
     outcome,
     gcAvailable,
