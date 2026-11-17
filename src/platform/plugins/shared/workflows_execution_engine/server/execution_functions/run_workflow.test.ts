@@ -135,8 +135,10 @@ describe('runWorkflow', () => {
       ).not.toHaveBeenCalled();
     });
 
+    const executeRemote = jest.fn();
     await expect(
       runWorkflow({
+        executeRemote,
         workflowRunId: 'run-identity-failure',
         spaceId: 'default',
         signal: new AbortController().signal,
@@ -149,6 +151,7 @@ describe('runWorkflow', () => {
         stepExecutionRepository,
       })
     ).rejects.toThrow('expected service account');
+    expect(executeRemote).not.toHaveBeenCalled();
 
     expect(stepExecutionRepository.markNonTerminalStepsFailed).toHaveBeenCalledWith(
       'run-identity-failure',
@@ -193,6 +196,7 @@ describe('runWorkflow', () => {
       meteringService?: WorkflowsMeteringService;
       workflowsExecutionEngine?: WorkflowsExecutionEnginePluginStart;
       internalResumeWorkflowExecution?: InternalResumeWorkflowExecution;
+      executeRemote?: Parameters<typeof runWorkflow>[0]['executeRemote'];
     }) =>
       runWorkflow({
         workflowRunId,
@@ -204,6 +208,7 @@ describe('runWorkflow', () => {
         dependencies,
         workflowsExecutionEngine:
           overrides?.workflowsExecutionEngine ?? mockWorkflowExecutionEngine,
+        executeRemote: overrides?.executeRemote,
         meteringService: overrides?.meteringService,
         internalResumeWorkflowExecution: overrides?.internalResumeWorkflowExecution,
         workflowExecutionRepository: workflowExecutionRepository as any,
@@ -241,6 +246,118 @@ describe('runWorkflow', () => {
       });
 
       mockWorkflowExecutionLoop.mockResolvedValue(undefined);
+    });
+
+    describe('remote engine preserves coordinator guards', () => {
+      it('calls only the remote loop after admission', async () => {
+        const executeRemote = jest.fn().mockResolvedValue({ status: ExecutionStatus.COMPLETED });
+        await runWorkflowWithDefaults({ executeRemote });
+        expect(executeRemote).toHaveBeenCalledWith(fakeRequest, taskAbortController.signal);
+        expect(mockHandleQueuedWorkflowRunAtTaskStart).toHaveBeenCalled();
+        expect(workflowRuntime.start).not.toHaveBeenCalled();
+        expect(mockWorkflowExecutionLoop).not.toHaveBeenCalled();
+      });
+
+      it('emits failure details from the remote result and persisted execution', async () => {
+        workflowExecutionRepository.getWorkflowExecutionById
+          .mockResolvedValueOnce(defaultRunningExecution())
+          .mockResolvedValue({
+            ...defaultRunningExecution(),
+            status: ExecutionStatus.FAILED,
+            error: { message: 'Native data validation failed' },
+          });
+        const failedStepContext = {
+          stepId: 'parse',
+          stepName: 'Parse document',
+          stepExecutionId: 'parse-execution',
+        };
+        const executeRemote = jest.fn().mockResolvedValue({
+          status: ExecutionStatus.FAILED,
+          failedStepContext,
+        });
+        await runWorkflowWithDefaults({ executeRemote });
+        expect(mockWorkflowExecutionEngine.triggerEvents.emitEvent).toHaveBeenCalledWith(
+          expect.objectContaining({
+            triggerId: WORKFLOW_EXECUTION_FAILED_TRIGGER_ID,
+            request: fakeRequest,
+            payload: expect.objectContaining({
+              error: {
+                message: 'Native data validation failed',
+                stepId: 'parse',
+                stepName: 'Parse document',
+                stepExecutionId: 'parse-execution',
+              },
+            }),
+          })
+        );
+      });
+
+      it('does not dispatch after access is removed', async () => {
+        mockGetCurrentWorkflow.mockResolvedValueOnce({
+          owner_id: 'owner',
+          access_control: { access_mode: 'private', entries: [] },
+        });
+        dependencies.coreStart.userProfile.getCurrentProfileId.mockResolvedValue(null);
+        const executeRemote = jest.fn();
+        await runWorkflowWithDefaults({ executeRemote });
+        expect(executeRemote).not.toHaveBeenCalled();
+        expect(workflowExecutionRepository.updateWorkflowExecution).toHaveBeenCalledWith(
+          expect.objectContaining({ status: ExecutionStatus.FAILED })
+        );
+      });
+
+      it('does not dispatch a dormant concurrency backlog run', async () => {
+        mockHandleQueuedWorkflowRunAtTaskStart.mockResolvedValueOnce(true);
+        const executeRemote = jest.fn();
+        expect(await runWorkflowWithDefaults({ executeRemote })).toEqual({
+          shouldDeleteTask: true,
+        });
+        expect(executeRemote).not.toHaveBeenCalled();
+      });
+
+      it('does not dispatch a suppressed event-driven execution', async () => {
+        mockGetWorkflowExecutionFromState.mockReturnValue({
+          ...defaultRunningExecution(),
+          triggeredBy: 'cases.caseCreated',
+          metadata: { eventTriggerId: 'cases.caseCreated', eventId: 'evt-1' },
+        });
+        mockWorkflowExecutionEngine.triggerEvents.isEnabled = false;
+        const executeRemote = jest.fn();
+        await runWorkflowWithDefaults({ executeRemote });
+        expect(executeRemote).not.toHaveBeenCalled();
+        expect(workflowExecutionRepository.updateWorkflowExecution).toHaveBeenCalledWith(
+          expect.objectContaining({ status: ExecutionStatus.SKIPPED })
+        );
+      });
+
+      it('dispatches with the workload-scoped identity, never the outer request', async () => {
+        const scopedRequest = createFakeKibanaRequest();
+        workflowExecutionRepository.getWorkflowExecutionById.mockResolvedValueOnce({
+          ...defaultRunningExecution(),
+          workflowDefinition: { settings: { run_as: 'account-a' } },
+        });
+        jest
+          .spyOn(dependencies.coreStart.security.serviceAccounts, 'isEnabled')
+          .mockReturnValue(true);
+        jest
+          .spyOn(dependencies.coreStart.security.serviceAccounts, 'withScopedRequestForWorkload')
+          .mockImplementation(async (_options, handler) => handler(scopedRequest));
+        const executeRemote = jest.fn().mockResolvedValue({ status: ExecutionStatus.COMPLETED });
+        await runWorkflowWithDefaults({ executeRemote });
+        expect(executeRemote).toHaveBeenCalledWith(scopedRequest, taskAbortController.signal);
+        expect(executeRemote.mock.calls[0][0]).not.toBe(fakeRequest);
+        expect(mockSetupDependencies).toHaveBeenCalledWith(
+          workflowRunId,
+          spaceId,
+          logger,
+          mockConfig,
+          dependencies,
+          workflowExecutionRepository,
+          stepExecutionRepository,
+          scopedRequest,
+          mockWorkflowExecutionEngine
+        );
+      });
     });
 
     describe('current workflow access', () => {

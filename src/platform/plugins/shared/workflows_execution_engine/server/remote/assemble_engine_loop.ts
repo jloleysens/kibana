@@ -21,6 +21,7 @@ import { createRemoteStepDefinition } from './remote_step_definition';
 import type {
   WorkflowDispatchFacts,
   WorkflowLogApi,
+  WorkflowRunOutcome,
   WorkflowStepCatalogApi,
   WorkflowStepDescription,
   WorkflowStepRunnerApi,
@@ -52,6 +53,7 @@ interface EngineLoopRequest {
   storage: WorkflowStorageApi;
   log: WorkflowLogApi;
   resume: boolean;
+  signal: AbortSignal;
   esClient?: ElasticsearchClient;
   facts?: WorkflowDispatchFacts;
   remoteSteps?: { runner: WorkflowStepRunnerApi; descriptions: WorkflowStepDescription[] };
@@ -62,7 +64,9 @@ interface EngineLoopRequest {
  * Plugin start contracts stay on the coordinator. This function calls them through the
  * storage and log capabilities. It does not call `setupDependencies`.
  */
-export async function runWorkflowEngineInWorker(request: EngineLoopRequest): Promise<string> {
+export async function runWorkflowEngineInWorker(
+  request: EngineLoopRequest
+): Promise<WorkflowRunOutcome> {
   const { execution, scopeId, steps, storage, log } = request;
   const compiled = WorkflowGraph.fromWorkflowDefinition(
     execution.workflowDefinition as WorkflowYaml,
@@ -146,7 +150,6 @@ export async function runWorkflowEngineInWorker(request: EngineLoopRequest): Pro
     dependencies,
     stepIoService
   );
-  const abortController = new AbortController();
 
   if (request.resume) {
     await workflowRuntime.resume();
@@ -168,11 +171,14 @@ export async function runWorkflowEngineInWorker(request: EngineLoopRequest): Pro
     esClient,
     fakeRequest,
     coreStart,
-    signal: abortController.signal,
+    signal: request.signal,
     workflowTaskManager: taskManagerStandIn(scopeId, storage),
   });
 
-  return workflowRuntime.getWorkflowExecution().status;
+  return {
+    status: workflowRuntime.getWorkflowExecution().status,
+    failedStepContext: workflowExecutionState.getLastFailedStepContext(),
+  };
 }
 
 function executionRepository(

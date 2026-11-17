@@ -10,6 +10,7 @@
 import type { KibanaRequest, Logger } from '@kbn/core/server';
 import { ExecutionStatus, isTerminalStatus } from '@kbn/workflows';
 import { completeIdentityFailureCleanup } from './complete_identity_failure_cleanup';
+import { executeWorkflowRemotely, type RemoteWorkflowExecution } from './execute_workflow_remotely';
 import { finalizeWorkflowIdentityFailure } from './finalize_workflow_identity_failure';
 import { handlePostExecutionLoop } from './handle_post_execution_loop';
 import { setupDependencies } from './setup_dependencies';
@@ -49,7 +50,9 @@ async function resumeWorkflowWithRequest({
   internalResumeWorkflowExecution,
   workflowExecutionRepository,
   stepExecutionRepository,
+  executeRemote,
 }: {
+  executeRemote?: RemoteWorkflowExecution;
   workflowRunId: string;
   spaceId: string;
   signal: AbortSignal;
@@ -137,6 +140,25 @@ async function resumeWorkflowWithRequest({
       if (!Number.isFinite(nextRunAt)) return {};
       return { retryAt: new Date(nextRunAt) };
     }
+  }
+
+  if (executeRemote) {
+    await executeWorkflowRemotely({
+      executeRemote,
+      fakeRequest,
+      signal,
+      workflowsExecutionEngine,
+      workflowRunId,
+      spaceId,
+      logger,
+      workflowExecutionRepository,
+      stepExecutionRepository,
+      internalResumeWorkflowExecution,
+      workflowTaskManager,
+      meteringService,
+      cloudSetup: dependencies.cloudSetup,
+    });
+    return {};
   }
 
   await workflowRuntime.resume();

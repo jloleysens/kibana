@@ -111,8 +111,18 @@ export interface WorkflowLogApi {
   write(events: readonly object[]): Promise<void> | void;
 }
 
+export interface WorkflowRunOutcome {
+  readonly status: string;
+  readonly failedStepContext?: {
+    readonly stepId: string;
+    readonly stepName: string;
+    readonly stepExecutionId: string;
+  };
+}
+
 export interface WorkflowExecutorApi {
-  run(request: WorkflowRunRequest): Promise<{ status: string }>;
+  run(request: WorkflowRunRequest): Promise<WorkflowRunOutcome>;
+  cancel(scopeId: string, reason?: 'task_manager'): Promise<void>;
   placement(): Promise<{
     executor: WorkflowThreadIdentity;
     storage: WorkflowThreadIdentity;

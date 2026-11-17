@@ -72,6 +72,40 @@ describe('WorkflowExecutor', () => {
     expect(steps.run).toHaveBeenCalledTimes(1);
   });
 
+  it('cooperatively cancels a reached native step and releases its scope', async () => {
+    const store = createStore(execution([{ name: 'native', type: GRAPH, with: {} }]));
+    const steps = catalog([]);
+    let reached: () => void = () => {};
+    const started = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    steps.run.mockImplementation(async (_type, _scopeId, _input, { handlerContext }) => {
+      if (!handlerContext) throw new Error('Missing executor-local handler context');
+      return new Promise((resolve) => {
+        handlerContext.abortSignal.addEventListener('abort', () => resolve({ output: null }), {
+          once: true,
+        });
+        reached();
+      });
+    });
+    const executor = new WorkflowExecutor(steps, store.storage, log());
+    const pending = executor.run({
+      scopeId: 'scope-1',
+      workflowRunId: 'run-1',
+      spaceId: 'default',
+    });
+    await started;
+    await executor.cancel('scope-1', 'task_manager');
+    expect((await pending).status).toBe(ExecutionStatus.CANCELLED);
+    const persisted = await store.storage.getExecution('scope-1', 'run-1', 'default');
+    expect(persisted.cancellationReason).toBe('Cancelled because Task Manager aborted the task');
+    expect(persisted.cancelledBy).toBe('system');
+    expect(
+      (await executor.run({ scopeId: 'scope-1', workflowRunId: 'run-1', spaceId: 'default' }))
+        .status
+    ).toBe(ExecutionStatus.CANCELLED);
+  });
+
   it('preserves returned native handler errors instead of completing successfully', async () => {
     const store = createStore(execution([{ name: 'native', type: GRAPH, with: {} }]));
     const steps = catalog([]);
@@ -82,6 +116,11 @@ describe('WorkflowExecutor', () => {
       spaceId: 'default',
     });
     expect(result.status).toBe(ExecutionStatus.FAILED);
+    expect(result.failedStepContext).toEqual({
+      stepId: 'native',
+      stepName: 'native',
+      stepExecutionId: expect.any(String),
+    });
     expect((await store.storage.getExecution('scope-1', 'run-1', 'default')).status).toBe(
       ExecutionStatus.FAILED
     );

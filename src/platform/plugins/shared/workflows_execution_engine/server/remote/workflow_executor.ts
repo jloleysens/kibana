@@ -17,6 +17,7 @@ import {
   type WorkflowExecutorApi,
   type WorkflowLogApi,
   WorkflowLogToken,
+  type WorkflowRunOutcome,
   type WorkflowRunRequest,
   type WorkflowStepCatalogApi,
   WorkflowStepCatalogToken,
@@ -26,6 +27,7 @@ import {
   type WorkflowStorageApi,
   WorkflowStorageToken,
 } from './tokens';
+import { WorkflowTaskManagerAbortError } from '../workflow_task_shutdown';
 
 interface ExecutableStep {
   name?: string;
@@ -63,6 +65,7 @@ const UNSUPPORTED_CORE_STEP_TYPES = new Set([
  */
 @remotable()
 export class WorkflowExecutor implements WorkflowExecutorApi {
+  private readonly active = new Map<string, AbortController>();
   constructor(
     @inject(WorkflowStepCatalogToken)
     private readonly steps: WorkflowStepCatalogApi,
@@ -92,16 +95,30 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
     return Date.now() - start;
   }
 
-  async run(request: WorkflowRunRequest): Promise<{ status: string }> {
-    await this.data?.open(request.scopeId, request.credentials);
+  async cancel(scopeId: string, reason?: 'task_manager'): Promise<void> {
+    this.active
+      .get(scopeId)
+      ?.abort(reason === 'task_manager' ? new WorkflowTaskManagerAbortError() : undefined);
+  }
+
+  async run(request: WorkflowRunRequest): Promise<WorkflowRunOutcome> {
+    if (this.active.has(request.scopeId)) throw new Error('Remote scope is already executing');
+    const controller = new AbortController();
+    this.active.set(request.scopeId, controller);
     try {
-      return await this.execute(request);
+      await this.data?.open(request.scopeId, request.credentials);
+      return await this.execute(request, controller.signal);
     } finally {
+      this.active.delete(request.scopeId);
       await this.data?.close(request.scopeId);
     }
   }
 
-  private async execute(request: WorkflowRunRequest): Promise<{ status: string }> {
+  private async execute(
+    request: WorkflowRunRequest,
+    signal: AbortSignal
+  ): Promise<WorkflowRunOutcome> {
+    signal.throwIfAborted();
     const execution = await this.storage.getExecution(
       request.scopeId,
       request.workflowRunId,
@@ -118,8 +135,9 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
         execution.status === ExecutionStatus.WAITING_FOR_INPUT ||
         (execution.status === ExecutionStatus.RUNNING && Boolean(execution.currentNodeId));
       const { runWorkflowEngineInWorker } = await import('./assemble_engine_loop');
-      const status = await runWorkflowEngineInWorker({
+      const outcome = await runWorkflowEngineInWorker({
         execution,
+        signal,
         scopeId: request.scopeId,
         steps: this.steps,
         storage: this.storage,
@@ -129,8 +147,8 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
         facts: request.facts,
         remoteSteps: this.stepRunner ? { runner: this.stepRunner, descriptions } : undefined,
       });
-      recordRemoteHeap('REMOTE_WORKER_HEAP', status);
-      return { status };
+      recordRemoteHeap('REMOTE_WORKER_HEAP', outcome.status);
+      return outcome;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await this.storage.complete(request.scopeId, {

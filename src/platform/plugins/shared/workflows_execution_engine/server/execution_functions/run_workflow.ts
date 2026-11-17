@@ -16,6 +16,7 @@ import {
   WorkflowRepository,
 } from '@kbn/workflows';
 import { completeIdentityFailureCleanup } from './complete_identity_failure_cleanup';
+import { executeWorkflowRemotely, type RemoteWorkflowExecution } from './execute_workflow_remotely';
 import { finalizeWorkflowIdentityFailure } from './finalize_workflow_identity_failure';
 import { handlePostExecutionLoop } from './handle_post_execution_loop';
 import { setupDependencies } from './setup_dependencies';
@@ -58,7 +59,9 @@ async function runWorkflowWithRequest({
   internalResumeWorkflowExecution,
   workflowExecutionRepository,
   stepExecutionRepository,
+  executeRemote,
 }: {
+  executeRemote?: RemoteWorkflowExecution;
   workflowRunId: string;
   spaceId: string;
   signal: AbortSignal;
@@ -211,6 +214,25 @@ async function runWorkflowWithRequest({
         cancelledBy: 'system',
       },
       logTriggerEventsEnabled: workflowsExecutionEngine.triggerEvents.isLogEventsEnabled,
+    });
+    return;
+  }
+
+  if (executeRemote) {
+    await executeWorkflowRemotely({
+      executeRemote,
+      fakeRequest,
+      signal,
+      workflowsExecutionEngine,
+      workflowRunId,
+      spaceId,
+      logger,
+      workflowExecutionRepository,
+      stepExecutionRepository,
+      internalResumeWorkflowExecution,
+      workflowTaskManager,
+      meteringService,
+      cloudSetup: dependencies.cloudSetup,
     });
     return;
   }
