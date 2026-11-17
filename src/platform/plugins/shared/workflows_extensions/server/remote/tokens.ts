@@ -8,8 +8,11 @@
  */
 
 import { createToken } from '@kbn/core-di';
+import type { StepHandlerContext } from '../step_registry/types';
 
 export interface RemoteStepContext {
+  /** Executor-local only; this context is never serialized across the RPC seam. */
+  readonly handlerContext?: StepHandlerContext;
   readonly attribution?: {
     readonly type: string;
     readonly id: string;

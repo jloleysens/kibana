@@ -59,3 +59,5 @@ export const isTerminalStatus = (status: ExecutionStatus): boolean =>
 
 /** Default iteration guard for workflow loops. */
 export const DEFAULT_LOOP_MAX_ITERATIONS = 2000;
+
+export { parseJsPropertyAccess } from './parse_js_property_access';

@@ -8,12 +8,74 @@
  */
 
 import type { RemoteModule } from '@kbn/core-remote-common';
-import { WorkflowStepCatalogToken } from './tokens';
+import { WorkflowStep, WorkflowStepCatalogToken } from './tokens';
 
 export { WorkflowStep, WorkflowStepCatalogToken } from './tokens';
 export type { RemoteStepContext, RemoteWorkflowStep, WorkflowStepCatalogApi } from './tokens';
 
 export const remoteModule: RemoteModule = {
+  contributions: [
+    {
+      kind: WorkflowStep,
+      stepType: 'data.aggregate',
+      modulePath: require.resolve('../steps/data/data_aggregate_runtime'),
+      exportName: 'DataAggregateStep',
+    },
+    {
+      kind: WorkflowStep,
+      stepType: 'data.concat',
+      modulePath: require.resolve('../steps/data/data_concat_runtime'),
+      exportName: 'DataConcatStep',
+    },
+    {
+      kind: WorkflowStep,
+      stepType: 'data.dedupe',
+      modulePath: require.resolve('../steps/data/data_dedupe_runtime'),
+      exportName: 'DataDedupeStep',
+    },
+    {
+      kind: WorkflowStep,
+      stepType: 'data.filter',
+      modulePath: require.resolve('../steps/data/data_filter_runtime'),
+      exportName: 'DataFilterStep',
+    },
+    {
+      kind: WorkflowStep,
+      stepType: 'data.find',
+      modulePath: require.resolve('../steps/data/data_find_runtime'),
+      exportName: 'DataFindStep',
+    },
+    {
+      kind: WorkflowStep,
+      stepType: 'data.map',
+      modulePath: require.resolve('../steps/data/data_map_runtime'),
+      exportName: 'DataMapStep',
+    },
+    {
+      kind: WorkflowStep,
+      stepType: 'data.parseJson',
+      modulePath: require.resolve('../steps/data/data_parse_json_runtime'),
+      exportName: 'DataParseJsonStep',
+    },
+    {
+      kind: WorkflowStep,
+      stepType: 'data.regexExtract',
+      modulePath: require.resolve('../steps/data/data_regex_extract_runtime'),
+      exportName: 'DataRegexExtractStep',
+    },
+    {
+      kind: WorkflowStep,
+      stepType: 'data.regexReplace',
+      modulePath: require.resolve('../steps/data/data_regex_replace_runtime'),
+      exportName: 'DataRegexReplaceStep',
+    },
+    {
+      kind: WorkflowStep,
+      stepType: 'data.stringifyJson',
+      modulePath: require.resolve('../steps/data/data_stringify_json_runtime'),
+      exportName: 'DataStringifyJsonStep',
+    },
+  ],
   providers: [
     {
       token: WorkflowStepCatalogToken,

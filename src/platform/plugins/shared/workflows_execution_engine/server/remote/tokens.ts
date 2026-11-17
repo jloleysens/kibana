@@ -36,6 +36,8 @@ export interface WorkflowStepCatalogApi {
     scopeId: string,
     input: unknown,
     context: {
+      /** Executor-local only; never forwarded to coordinator capabilities. */
+      readonly handlerContext?: StepHandlerContext;
       readonly attribution?: {
         readonly type: string;
         readonly id: string;

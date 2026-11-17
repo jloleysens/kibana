@@ -15,7 +15,7 @@ import {
   type WorkflowYaml,
 } from '@kbn/workflows';
 import { WorkflowGraph } from '@kbn/workflows/graph';
-import type { StepHandlerContext } from '@kbn/workflows-extensions/server';
+import type { StepHandlerContext, StepHandlerResult } from '@kbn/workflows-extensions/server';
 import { noopLogger } from './noop_logger';
 import { createRemoteStepDefinition } from './remote_step_definition';
 import type {
@@ -311,16 +311,15 @@ function contextDependencies({
             if (steps.supports(stepType) && 'handler' in definition) {
               return {
                 ...definition,
-                handler: async (context: StepHandlerContext) => ({
-                  output: unwrapOutput(
+                handler: async (context: StepHandlerContext) =>
+                  stepHandlerResult(
                     await steps.run(
                       stepType,
                       scopeId,
                       { with: context.input, config: context.config },
-                      { attribution }
+                      { attribution, handlerContext: context }
                     )
                   ),
-                }),
               };
             }
             return definition;
@@ -336,14 +335,14 @@ function contextDependencies({
           false),
       getStepDefinition: (stepType: string) => ({
         id: stepType,
-        handler: async (context: { input: unknown; config: unknown }) => {
+        handler: async (context: StepHandlerContext) => {
           const result = await steps.run(
             stepType,
             scopeId,
             { with: context.input, config: context.config },
-            { attribution }
+            { attribution, handlerContext: context }
           );
-          return { output: unwrapOutput(result) };
+          return stepHandlerResult(result);
         },
       }),
     } as unknown as ContextDependencies['workflowsExtensions'],
@@ -354,11 +353,17 @@ function contextDependencies({
   };
 }
 
-function unwrapOutput(result: unknown): unknown {
-  if (result && typeof result === 'object' && 'output' in result) {
-    return (result as { output: unknown }).output;
+function stepHandlerResult(
+  result: Awaited<ReturnType<WorkflowStepCatalogApi['run']>>
+): StepHandlerResult {
+  if (result && typeof result === 'object') {
+    const output = 'output' in result ? result.output : undefined;
+    if ('error' in result && result.error instanceof Error) {
+      return { output, error: result.error };
+    }
+    if ('output' in result) return { output };
   }
-  return result;
+  return { output: result };
 }
 
 function blockedEsClient(): ElasticsearchClient {

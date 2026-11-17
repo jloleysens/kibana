@@ -52,6 +52,41 @@ describe('WorkflowExecutor', () => {
     expect(caseTitles).toEqual(['Graph nodes 2']);
   });
 
+  it('passes executor-local synchronous helpers to native contributions', async () => {
+    const store = createStore(execution([{ name: 'native', type: GRAPH, with: {} }]));
+    const steps = catalog([]);
+    steps.run.mockImplementation(async (_type, _scopeId, _input, { handlerContext }) => {
+      if (!handlerContext) throw new Error('Missing executor-local handler context');
+      expect(handlerContext.stepId).toBe('native');
+      expect(handlerContext.contextManager.renderInputTemplate('run {{ workflow.id }}')).toBe(
+        'run remote-heap-measurement'
+      );
+      return { output: { native: true } };
+    });
+    const result = await new WorkflowExecutor(steps, store.storage, log()).run({
+      scopeId: 'scope-1',
+      workflowRunId: 'run-1',
+      spaceId: 'default',
+    });
+    expect(result.status).toBe(ExecutionStatus.COMPLETED);
+    expect(steps.run).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves returned native handler errors instead of completing successfully', async () => {
+    const store = createStore(execution([{ name: 'native', type: GRAPH, with: {} }]));
+    const steps = catalog([]);
+    steps.run.mockResolvedValue({ error: new Error('Native data validation failed') });
+    const result = await new WorkflowExecutor(steps, store.storage, log()).run({
+      scopeId: 'scope-1',
+      workflowRunId: 'run-1',
+      spaceId: 'default',
+    });
+    expect(result.status).toBe(ExecutionStatus.FAILED);
+    expect((await store.storage.getExecution('scope-1', 'run-1', 'default')).status).toBe(
+      ExecutionStatus.FAILED
+    );
+  });
+
   it('rejects a parallel step before the run starts', async () => {
     const store = createStore(
       execution([{ name: 'branches', type: 'parallel', branches: [{ steps: [] }] }])

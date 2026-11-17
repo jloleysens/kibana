@@ -7,9 +7,63 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { getJsSourceSync } from '@kbn/peggy';
 import { build } from 'esbuild';
 import { ExecutionStatus, isTerminalStatus } from '@kbn/workflows-runtime';
+
+it.each([
+  'aggregate',
+  'concat',
+  'dedupe',
+  'filter',
+  'find',
+  'map',
+  'parse_json',
+  'regex_extract',
+  'regex_replace',
+  'stringify_json',
+])('keeps data_%s_runtime free of authoring and schema modules', async (step) => {
+  const result = await build({
+    entryPoints: [
+      resolve(
+        __dirname,
+        '../../platform/plugins/shared/workflows_extensions/server/steps/data',
+        `data_${step}_runtime.ts`
+      ),
+    ],
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    metafile: true,
+    write: false,
+    plugins: [
+      {
+        name: 'peggy',
+        setup(bundler) {
+          bundler.onLoad({ filter: /\.peggy$/ }, ({ path }) => ({
+            contents: getJsSourceSync({
+              path,
+              content: readFileSync(path, 'utf8'),
+              format: 'commonjs',
+            }).source,
+            loader: 'js',
+          }));
+        },
+      },
+    ],
+  });
+  const inputs = Object.keys(result.metafile.inputs);
+  expect(inputs).toContainEqual(expect.stringContaining(`data_${step}_runtime.ts`));
+  expect(
+    inputs.filter((path) =>
+      /(?:node_modules\/(?:zod|joi)\/|@elastic\/eui|lodash\/lodash\.js|common\/steps\/.*_step\.ts)/.test(
+        path
+      )
+    )
+  ).toEqual([]);
+});
 
 it('keeps workflow runtime contracts free of authoring, schemas, catalogs, i18n and UI dependencies', async () => {
   const directory = resolve(__dirname, '../../platform/packages/shared/kbn-workflows-runtime');
@@ -21,9 +75,13 @@ it('keeps workflow runtime contracts free of authoring, schemas, catalogs, i18n 
     metafile: true,
     write: false,
   });
-  expect(Object.keys(result.metafile.inputs).map((path) => resolve(path))).toEqual([
-    resolve(directory, 'index.ts'),
-  ]);
+  expect(
+    Object.keys(result.metafile.inputs)
+      .map((path) => resolve(path))
+      .sort()
+  ).toEqual(
+    [resolve(directory, 'index.ts'), resolve(directory, 'parse_js_property_access.ts')].sort()
+  );
   expect(isTerminalStatus(ExecutionStatus.COMPLETED)).toBe(true);
   expect(isTerminalStatus(ExecutionStatus.RUNNING)).toBe(false);
 });
