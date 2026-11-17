@@ -13,6 +13,7 @@ import { IpcTransport } from './ipc_transport';
 import type { IpcChannel } from './ipc_transport';
 
 export interface IpcSession<Remote extends RpcCompatible<Remote> = undefined> {
+  readonly signal: AbortSignal;
   readonly remote: RpcStub<Remote>;
   getStats(): { imports: number; exports: number };
   drain(): Promise<void>;
@@ -27,6 +28,7 @@ export const openIpcSession = <Remote extends RpcCompatible<Remote> = undefined>
   const transport = new IpcTransport(channel);
   const session = new RpcSession<Remote>(transport, localMain);
   return {
+    signal: transport.signal,
     remote: session.getRemoteMain(),
     getStats: () => session.getStats(),
     drain: () => session.drain(),

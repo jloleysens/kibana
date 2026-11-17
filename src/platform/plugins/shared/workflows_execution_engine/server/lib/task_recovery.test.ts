@@ -45,7 +45,12 @@ const createRecoveryTestHarness = () => {
     errors: false,
     items: [{ id: 'mock-id', index: '.mock' }],
   });
-  return { workflowExecutionsDataClient, repository, stepExecutionRepository };
+  return {
+    workflowExecutionsDataClient,
+    repository,
+    stepExecutionRepository,
+    stepExecutionsDataClient,
+  };
 };
 
 const mockExecutionLookup = (
@@ -305,7 +310,61 @@ describe('resolveInterruptedWorkflowRunTask', () => {
       })
     ).toEqual({ action: 'run_workflow' });
     expect(workflowExecutionsDataClient.bulk).not.toHaveBeenCalled();
-    expect(stepExecutionRepository.hasStepExecutionsForWorkflow).toHaveBeenCalledWith('x');
+    expect(stepExecutionRepository.hasStepExecutionsForWorkflow).toHaveBeenCalledWith('x', {
+      refresh: true,
+    });
+  });
+
+  it('refreshes unreferenced step writes before deciding whether recovery may replay', async () => {
+    const harness = createRecoveryTestHarness();
+    mockExecutionLookup(harness.workflowExecutionsDataClient, {
+      id: 'x',
+      spaceId: 'default',
+      workflowId: 'w',
+      status: ExecutionStatus.PENDING,
+    } as EsWorkflowExecution);
+    let visible = false;
+    harness.stepExecutionsDataClient.refresh.mockImplementation(async () => {
+      visible = true;
+    });
+    harness.stepExecutionsDataClient.count.mockImplementation(async () => ({
+      count: visible ? 1 : 0,
+      _shards: { total: 1, successful: 1, skipped: 0, failed: 0 },
+    }));
+    expect(
+      await resolveInterruptedWorkflowRunTask({
+        workflowExecutionRepository: harness.repository,
+        stepExecutionRepository: harness.stepExecutionRepository,
+        workflowRunId: 'x',
+        spaceId: 'default',
+        taskAttempts: 2,
+        logger,
+      })
+    ).toEqual(expect.objectContaining({ action: 'task_complete', reason: 'interrupted' }));
+    expect(harness.stepExecutionsDataClient.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not replay when step visibility cannot be established', async () => {
+    const harness = createRecoveryTestHarness();
+    mockExecutionLookup(harness.workflowExecutionsDataClient, {
+      id: 'x',
+      spaceId: 'default',
+      workflowId: 'w',
+      status: ExecutionStatus.PENDING,
+    } as EsWorkflowExecution);
+    harness.stepExecutionsDataClient.refresh.mockRejectedValue(new Error('refresh failed'));
+    await expect(
+      resolveInterruptedWorkflowRunTask({
+        workflowExecutionRepository: harness.repository,
+        stepExecutionRepository: harness.stepExecutionRepository,
+        workflowRunId: 'x',
+        spaceId: 'default',
+        taskAttempts: 2,
+        logger,
+      })
+    ).rejects.toThrow('refresh failed');
+    expect(harness.stepExecutionsDataClient.count).not.toHaveBeenCalled();
+    expect(harness.workflowExecutionsDataClient.bulk).not.toHaveBeenCalled();
   });
 
   it('does not replay a pending execution with unreferenced persisted steps', async () => {

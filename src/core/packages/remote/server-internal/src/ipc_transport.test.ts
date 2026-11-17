@@ -79,6 +79,8 @@ describe('IpcTransport', () => {
     await expect(transport.send('late')).rejects.toThrow('disconnected');
     expect(channel.listeners('message')).toEqual([otherListener]);
     expect(channel.listenerCount('disconnect')).toBe(0);
+    expect(transport.signal.aborted).toBe(true);
+    expect(transport.signal.reason.message).toContain('disconnected');
   });
 
   it('rejects malformed seam envelopes without affecting ordinary IPC listeners', async () => {
@@ -89,3 +91,25 @@ describe('IpcTransport', () => {
     await expect(pending).rejects.toThrow('invalid frame');
   });
 });
+
+it.each(['callback', 'throw'] as const)(
+  'ends the IPC transport lifetime on a send %s error',
+  async (mode) => {
+    const channel = new Channel();
+    channel.send.mockImplementation((_message, callback) => {
+      const error = new Error('broken pipe');
+      if (mode === 'throw') throw error;
+      callback(error);
+      return false;
+    });
+    const transport = new IpcTransport(channel);
+    const aborted = jest.fn();
+    transport.signal.addEventListener('abort', aborted);
+    await expect(transport.send('frame')).rejects.toThrow('broken pipe');
+    transport.abort(new Error('second close'));
+    expect(aborted).toHaveBeenCalledTimes(1);
+    expect(transport.signal.reason.message).toBe('broken pipe');
+    expect(channel.listenerCount('message')).toBe(0);
+    expect(channel.listenerCount('disconnect')).toBe(0);
+  }
+);

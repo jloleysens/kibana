@@ -13,7 +13,7 @@ import { once } from 'node:events';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { MessageChannel } from 'node:worker_threads';
+import { MessageChannel, type MessagePort } from 'node:worker_threads';
 import {
   openPortSession,
   remoteTokenId,
@@ -51,12 +51,18 @@ export class RemoteService implements RemoteSetup {
   private readonly bindings = new Map<string, (scopes: ScopeLookup) => object>();
   private readonly inProcessBindings = new Map<string, (scopes: ScopeLookup) => object>();
   private readonly scopes = new Map<string, unknown>();
+  private readonly scopeControllers = new Map<string, AbortController>();
   private readonly sessions = new Map<string, Promise<RemoteSession<unknown>>>();
   private readonly resolvers = new Map<string, (session: RemoteSession<unknown>) => void>();
   private readonly pools = new Map<string, RemoteLeasePool<RemoteSession<unknown>>>();
   private readonly rejectors = new Map<string, (error: Error) => void>();
   private started = false;
   private readonly lookup: ScopeLookup = {
+    getAbortSignal: (scopeId) => {
+      const controller = this.scopeControllers.get(scopeId);
+      if (!controller) throw new Error(`Unknown remote invocation scope "${scopeId}"`);
+      return controller.signal;
+    },
     get: <T>(scopeId: string): T => {
       if (!this.scopes.has(scopeId)) {
         throw new Error(`Unknown remote invocation scope "${scopeId}"`);
@@ -326,22 +332,52 @@ export class RemoteService implements RemoteSetup {
     id: string,
     stub: T,
     close: () => Promise<void>,
-    alive: () => boolean
+    alive: () => boolean,
+    transport?: {
+      on(event: string, listener: () => void): void;
+      off(event: string, listener: () => void): void;
+    },
+    transportSignal?: AbortSignal
   ): LeaseHost<RemoteSession<unknown>> {
     const scopeIds = new Set<string>();
     let closed = false;
+    const endScope = (scopeId: string, reason: Error) => {
+      if (!scopeIds.delete(scopeId)) return;
+      const controller = this.scopeControllers.get(scopeId);
+      this.scopeControllers.delete(scopeId);
+      this.scopes.delete(scopeId);
+      controller?.abort(reason);
+    };
+    const endScopes = (reason: Error) => {
+      closed = true;
+      for (const scopeId of scopeIds) endScope(scopeId, reason);
+    };
+    const onMessage = (message: object | null) => {
+      if (message === null) endScopes(new Error('Remote RPC peer closed'));
+    };
+    const messagePort =
+      transport && 'postMessage' in transport ? (transport as MessagePort) : undefined;
+    messagePort?.on('message', onMessage);
+    const events = ['close', 'messageerror', 'error', 'disconnect', 'exit'];
+    const listeners = events.map((event) => {
+      const listener = () => endScopes(new Error(`Remote transport ${event}`));
+      transport?.on(event, listener);
+      return listener;
+    });
+    const onTransportAbort = () => endScopes(transportSignal?.reason);
+    transportSignal?.addEventListener('abort', onTransportAbort, { once: true });
     const session: RemoteSession<T> = {
       stub,
       openScope: (state) => {
         if (closed) throw new Error('Remote host is closed');
         const scopeId = randomUUID();
         this.scopes.set(scopeId, state);
+        this.scopeControllers.set(scopeId, new AbortController());
         scopeIds.add(scopeId);
         return scopeId;
       },
       closeScope: (scopeId) => {
-        if (!scopeIds.delete(scopeId)) return;
-        this.scopes.delete(scopeId);
+        endScope(scopeId, new Error('Remote scope closed or lease released'));
       },
       getScope: <TState>(scopeId: string) => {
         if (!scopeIds.has(scopeId)) throw new Error('Scope does not belong to this remote host');
@@ -351,14 +387,18 @@ export class RemoteService implements RemoteSetup {
     const resolve = this.resolvers.get(id);
     if (!resolve) throw new Error('Remote graph has no readiness waiter');
     resolve(session as RemoteSession<unknown>);
+    let disposed = false;
+    if (transportSignal?.aborted) onTransportAbort();
     return {
       value: session as RemoteSession<unknown>,
       alive: () => !closed && alive(),
       close: async () => {
-        if (closed) return;
-        closed = true;
-        for (const scopeId of scopeIds) this.scopes.delete(scopeId);
-        scopeIds.clear();
+        if (disposed) return;
+        disposed = true;
+        endScopes(new Error('Remote host stopped'));
+        messagePort?.off('message', onMessage);
+        events.forEach((event, index) => transport?.off(event, listeners[index]));
+        transportSignal?.removeEventListener('abort', onTransportAbort);
         await close();
       },
     };
@@ -378,12 +418,12 @@ export class RemoteService implements RemoteSetup {
     );
     const loaded: string[] = [];
     const overrides = new Map<string, object>();
-    for (const { tokenId } of spec.executorProviders) {
-      const factory = this.inProcessBindings.get(tokenId);
-      if (factory) overrides.set(tokenId, factory(this.lookup));
-    }
     let executor: object;
     try {
+      for (const { tokenId } of spec.executorProviders) {
+        const factory = this.inProcessBindings.get(tokenId);
+        if (factory) overrides.set(tokenId, factory(this.lookup));
+      }
       executor = await buildExecutor(spec, values, loaded, undefined, overrides);
     } catch (error) {
       port1.close();
@@ -396,10 +436,17 @@ export class RemoteService implements RemoteSetup {
       id,
       stub,
       async () => {
-        port1.close();
-        port2.close();
+        try {
+          if (Symbol.asyncDispose in executor) {
+            await (executor as AsyncDisposable)[Symbol.asyncDispose]();
+          }
+        } finally {
+          port1.close();
+          port2.close();
+        }
       },
-      () => true
+      () => true,
+      port1
     );
   }
 
@@ -467,7 +514,9 @@ export class RemoteService implements RemoteSetup {
         id,
         session.remote,
         () => closeChild(child, session),
-        () => child.connected && child.exitCode === null && child.signalCode === null
+        () => child.connected && child.exitCode === null && child.signalCode === null,
+        child,
+        session.signal
       );
     } catch (error) {
       session.close();
@@ -526,7 +575,8 @@ export class RemoteService implements RemoteSetup {
         port1.close();
         await worker.stop();
       },
-      () => alive
+      () => alive,
+      port1
     );
   }
 }

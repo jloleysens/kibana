@@ -14,6 +14,8 @@ export type RemoteBackend = 'worker_thread' | 'in_process' | 'child_process';
 
 export interface ScopeLookup {
   get<T>(scopeId: string): T;
+  /** Scope lifetime is a cancellation signal, including transport failure. */
+  getAbortSignal(scopeId: string): AbortSignal;
 }
 
 export interface RemoteRegistration {

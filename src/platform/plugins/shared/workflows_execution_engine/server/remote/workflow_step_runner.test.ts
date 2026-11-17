@@ -31,6 +31,7 @@ import { LogsRepository } from '../repositories/logs_repository';
 import { StepExecutionRepository } from '../repositories/step_execution_repository';
 import { WorkflowExecutionRepository } from '../repositories/workflow_execution_repository';
 import { buildStepExecutionId } from '../utils';
+import { WorkflowContextManager } from '../workflow_context_manager/workflow_context_manager';
 
 const setup = (handler: ServerHandlerStepDefinition['handler']) => {
   const dependencies = mockContextDependencies();
@@ -116,11 +117,13 @@ const setup = (handler: ServerHandlerStepDefinition['handler']) => {
       createMockGetExecutionsByIdsResponse(docs.filter(({ id }) => ids.includes(id)))
     ),
   });
+  const scopeController = new AbortController();
+  jest.spyOn(scopeController.signal, 'removeEventListener');
   const runner = new WorkflowStepRunner(
     dependencies,
     executions,
     new StepExecutionRepository(client),
-    { get: jest.fn().mockReturnValue(request) },
+    { get: jest.fn().mockReturnValue(request), getAbortSignal: () => scopeController.signal },
     loggerMock.create()
   );
   const reference = async (): Promise<WorkflowStepInvocation> => ({
@@ -135,7 +138,17 @@ const setup = (handler: ServerHandlerStepDefinition['handler']) => {
     now: new Date('2026-11-17T01:02:03Z'),
     aborted: false,
   });
-  return { runner, reference, request, executions, client, dependencies, docs, definition };
+  return {
+    runner,
+    reference,
+    request,
+    executions,
+    client,
+    dependencies,
+    docs,
+    definition,
+    scopeController,
+  };
 };
 
 beforeEach(() => {
@@ -176,13 +189,18 @@ it('rebuilds synchronous context from persisted references without shipping a la
     context.logger.info('Inspected by reference');
     return { output: { ok: true } };
   });
-  const { runner, reference, client } = setup(handler);
+  const { runner, reference, client, scopeController } = setup(handler);
   const invocation = await reference();
   expect(Buffer.byteLength(JSON.stringify(invocation))).toBeLessThan(2048);
   expect(await runner.invoke(invocation)).toEqual({ output: { ok: true } });
   expect(client.getByIds).toHaveBeenCalled();
   expect(LogsRepository.prototype.createLogs).toHaveBeenCalled();
   expect(handler).toHaveBeenCalledTimes(1);
+  expect(scopeController.signal.aborted).toBe(false);
+  expect(scopeController.signal.removeEventListener).toHaveBeenCalledWith(
+    'abort',
+    expect.any(Function)
+  );
 });
 
 it('cooperatively cancels a pending coordinator phase over a concurrent loopback call', async () => {
@@ -253,3 +271,60 @@ it('uses persisted durable author state for poll and onCancel without a state sn
   await runner.invoke({ ...invocation, phase: 'onCancel', aborted: true });
   expect(onCancel).toHaveBeenCalledTimes(1);
 });
+
+it('aborts an active coordinator invocation on scope teardown without completing its external effect', async () => {
+  const started = Promise.withResolvers<void>();
+  const aborted = jest.fn();
+  const sideEffect = jest.fn();
+  const { runner, reference, scopeController } = setup(async (context) => {
+    started.resolve();
+    await new Promise<void>((resolve) =>
+      context.abortSignal.addEventListener(
+        'abort',
+        () => {
+          aborted();
+          resolve();
+        },
+        { once: true }
+      )
+    );
+    context.abortSignal.throwIfAborted();
+    sideEffect();
+    return { output: null };
+  });
+  const pending = runner.invoke(await reference());
+  const rejection = expect(pending).rejects.toThrow('Aborted');
+  await started.promise;
+  scopeController.abort(new Error('Worker disconnected'));
+  await rejection;
+  expect(aborted).toHaveBeenCalledTimes(1);
+  expect(sideEffect).not.toHaveBeenCalled();
+  expect(scopeController.signal.removeEventListener).toHaveBeenCalledWith(
+    'abort',
+    expect.any(Function)
+  );
+});
+
+it.each(['handler', 'start', 'poll'] as const)(
+  'does not enter %s after cancellation during context preparation',
+  async (phase) => {
+    const handler = jest.fn(async () => ({ output: null }));
+    const { runner, reference, dependencies, definition } = setup(handler);
+    if (phase !== 'handler')
+      dependencies.workflowsExtensions.getStepDefinition.mockReturnValue({
+        ...definition,
+        start: handler,
+        poll: handler,
+      });
+    const invocation = { ...(await reference()), phase };
+    const original = WorkflowContextManager.prototype.ensureContextReady;
+    jest
+      .spyOn(WorkflowContextManager.prototype, 'ensureContextReady')
+      .mockImplementation(async function (this: WorkflowContextManager) {
+        await original.call(this);
+        await runner.cancel(invocation.invocationId);
+      });
+    await expect(runner.invoke(invocation)).rejects.toThrow('Aborted');
+    expect(handler).not.toHaveBeenCalled();
+  }
+);

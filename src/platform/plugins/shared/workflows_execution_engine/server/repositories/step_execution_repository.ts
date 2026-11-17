@@ -44,12 +44,12 @@ export class StepExecutionRepository {
     return response.hits.hits.map((hit) => hit._source as EsWorkflowStepExecution);
   }
 
-  /**
-   * Fetches all step executions for a workflow execution.
-   * Uses mget (real-time, O(1)) when stepExecutionIds are available,
-   * falls back to search for backward compatibility with older executions.
-   */
-  public async hasStepExecutionsForWorkflow(workflowRunId: string): Promise<boolean> {
+  /** Checks bounded step existence, refreshing search visibility only when recovery requires it. */
+  public async hasStepExecutionsForWorkflow(
+    workflowRunId: string,
+    options: { refresh?: boolean } = {}
+  ): Promise<boolean> {
+    if (options.refresh) await this.stepExecutionsDataClient.refresh();
     const response = await this.stepExecutionsDataClient.count({
       query: { term: { workflowRunId } },
       terminate_after: 1,
@@ -60,6 +60,11 @@ export class StepExecutionRepository {
     return response.count > 0;
   }
 
+  /**
+   * Fetches all step executions for a workflow execution.
+   * Uses mget (real-time, O(1)) when stepExecutionIds are available,
+   * falls back to search for backward compatibility with older executions.
+   */
   public async getStepExecutionsByWorkflowExecution(
     workflowExecutionId: string,
     stepExecutionIds?: string[]

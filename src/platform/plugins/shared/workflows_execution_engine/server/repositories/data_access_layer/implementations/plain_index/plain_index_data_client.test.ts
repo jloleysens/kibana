@@ -39,6 +39,12 @@ describe('PlainIndexDataClient', () => {
     });
   });
 
+  it('rejects a partially failed refresh rather than claiming search visibility', async () => {
+    const { esClient, dataAccess } = createDataAccess();
+    esClient.indices.refresh.mockResolvedValue({ _shards: { total: 1, successful: 0, failed: 1 } });
+    await expect(dataAccess.refresh()).rejects.toThrow('search visibility');
+  });
+
   it('refresh targets the configured index', async () => {
     const { esClient, dataAccess } = createDataAccess();
 

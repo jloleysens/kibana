@@ -111,7 +111,11 @@ export class WorkflowStepRunner implements WorkflowStepRunnerApi {
       throw new Error('Duplicate workflow step invocation');
     const initialAbort = new AbortController();
     if (request.aborted) initialAbort.abort(new Error('Workflow step cancelled'));
+    const scopeSignal = this.scopes.getAbortSignal(request.scopeId);
+    const onScopeAbort = () => this.active.get(request.invocationId)?.abort(scopeSignal.reason);
     this.active.set(request.invocationId, initialAbort);
+    scopeSignal.addEventListener('abort', onScopeAbort, { once: true });
+    if (scopeSignal.aborted) onScopeAbort();
     let prepared: Awaited<ReturnType<typeof setupDependencies>> | undefined;
     try {
       if (request.phase === 'connector') {
@@ -159,6 +163,7 @@ export class WorkflowStepRunner implements WorkflowStepRunnerApi {
       this.active.set(request.invocationId, runtime.abortController);
       if (request.phase !== 'onCancel') runtime.abortController.signal.throwIfAborted();
       await runtime.contextManager.ensureContextReady();
+      if (request.phase !== 'onCancel') runtime.abortController.signal.throwIfAborted();
       const snapshot = { ...runtime.contextManager.getContext(), now: request.now };
       const node = runtime.node as AtomicGraphNode;
       const input =
@@ -207,6 +212,7 @@ export class WorkflowStepRunner implements WorkflowStepRunnerApi {
         else await definition.onCancel?.(handlerContext);
         return;
       }
+      runtime.abortController.signal.throwIfAborted();
       const result =
         'poll' in definition
           ? request.phase === 'start'
@@ -230,6 +236,7 @@ export class WorkflowStepRunner implements WorkflowStepRunnerApi {
         ...(result.error ? { error: toExecutionError(result.error).toSerializableObject() } : {}),
       };
     } finally {
+      scopeSignal.removeEventListener('abort', onScopeAbort);
       this.active.delete(request.invocationId);
       await prepared?.eventQueue.flush();
     }

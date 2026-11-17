@@ -7,6 +7,8 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import * as workerThreads from 'node:worker_threads';
+import { getEventListeners } from 'node:events';
 import * as childProcess from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -19,6 +21,7 @@ import {
   DemoRootToken,
   DemoStepKind,
   EchoToken,
+  DemoValueToken,
 } from './__fixtures__/demo_plugin/server/remote/tokens';
 
 const FIXTURE = join(__dirname, '__fixtures__', 'demo_plugin');
@@ -198,3 +201,181 @@ it('rejects an unspawned child promptly without waiting for exit and can stop', 
     rmSync(directory, { recursive: true });
   }
 }, 2000);
+
+it('disposes an active in-process executor before stop resolves', async () => {
+  const started = Promise.withResolvers<void>();
+  const aborted = jest.fn();
+  const sideEffect = jest.fn();
+  const service = createService();
+  service.bindInProcess(DemoValueToken, () => ({
+    label: (event: string) => {
+      if (event === 'started') started.resolve();
+      if (event === 'aborted') aborted();
+      if (event === 'sideEffect') sideEffect();
+      return 'test';
+    },
+  }));
+  try {
+    await service.start('in_process');
+    const session = await service.whenReady<{ untilDisposed(): Promise<void> }>('demo');
+    const pending = session.stub.untilDisposed().catch(() => {});
+    await started.promise;
+    await service.stop();
+    expect(aborted).toHaveBeenCalledTimes(1);
+    const count = sideEffect.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(sideEffect).toHaveBeenCalledTimes(count);
+    void pending;
+  } finally {
+    await service.stop();
+  }
+});
+
+it('closes both ports when an in-process binding factory throws', async () => {
+  const channels: workerThreads.MessageChannel[] = [];
+  const OriginalChannel = workerThreads.MessageChannel;
+  const spy = jest
+    .spyOn(jest.requireActual<typeof workerThreads>('node:worker_threads'), 'MessageChannel')
+    .mockImplementation(() => {
+      const channel = new OriginalChannel();
+      channels.push(channel);
+      return channel;
+    });
+  const service = createService();
+  service.bindInProcess(DemoValueToken, () => {
+    throw new Error('binding failed');
+  });
+  const readiness = service.whenReady('demo').catch(() => {});
+  try {
+    const startup = service.start('in_process');
+    const closed = channels
+      .flatMap(({ port1, port2 }) => [port1, port2])
+      .map((port) => new Promise<void>((resolve) => port.once('close', resolve)));
+    await expect(startup).rejects.toThrow('binding failed');
+    expect(channels).toHaveLength(1);
+    await Promise.all(closed);
+    await readiness;
+  } finally {
+    for (const { port1, port2 } of channels) {
+      port1.close();
+      port2.close();
+    }
+    await service.stop();
+    spy.mockRestore();
+  }
+});
+
+it.each(['closeScope', 'stop', 'close', 'messageerror'] as const)(
+  'ends scope lifetimes on %s and releases their controllers',
+  async (event) => {
+    const channels: workerThreads.MessageChannel[] = [];
+    const OriginalChannel = workerThreads.MessageChannel;
+    const spy = jest
+      .spyOn(jest.requireActual<typeof workerThreads>('node:worker_threads'), 'MessageChannel')
+      .mockImplementation(() => {
+        const channel = new OriginalChannel();
+        channels.push(channel);
+        return channel;
+      });
+    const service = createService();
+    const signals: AbortSignal[] = [];
+    service.bind(EchoToken, (scopes) => {
+      const echo = new Echo();
+      service.bindInProcess(DemoValueToken, () => ({
+        label: () => {
+          signals.push(scopes.getAbortSignal(currentScope));
+          return 'test';
+        },
+      }));
+      return echo;
+    });
+    let currentScope = '';
+    try {
+      await service.start('in_process');
+      const session = await service.whenReady<{ bindingLabel(): Promise<string> }>('demo');
+      for (let index = 0; index < 12; index++) {
+        currentScope = session.openScope({});
+        await session.stub.bindingLabel();
+        const signal = signals[index];
+        expect(signal.aborted).toBe(false);
+        expect(getEventListeners(signal, 'abort')).toHaveLength(0);
+        if (event === 'closeScope') session.closeScope(currentScope);
+        else if (event === 'stop') await service.stop();
+        else channels[0].port1.emit(event, new Event(event));
+        expect(signal.aborted).toBe(true);
+        expect(() => session.getScope(currentScope)).toThrow();
+        if (event !== 'closeScope') break;
+      }
+      expect(Reflect.get(service, 'scopeControllers').size).toBe(0);
+    } finally {
+      await service.stop();
+      spy.mockRestore();
+    }
+  }
+);
+
+it.each(['disconnect', 'messageerror'] as const)(
+  'aborts coordinator work on worker %s before its external effect completes',
+  async (event) => {
+    const channels: workerThreads.MessageChannel[] = [];
+    const OriginalChannel = workerThreads.MessageChannel;
+    const spy = jest
+      .spyOn(jest.requireActual<typeof workerThreads>('node:worker_threads'), 'MessageChannel')
+      .mockImplementation(() => {
+        const channel = new OriginalChannel();
+        channels.push(channel);
+        return channel;
+      });
+    const service = createService();
+    const started = Promise.withResolvers<void>();
+    const finished = Promise.withResolvers<void>();
+    const aborted = jest.fn();
+    const sideEffect = jest.fn();
+    service.bind(EchoToken, (scopes) => {
+      class ScopedEcho {
+        async where(scopeId: string) {
+          const signal = scopes.getAbortSignal(scopeId);
+          started.resolve();
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(() => {
+              sideEffect();
+              resolve();
+            }, 100);
+            signal.addEventListener(
+              'abort',
+              () => {
+                clearTimeout(timer);
+                aborted();
+                resolve();
+              },
+              { once: true }
+            );
+          });
+          finished.resolve();
+          return { threadId: 0, isMainThread: true, marker: 'coordinator' };
+        }
+      }
+      return new ScopedEcho();
+    });
+    try {
+      await service.start('worker_thread');
+      const lease = await service.lease<{ run(request: { scopeId: string }): Promise<object> }>(
+        'demo'
+      );
+      const scopeId = lease.openScope({});
+      void lease.stub.run({ scopeId }).catch(() => {});
+      await started.promise;
+      if (event === 'disconnect') channels[0].port1.close();
+      else channels[0].port1.emit('messageerror', new Error('decode failed'));
+      await finished.promise;
+      await lease.release();
+      expect(aborted).toHaveBeenCalledTimes(1);
+      await new Promise((resolve) => setTimeout(resolve, 125));
+      expect(sideEffect).not.toHaveBeenCalled();
+      expect(Reflect.get(service, 'scopeControllers').size).toBe(0);
+    } finally {
+      await service.stop();
+      spy.mockRestore();
+    }
+  }
+);

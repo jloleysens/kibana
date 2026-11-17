@@ -93,7 +93,11 @@ export async function resolveInterruptedWorkflowRunTask({
   }
 
   if (hasNoWorkflowStartEvidence(execution)) {
-    if (!(await stepExecutionRepository.hasStepExecutionsForWorkflow(workflowRunId))) {
+    if (
+      !(await stepExecutionRepository.hasStepExecutionsForWorkflow(workflowRunId, {
+        refresh: true,
+      }))
+    ) {
       return { action: 'run_workflow' };
     }
   }

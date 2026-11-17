@@ -29,6 +29,8 @@ export class IpcTransport implements RpcTransport {
   private readonly queue: string[] = [];
   private pending?: { resolve: (message: string) => void; reject: (error: Error) => void };
   private error?: Error;
+  private readonly controller = new AbortController();
+  readonly signal = this.controller.signal;
 
   constructor(private readonly channel: IpcChannel) {
     channel.on('message', this.onMessage);
@@ -72,9 +74,17 @@ export class IpcTransport implements RpcTransport {
       );
     }
     return new Promise((resolve, reject) => {
-      this.channel.send({ kind: 'remote-seam', payload }, (error) =>
-        error ? reject(error) : resolve()
-      );
+      try {
+        this.channel.send({ kind: 'remote-seam', payload }, (error) => {
+          if (error) {
+            this.abort(error);
+            reject(error);
+          } else resolve();
+        });
+      } catch (error) {
+        this.abort(error);
+        reject(error);
+      }
     });
   }
 
@@ -95,5 +105,6 @@ export class IpcTransport implements RpcTransport {
     this.queue.length = 0;
     this.pending?.reject(this.error);
     this.pending = undefined;
+    this.controller.abort(this.error);
   }
 }

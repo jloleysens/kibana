@@ -15,10 +15,32 @@ import { DemoCatalogToken, EchoToken, DemoValueToken, type EchoApi } from './tok
 
 @remotable()
 export class Root {
+  private readonly abortController = new AbortController();
+
+  async untilDisposed(): Promise<void> {
+    this.value.label('started');
+    await new Promise<void>((resolve) => {
+      const timer = setInterval(() => this.value.label('sideEffect'), 5);
+      this.abortController.signal.addEventListener(
+        'abort',
+        () => {
+          clearInterval(timer);
+          this.value.label('aborted');
+          resolve();
+        },
+        { once: true }
+      );
+    });
+  }
+
+  async [Symbol.asyncDispose](): Promise<void> {
+    this.abortController.abort(new Error('Executor disposed'));
+  }
+
   constructor(
     @inject(EchoToken) private readonly echo: EchoApi,
     @inject(DemoCatalogToken) private readonly catalog: DemoCatalog,
-    @inject(DemoValueToken) private readonly value: { label(): string }
+    @inject(DemoValueToken) private readonly value: { label(event?: string): string }
   ) {}
 
   async run(request: {
@@ -33,7 +55,7 @@ export class Root {
     for (const step of request.steps ?? []) {
       outputs.push(await this.catalog.run(step.type, request.scopeId, step.with));
     }
-    const coordinator = await this.echo.where();
+    const coordinator = await this.echo.where(request.scopeId);
     return {
       outputs,
       executor: { threadId, isMainThread },
