@@ -193,6 +193,7 @@ describe('runWorkflow', () => {
     });
 
     const runWorkflowWithDefaults = (overrides?: {
+      config?: typeof mockConfig;
       meteringService?: WorkflowsMeteringService;
       workflowsExecutionEngine?: WorkflowsExecutionEnginePluginStart;
       internalResumeWorkflowExecution?: InternalResumeWorkflowExecution;
@@ -203,7 +204,7 @@ describe('runWorkflow', () => {
         spaceId,
         signal: taskAbortController.signal,
         logger,
-        config: mockConfig,
+        config: overrides?.config ?? mockConfig,
         fakeRequest,
         dependencies,
         workflowsExecutionEngine:
@@ -249,6 +250,24 @@ describe('runWorkflow', () => {
     });
 
     describe('remote engine preserves coordinator guards', () => {
+      it('refuses data-stream dispatch without starting or modifying the persisted execution', async () => {
+        const executeRemote = jest.fn();
+
+        await expect(
+          runWorkflowWithDefaults({
+            executeRemote,
+            config: { ...mockConfig, storage: { ...mockConfig.storage, source: 'data_stream' } },
+          })
+        ).rejects.toThrow('Remote workflow execution does not support data_stream storage');
+        expect(mockSetupDependencies).not.toHaveBeenCalled();
+        expect(
+          workflowExecutionRepository.tryUpdateWorkflowExecutionWithVersion
+        ).not.toHaveBeenCalled();
+        expect(workflowExecutionRepository.updateWorkflowExecution).not.toHaveBeenCalled();
+        expect(executeRemote).not.toHaveBeenCalled();
+        expect(workflowRuntime.start).not.toHaveBeenCalled();
+      });
+
       it.each(['local', 'remote'] as const)(
         'does not start a second %s engine after an existing barrier',
         async (placement) => {
@@ -272,6 +291,14 @@ describe('runWorkflow', () => {
           expect(mockWorkflowExecutionLoop).not.toHaveBeenCalled();
         }
       );
+
+      it('still permits the local engine with data-stream storage', async () => {
+        await runWorkflowWithDefaults({
+          config: { ...mockConfig, storage: { ...mockConfig.storage, source: 'data_stream' } },
+        });
+        expect(workflowRuntime.start).toHaveBeenCalled();
+        expect(mockWorkflowExecutionLoop).toHaveBeenCalled();
+      });
 
       it('calls only the remote loop after admission', async () => {
         const executeRemote = jest.fn().mockResolvedValue({ status: ExecutionStatus.COMPLETED });

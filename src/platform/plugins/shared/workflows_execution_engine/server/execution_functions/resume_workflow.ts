@@ -9,6 +9,7 @@
 
 import type { KibanaRequest, Logger } from '@kbn/core/server';
 import { ExecutionStatus, isTerminalStatus } from '@kbn/workflows';
+import { assertRemoteStorageSupported } from './assert_remote_storage_supported';
 import { completeIdentityFailureCleanup } from './complete_identity_failure_cleanup';
 import { executeWorkflowRemotely, type RemoteWorkflowExecution } from './execute_workflow_remotely';
 import { finalizeWorkflowIdentityFailure } from './finalize_workflow_identity_failure';
@@ -66,6 +67,8 @@ async function resumeWorkflowWithRequest({
   workflowExecutionRepository: WorkflowExecutionRepository;
   stepExecutionRepository: StepExecutionRepository;
 }): Promise<{ retryAt?: Date }> {
+  assertRemoteStorageSupported(config, Boolean(executeRemote));
+
   let setupResult: Awaited<ReturnType<typeof setupDependencies>>;
   try {
     setupResult = await setupDependencies(

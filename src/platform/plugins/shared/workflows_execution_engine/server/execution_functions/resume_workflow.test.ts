@@ -481,6 +481,7 @@ describe('resumeWorkflow', () => {
     const mockConfig = createMockWorkflowExecutionEngineConfig();
 
     const resumeWorkflowWithDefaults = (overrides?: {
+      config?: typeof mockConfig;
       meteringService?: WorkflowsMeteringService;
       workflowsExecutionEngine?: WorkflowsExecutionEnginePluginStart;
       executeRemote?: Parameters<typeof resumeWorkflow>[0]['executeRemote'];
@@ -490,7 +491,7 @@ describe('resumeWorkflow', () => {
         spaceId,
         signal: taskAbortController.signal,
         logger,
-        config: mockConfig,
+        config: overrides?.config ?? mockConfig,
         fakeRequest,
         dependencies,
         executeRemote: overrides?.executeRemote,
@@ -518,6 +519,21 @@ describe('resumeWorkflow', () => {
       );
 
       mockWorkflowExecutionLoop.mockResolvedValue(undefined);
+    });
+
+    it('refuses data-stream remote resume before setup or writes', async () => {
+      const executeRemote = jest.fn();
+
+      await expect(
+        resumeWorkflowWithDefaults({
+          executeRemote,
+          config: { ...mockConfig, storage: { ...mockConfig.storage, source: 'data_stream' } },
+        })
+      ).rejects.toThrow('Remote workflow execution does not support data_stream storage');
+      expect(mockSetupDependencies).not.toHaveBeenCalled();
+      expect(workflowExecutionRepository.updateWorkflowExecution).not.toHaveBeenCalled();
+      expect(executeRemote).not.toHaveBeenCalled();
+      expect(workflowRuntime.resume).not.toHaveBeenCalled();
     });
 
     it('delegates only the admitted resume loop to the remote engine', async () => {
