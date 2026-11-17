@@ -18,6 +18,7 @@ export interface ScopeLookup {
 
 export interface RemoteRegistration {
   readonly id: string;
+  readonly reuse?: { readonly maxAgeMs: number; readonly maxRuns: number };
   readonly root: ServiceToken<unknown>;
   readonly contributions: readonly ServiceToken<unknown>[];
   /** Executor providers this graph injects, such as its step catalogue. */
@@ -29,6 +30,11 @@ export interface RemoteSession<T> {
   openScope(state: unknown): string;
   closeScope(scopeId: string): void;
   getScope<TState>(scopeId: string): TState;
+}
+
+export interface RemoteLease<T> extends RemoteSession<T> {
+  /** Release after all scopes are closed; discard a damaged host instead of reusing it. */
+  release(discard?: boolean): Promise<void>;
 }
 
 /**
@@ -44,4 +50,9 @@ export interface RemoteSetup {
   /** Uses Core-owned clients instead of direct worker clients for an executor capability. */
   bindInProcess(token: ServiceToken<unknown>, factory: (scopes: ScopeLookup) => object): void;
   whenReady<T>(id: string): Promise<RemoteSession<T>>;
+  /** Acquires exclusive use of a warm graph; changed settings retire the previous host. */
+  lease<T>(
+    id: string,
+    options?: { settingsKey?: string; signal?: AbortSignal }
+  ): Promise<RemoteLease<T>>;
 }

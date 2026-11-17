@@ -13,7 +13,7 @@ import { once } from 'node:events';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { MessageChannel, type MessagePort } from 'node:worker_threads';
+import { MessageChannel } from 'node:worker_threads';
 import {
   openPortSession,
   remoteTokenId,
@@ -24,12 +24,14 @@ import type { Logger } from '@kbn/logging';
 import type { ServiceToken } from '@kbn/core-di';
 import type {
   RemoteBackend,
+  RemoteLease,
   RemoteRegistration,
   RemoteSession,
   RemoteSetup,
   ScopeLookup,
 } from '@kbn/core-remote-server';
-import { createManagedWorker, type ManagedWorker } from '@kbn/core-threads-server-internal';
+import { createManagedWorker } from '@kbn/core-threads-server-internal';
+import { RemoteLeasePool, type LeaseHost } from './remote_lease_pool';
 import { buildExecutor } from './build_executor';
 import { CoordinatorGateway } from './coordinator_gateway';
 import { createBridge } from './executor_bridge';
@@ -51,9 +53,8 @@ export class RemoteService implements RemoteSetup {
   private readonly scopes = new Map<string, unknown>();
   private readonly sessions = new Map<string, Promise<RemoteSession<unknown>>>();
   private readonly resolvers = new Map<string, (session: RemoteSession<unknown>) => void>();
-  private readonly workers: ManagedWorker[] = [];
-  private readonly ports: MessagePort[] = [];
-  private readonly children: Array<{ child: ChildProcess; session: IpcSession<object> }> = [];
+  private readonly pools = new Map<string, RemoteLeasePool<RemoteSession<unknown>>>();
+  private readonly rejectors = new Map<string, (error: Error) => void>();
   private started = false;
   private readonly lookup: ScopeLookup = {
     get: <T>(scopeId: string): T => {
@@ -92,12 +93,17 @@ export class RemoteService implements RemoteSetup {
       throw new Error(`Remote graph "${registration.id}" is already registered`);
     }
     this.registrations.set(registration.id, registration);
-    this.sessions.set(
-      registration.id,
-      new Promise((resolve) => {
-        this.resolvers.set(registration.id, resolve);
-      })
-    );
+    this.prepareReadiness(registration.id);
+  }
+
+  private prepareReadiness(id: string): void {
+    const pending = new Promise<RemoteSession<unknown>>((resolve, reject) => {
+      this.resolvers.set(id, resolve);
+      this.rejectors.set(id, reject);
+    });
+    // Startup reports the same failure; callers may not have attached a readiness waiter yet.
+    void pending.catch(() => undefined);
+    this.sessions.set(id, pending);
   }
 
   public bind(token: ServiceToken<unknown>, factory: (scopes: ScopeLookup) => object): void {
@@ -119,6 +125,62 @@ export class RemoteService implements RemoteSetup {
     return pending as Promise<RemoteSession<T>>;
   }
 
+  public async lease<T>(
+    id: string,
+    options: { settingsKey?: string; signal?: AbortSignal } = {}
+  ): Promise<RemoteLease<T>> {
+    let pool = this.pools.get(id);
+    if (!pool) {
+      await this.whenReady(id);
+      pool = this.pools.get(id);
+    }
+    if (!pool) throw new Error('Remote graph lease pool is unavailable');
+    const acquired = await pool.acquire(options.settingsKey ?? '', options.signal);
+    const session = acquired.value as RemoteSession<T>;
+    const scopeIds = new Set<string>();
+    let released = false;
+    const assertActive = () => {
+      if (released) throw new Error('Remote lease is released');
+    };
+    const stub = new Proxy(session.stub as object, {
+      get(target, property) {
+        assertActive();
+        if (property === 'then' || property === 'catch' || property === 'finally') return;
+        const member = Reflect.get(target, property);
+        return typeof member === 'function'
+          ? (...args: unknown[]) => {
+              assertActive();
+              return Reflect.apply(member, target, args);
+            }
+          : member;
+      },
+    }) as T;
+    return {
+      stub,
+      openScope: (state) => {
+        assertActive();
+        const scopeId = session.openScope(state);
+        scopeIds.add(scopeId);
+        return scopeId;
+      },
+      closeScope: (scopeId) => {
+        if (scopeIds.delete(scopeId)) session.closeScope(scopeId);
+      },
+      getScope: <TState>(scopeId: string) => {
+        assertActive();
+        if (!scopeIds.has(scopeId)) throw new Error('Scope does not belong to this lease');
+        return session.getScope<TState>(scopeId);
+      },
+      release: async (discard) => {
+        if (released) return;
+        released = true;
+        for (const scopeId of scopeIds) session.closeScope(scopeId);
+        scopeIds.clear();
+        await acquired.release(discard);
+      },
+    };
+  }
+
   public async start(backend: RemoteBackend): Promise<void> {
     if (this.started) return;
     this.started = true;
@@ -126,37 +188,34 @@ export class RemoteService implements RemoteSetup {
       this.logger.info('No remote graphs registered; skipping remote startup');
       return;
     }
-    this.logger.info(`Starting remote execution with backend "${backend}"`);
+    this.logger.info('Starting remote execution with backend ' + backend);
     for (const registration of this.registrations.values()) {
       const spec = this.buildSpec(registration);
       const coordinator = this.materializeCoordinator(spec);
-      if (backend === 'in_process') {
-        await this.startInProcess(registration.id, spec, coordinator);
-      } else if (backend === 'child_process') {
-        await this.startProcess(registration.id, spec, coordinator);
-      } else {
-        await this.startWorker(registration.id, spec, coordinator);
-      }
+      let initialized = false;
+      const pool = new RemoteLeasePool(async () => {
+        if (initialized) this.prepareReadiness(registration.id);
+        initialized = true;
+        try {
+          if (backend === 'in_process')
+            return await this.startInProcess(registration.id, spec, coordinator);
+          if (backend === 'child_process')
+            return await this.startProcess(registration.id, spec, coordinator);
+          return await this.startWorker(registration.id, spec, coordinator);
+        } catch (error) {
+          this.rejectors.get(registration.id)?.(
+            error instanceof Error ? error : new Error(String(error))
+          );
+          throw error;
+        }
+      }, registration.reuse ?? { maxAgeMs: 5 * 60_000, maxRuns: 100 });
+      this.pools.set(registration.id, pool);
+      await pool.warm();
     }
   }
 
   public async stop(): Promise<void> {
-    for (const port of this.ports) {
-      port.close();
-    }
-    this.ports.length = 0;
-    await Promise.all(this.workers.map((worker) => worker.stop()));
-    this.workers.length = 0;
-    await Promise.all(
-      this.children.map(async ({ child, session }) => {
-        session.close();
-        if (child.exitCode !== null || child.signalCode !== null) return;
-        const exited = once(child, 'exit');
-        child.kill();
-        await exited;
-      })
-    );
-    this.children.length = 0;
+    await Promise.all([...this.pools.values()].map((pool) => pool.stop()));
     this.scopes.clear();
   }
 
@@ -263,33 +322,54 @@ export class RemoteService implements RemoteSetup {
     return coordinator;
   }
 
-  private openSession<T>(id: string, stub: T): void {
+  private openSession<T>(
+    id: string,
+    stub: T,
+    close: () => Promise<void>,
+    alive: () => boolean
+  ): LeaseHost<RemoteSession<unknown>> {
+    const scopeIds = new Set<string>();
+    let closed = false;
     const session: RemoteSession<T> = {
       stub,
       openScope: (state) => {
+        if (closed) throw new Error('Remote host is closed');
         const scopeId = randomUUID();
         this.scopes.set(scopeId, state);
+        scopeIds.add(scopeId);
         return scopeId;
       },
       closeScope: (scopeId) => {
+        if (!scopeIds.delete(scopeId)) return;
         this.scopes.delete(scopeId);
       },
-      getScope: <TState>(scopeId: string) => this.lookup.get<TState>(scopeId),
+      getScope: <TState>(scopeId: string) => {
+        if (!scopeIds.has(scopeId)) throw new Error('Scope does not belong to this remote host');
+        return this.lookup.get<TState>(scopeId);
+      },
     };
     const resolve = this.resolvers.get(id);
-    if (!resolve) {
-      throw new Error(`Remote graph "${id}" has no readiness waiter`);
-    }
+    if (!resolve) throw new Error('Remote graph has no readiness waiter');
     resolve(session as RemoteSession<unknown>);
+    return {
+      value: session as RemoteSession<unknown>,
+      alive: () => !closed && alive(),
+      close: async () => {
+        if (closed) return;
+        closed = true;
+        for (const scopeId of scopeIds) this.scopes.delete(scopeId);
+        scopeIds.clear();
+        await close();
+      },
+    };
   }
 
   private async startInProcess(
     id: string,
     spec: RemoteWorkerSpec,
     coordinator: Map<string, object>
-  ): Promise<void> {
+  ): Promise<LeaseHost<RemoteSession<unknown>>> {
     const { port1, port2 } = new MessageChannel();
-    this.ports.push(port1, port2);
     const bridge = createBridge();
     const stub = openPortSession(port1, new CoordinatorGateway(coordinator));
     const gateway = openPortSession<{ getCapability(tokenId: string): object }>(port2, bridge.rpc);
@@ -302,17 +382,32 @@ export class RemoteService implements RemoteSetup {
       const factory = this.inProcessBindings.get(tokenId);
       if (factory) overrides.set(tokenId, factory(this.lookup));
     }
-    const executor = await buildExecutor(spec, values, loaded, undefined, overrides);
+    let executor: object;
+    try {
+      executor = await buildExecutor(spec, values, loaded, undefined, overrides);
+    } catch (error) {
+      port1.close();
+      port2.close();
+      throw error;
+    }
     bridge.attach(executor, loaded);
-    this.openSession(id, stub);
     this.logger.info(`Remote graph "${id}" ready in-process`);
+    return this.openSession(
+      id,
+      stub,
+      async () => {
+        port1.close();
+        port2.close();
+      },
+      () => true
+    );
   }
 
   private async startProcess(
     id: string,
     spec: RemoteWorkerSpec,
     coordinator: Map<string, object>
-  ): Promise<void> {
+  ): Promise<LeaseHost<RemoteSession<unknown>>> {
     const directory =
       this.limits.bundleDirectory ?? process.env.KBN_REMOTE_BUNDLE_DIR ?? 'target/remote_bundles';
     const entry = join(directory, id, 'graph.mjs');
@@ -334,7 +429,6 @@ export class RemoteService implements RemoteSetup {
       ),
     });
     const session = openIpcSession<object>(child, new CoordinatorGateway(coordinator));
-    this.children.push({ child, session });
     try {
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(
@@ -361,8 +455,13 @@ export class RemoteService implements RemoteSetup {
         child.once('error', onError);
         child.send({ kind: 'init', signature: graphSignature(spec) });
       });
-      this.openSession(id, session.remote);
       this.logger.info(`Remote graph "${id}" ready in process ${child.pid}`);
+      return this.openSession(
+        id,
+        session.remote,
+        () => closeChild(child, session),
+        () => child.connected && child.exitCode === null && child.signalCode === null
+      );
     } catch (error) {
       session.close();
       if (child.exitCode === null && child.signalCode === null) {
@@ -378,12 +477,12 @@ export class RemoteService implements RemoteSetup {
     id: string,
     spec: RemoteWorkerSpec,
     coordinator: Map<string, object>
-  ): Promise<void> {
+  ): Promise<LeaseHost<RemoteSession<unknown>>> {
     const { port1, port2 } = new MessageChannel();
-    this.ports.push(port1);
     const gateway = new CoordinatorGateway(coordinator);
     // Session is established before the worker runs so capability lookups during ready can land.
     const stub = openPortSession(port1, gateway);
+    let alive = true;
     const worker = createManagedWorker({
       name: `remote:${id}`,
       entry: ENTRY,
@@ -396,16 +495,39 @@ export class RemoteService implements RemoteSetup {
       restart: { maxAttempts: 0 },
       readyTimeoutMs: 120_000,
       onExit: (info) => {
+        alive = false;
         this.logger.warn(
           `Remote graph "${id}" worker exited (${info.reason}); outstanding calls fail and are not replayed`
         );
         port1.close();
       },
     });
-    this.workers.push(worker);
     worker.start();
-    await worker.ready();
-    this.openSession(id, stub);
+    try {
+      await worker.ready();
+    } catch (error) {
+      port1.close();
+      await worker.stop();
+      throw error;
+    }
     this.logger.info(`Remote graph "${id}" ready on worker thread ${worker.status().threadId}`);
+    return this.openSession(
+      id,
+      stub,
+      async () => {
+        alive = false;
+        port1.close();
+        await worker.stop();
+      },
+      () => alive
+    );
   }
+}
+
+async function closeChild(child: ChildProcess, session: IpcSession<object>): Promise<void> {
+  session.close();
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const exited = once(child, 'exit');
+  child.kill();
+  await exited;
 }

@@ -9,6 +9,7 @@
 
 export type {
   RemoteBackend,
+  RemoteLease,
   RemoteRegistration,
   RemoteSession,
   RemoteSetup,

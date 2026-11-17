@@ -19,7 +19,6 @@ import type {
   Plugin,
   PluginInitializerContext,
 } from '@kbn/core/server';
-import { recordRemoteHeap } from '@kbn/core-remote-common';
 import type { ScopeLookup } from '@kbn/core-remote-server';
 import {
   ExecutionStatus,
@@ -84,10 +83,10 @@ import {
 } from './lib/workflow_task_run_event_fields';
 import { WorkflowsMeteringService } from './metering/metering_service';
 import { CoreDataPlane } from './remote/core_data_plane';
+import { dispatchWorkflow } from './remote/dispatch_workflow';
 import {
   WorkflowControlToken,
   WorkflowDataPlaneToken,
-  type WorkflowExecutorApi,
   WorkflowExecutorToken,
   WorkflowLogToken,
   WorkflowStepCatalogToken,
@@ -96,7 +95,6 @@ import {
   WorkflowStorageToken,
 } from './remote/tokens';
 import { WorkflowControl } from './remote/workflow_control';
-import { workflowDispatchCredentials } from './remote/workflow_dispatch_credentials';
 import { WorkflowLog } from './remote/workflow_log';
 import { WorkflowStepRunner } from './remote/workflow_step_runner';
 import { WorkflowStorage } from './remote/workflow_storage';
@@ -156,10 +154,7 @@ import {
   WORKFLOW_WAKE_POLL_INTERVAL_MS,
   WorkflowTaskManager,
 } from './workflow_task_manager/workflow_task_manager';
-import {
-  createWorkflowTaskAbortController,
-  isWorkflowTaskManagerAbortSignal,
-} from './workflow_task_shutdown';
+import { createWorkflowTaskAbortController } from './workflow_task_shutdown';
 
 /**
  * Max Task Manager attempts for `workflow:run`.
@@ -454,43 +449,21 @@ export class WorkflowsExecutionEnginePlugin
                   meteringService: this.meteringService,
                   internalResumeWorkflowExecution: this.internalResumeWorkflowExecutionHandler,
                   executeRemote: config.remoteExecution.enabled
-                    ? async (scopedRequest, workflowSignal) => {
-                        workflowSignal.throwIfAborted();
-                        const session = await core.remote.whenReady<WorkflowExecutorApi>(
-                          'workflows'
-                        );
-                        const scopeId = session.openScope(scopedRequest);
-                        const onAbort = () => {
-                          void session.stub
-                            .cancel(
-                              scopeId,
-                              isWorkflowTaskManagerAbortSignal(workflowSignal)
-                                ? 'task_manager'
-                                : undefined
-                            )
-                            .catch(() => logger.warn('Remote workflow cancellation failed'));
-                        };
-                        try {
-                          const pending = session.stub.run({
-                            scopeId,
-                            workflowRunId,
-                            spaceId,
-                            credentials: workflowDispatchCredentials(scopedRequest),
-                            facts: {
-                              kibanaUrl: getKibanaUrl(coreStart, setupDependencies.cloudSetup),
-                              maxResponseSizeBytes: config.maxResponseSize.getValueInBytes(),
-                              evictionMinBytes: config.eviction.minPayloadSize.getValueInBytes(),
-                            },
-                          });
-                          workflowSignal.addEventListener('abort', onAbort, { once: true });
-                          if (workflowSignal.aborted) onAbort();
-                          return await pending;
-                        } finally {
-                          workflowSignal.removeEventListener('abort', onAbort);
-                          session.closeScope(scopeId);
-                          recordRemoteHeap('MAIN_HEAP', 'after-remote-run');
-                        }
-                      }
+                    ? (scopedRequest, workflowSignal) =>
+                        dispatchWorkflow({
+                          remote: core.remote,
+                          request: scopedRequest,
+                          signal: workflowSignal,
+                          workflowRunId,
+                          spaceId,
+                          logger,
+                          phase: 'run',
+                          facts: {
+                            kibanaUrl: getKibanaUrl(coreStart, setupDependencies.cloudSetup),
+                            maxResponseSizeBytes: config.maxResponseSize.getValueInBytes(),
+                            evictionMinBytes: config.eviction.minPayloadSize.getValueInBytes(),
+                          },
+                        })
                     : undefined,
                 });
                 const runResult = result && typeof result === 'object' ? result : undefined;
@@ -781,38 +754,21 @@ export class WorkflowsExecutionEnginePlugin
                   meteringService: this.meteringService,
                   internalResumeWorkflowExecution: this.internalResumeWorkflowExecutionHandler,
                   executeRemote: config.remoteExecution.enabled
-                    ? async (scopedRequest, workflowSignal) => {
-                        workflowSignal.throwIfAborted();
-                        const session = await core.remote.whenReady<WorkflowExecutorApi>(
-                          'workflows'
-                        );
-                        const scopeId = session.openScope(scopedRequest);
-                        const onAbort = () => {
-                          void session.stub
-                            .cancel(scopeId)
-                            .catch(() => logger.warn('Remote workflow cancellation failed'));
-                        };
-                        try {
-                          const pending = session.stub.run({
-                            scopeId,
-                            workflowRunId,
-                            spaceId,
-                            credentials: workflowDispatchCredentials(scopedRequest),
-                            facts: {
-                              kibanaUrl: getKibanaUrl(coreStart, setupDependencies.cloudSetup),
-                              maxResponseSizeBytes: config.maxResponseSize.getValueInBytes(),
-                              evictionMinBytes: config.eviction.minPayloadSize.getValueInBytes(),
-                            },
-                          });
-                          workflowSignal.addEventListener('abort', onAbort, { once: true });
-                          if (workflowSignal.aborted) onAbort();
-                          return await pending;
-                        } finally {
-                          workflowSignal.removeEventListener('abort', onAbort);
-                          session.closeScope(scopeId);
-                          recordRemoteHeap('MAIN_HEAP', 'after-remote-resume');
-                        }
-                      }
+                    ? (scopedRequest, workflowSignal) =>
+                        dispatchWorkflow({
+                          remote: core.remote,
+                          request: scopedRequest,
+                          signal: workflowSignal,
+                          workflowRunId,
+                          spaceId,
+                          logger,
+                          phase: 'resume',
+                          facts: {
+                            kibanaUrl: getKibanaUrl(coreStart, setupDependencies.cloudSetup),
+                            maxResponseSizeBytes: config.maxResponseSize.getValueInBytes(),
+                            evictionMinBytes: config.eviction.minPayloadSize.getValueInBytes(),
+                          },
+                        })
                     : undefined,
                 });
                 if (retryAt) return { runAt: retryAt, state: {} };

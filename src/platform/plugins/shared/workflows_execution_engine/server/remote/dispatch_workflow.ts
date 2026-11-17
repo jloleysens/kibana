@@ -1,0 +1,70 @@
+/*
+ * Copyright Elasticsearch B.V. and/or licensed to Elasticsearch B.V. under one
+ * or more contributor license agreements. Licensed under the "Elastic License
+ * 2.0", the "GNU Affero General Public License v3.0 only", and the "Server Side
+ * Public License v 1"; you may not use this file except in compliance with, at
+ * your election, the "Elastic License 2.0", the "GNU Affero General Public
+ * License v3.0 only", or the "Server Side Public License, v 1".
+ */
+
+import type { KibanaRequest, Logger } from '@kbn/core/server';
+import { recordRemoteHeap } from '@kbn/core-remote-common';
+import type { RemoteSetup } from '@kbn/core-remote-server';
+import type { WorkflowDispatchFacts, WorkflowExecutorApi, WorkflowRunOutcome } from './tokens';
+import { workflowDispatchCredentials } from './workflow_dispatch_credentials';
+import { isWorkflowTaskManagerAbortSignal } from '../workflow_task_shutdown';
+
+/** Dispatches under an exclusive warm-host lease using the identity approved by shared guards. */
+export const dispatchWorkflow = async ({
+  remote,
+  request,
+  signal,
+  workflowRunId,
+  spaceId,
+  facts,
+  logger,
+  phase,
+}: {
+  remote: RemoteSetup;
+  request: KibanaRequest;
+  signal: AbortSignal;
+  workflowRunId: string;
+  spaceId: string;
+  facts: WorkflowDispatchFacts;
+  logger: Logger;
+  phase: 'run' | 'resume';
+}): Promise<WorkflowRunOutcome> => {
+  signal.throwIfAborted();
+  const lease = await remote.lease<WorkflowExecutorApi>('workflows', {
+    settingsKey: JSON.stringify(facts),
+    signal,
+  });
+  let scopeId: string | undefined;
+  try {
+    scopeId = lease.openScope(request);
+    const activeScope = scopeId;
+    const onAbort = () => {
+      void lease.stub
+        .cancel(activeScope, isWorkflowTaskManagerAbortSignal(signal) ? 'task_manager' : undefined)
+        .catch(() => logger.warn('Remote workflow cancellation failed'));
+    };
+    const pending = lease.stub.run({
+      scopeId,
+      workflowRunId,
+      spaceId,
+      credentials: workflowDispatchCredentials(request),
+      facts,
+    });
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    try {
+      return await pending;
+    } finally {
+      signal.removeEventListener('abort', onAbort);
+    }
+  } finally {
+    if (scopeId) lease.closeScope(scopeId);
+    await lease.release();
+    recordRemoteHeap('MAIN_HEAP', `after-remote-${phase}`);
+  }
+};

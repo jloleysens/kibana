@@ -61,6 +61,7 @@ it.each(['in_process', 'child_process'] as const)(
       service.discover([plugin]);
       service.register({
         id: 'demo',
+        reuse: { maxAgeMs: 60_000, maxRuns: 2 },
         root: createToken('demo.root'),
         dependencies: [createToken('demo.catalog')],
         contributions: [createToken('demo.step')],
@@ -96,6 +97,31 @@ it.each(['in_process', 'child_process'] as const)(
       await run();
       expect(await session.stub.loadedModules()).toEqual(after);
       session.closeScope(scopeId);
+      const first = await service.lease<DemoApi>('demo', { settingsKey: 'a' });
+      const firstPid = await first.stub.pid();
+      const privateScope = first.openScope({ marker: 'first dispatch only' });
+      const granted = jest.fn();
+      const pending = service.lease<DemoApi>('demo', { settingsKey: 'a' }).then((lease) => {
+        granted();
+        return lease;
+      });
+      await Promise.resolve();
+      expect(granted).not.toHaveBeenCalled();
+      await first.release();
+      expect(() => first.openScope({})).toThrow('released');
+      expect(() => first.stub.pid()).toThrow('released');
+      const second = await pending;
+      expect(await second.stub.pid()).toBe(firstPid);
+      expect(() => second.getScope(privateScope)).toThrow('does not belong');
+      expect(() => session.getScope(privateScope)).toThrow('does not belong');
+      await second.release();
+      const renewed = await service.lease<DemoApi>('demo', { settingsKey: 'a' });
+      expect((await renewed.stub.pid()) === firstPid).toBe(backend === 'in_process');
+      expect((await renewed.stub.loadedModules()).some((path) => path.endsWith('/step.ts'))).toBe(
+        false
+      );
+      expect(() => session.openScope({})).toThrow('closed');
+      await renewed.release();
     } finally {
       await service.stop();
       if (previousHeaders === undefined) delete process.env.KBN_RUNNER_INTERNAL_HEADERS;
