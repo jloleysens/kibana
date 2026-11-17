@@ -100,6 +100,7 @@ export function createCoreSetupMock({
     remote: lazyObject({
       register: jest.fn(),
       bind: jest.fn(),
+      bindInProcess: jest.fn(),
       whenReady: jest.fn(
         async <T>(_id: string): Promise<RemoteSession<T>> => ({
           stub: {} as T,

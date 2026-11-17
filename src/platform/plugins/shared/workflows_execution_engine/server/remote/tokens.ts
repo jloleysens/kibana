@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import type { ElasticsearchClient } from '@kbn/core/server';
 import { createToken } from '@kbn/core-di';
 import type { EsWorkflowExecution, EsWorkflowStepExecution } from '@kbn/workflows';
 
@@ -98,11 +99,7 @@ export interface WorkflowLogApi {
 }
 
 export interface WorkflowExecutorApi {
-  run(request: {
-    scopeId: string;
-    workflowRunId: string;
-    spaceId: string;
-  }): Promise<{ status: string }>;
+  run(request: WorkflowRunRequest): Promise<{ status: string }>;
   placement(): Promise<{
     executor: WorkflowThreadIdentity;
     storage: WorkflowThreadIdentity;
@@ -116,3 +113,31 @@ export const WorkflowStepKind = createToken<unknown>('workflows.step');
 export const WorkflowStorageToken = createToken<WorkflowStorageApi>('workflows.storage');
 export const WorkflowLogToken = createToken<WorkflowLogApi>('workflows.log');
 export const WorkflowExecutorToken = createToken<WorkflowExecutorApi>('workflows.executor');
+
+export interface WorkflowDispatchCredentials {
+  readonly node: string;
+  readonly internalHeaders: Readonly<Record<string, string>>;
+  readonly userHeaders: Readonly<Record<string, string>>;
+}
+
+export interface WorkflowDataPlaneApi {
+  open(scopeId: string, credentials?: WorkflowDispatchCredentials): Promise<void>;
+  close(scopeId: string): Promise<void>;
+  internal(scopeId?: string): ElasticsearchClient;
+  user(scopeId: string): ElasticsearchClient;
+}
+
+export type WorkflowControlApi = Pick<WorkflowStorageApi, 'scheduleResume' | 'executeConnector'> & {
+  info(message: string): void | Promise<void>;
+  initializeLogs(): Promise<void>;
+};
+
+export const WorkflowDataPlaneToken = createToken<WorkflowDataPlaneApi>('workflows.dataPlane');
+export const WorkflowControlToken = createToken<WorkflowControlApi>('workflows.control');
+
+export interface WorkflowRunRequest {
+  readonly scopeId: string;
+  readonly workflowRunId: string;
+  readonly spaceId: string;
+  readonly credentials?: WorkflowDispatchCredentials;
+}

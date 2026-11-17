@@ -10,11 +10,8 @@
 import { isMainThread, threadId } from 'node:worker_threads';
 import { remotable } from '@kbn/core-remote-common';
 import type { Logger } from '@kbn/logging';
-import {
-  type EsWorkflowExecution,
-  type EsWorkflowStepExecution,
-  ExecutionStatus,
-} from '@kbn/workflows';
+import type { EsWorkflowExecution, EsWorkflowStepExecution } from '@kbn/workflows';
+import { ExecutionStatus } from '@kbn/workflows-runtime';
 import type { WorkflowStorageApi, WorkflowThreadIdentity } from './tokens';
 import type {
   StepExecutionField,
@@ -46,8 +43,7 @@ const REFRESHED_STATUSES = new Set<EsWorkflowExecution['status']>([
 ]);
 
 /**
- * Coordinator-side persistence. The executor decides transitions; this class performs the
- * existing repository reads and writes. It is not loaded in the worker.
+ * Repository-backed persistence shared by Core-bound and direct worker clients.
  */
 @remotable()
 export class WorkflowStorage implements WorkflowStorageApi {

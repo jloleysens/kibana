@@ -13,7 +13,7 @@ import {
   ConcurrencySlotOccupyingExecutionStatuses,
   ExecutionStatus,
   NonTerminalExecutionStatuses,
-} from '@kbn/workflows';
+} from '@kbn/workflows-runtime';
 import type { WorkflowExecutionsDataClient } from './data_access_layer';
 import { getBulkUpdaterWriteResult } from './data_access_layer/lib/bulk/bulk_updater_write_result';
 

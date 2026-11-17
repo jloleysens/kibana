@@ -28,6 +28,8 @@ class CoordinatorEcho {
 
 interface DemoApi {
   pid(): Promise<number>;
+  bindingLabel(): Promise<string>;
+  hasDispatchEnvironment(): Promise<boolean>;
   copy(value: { marker: string }): Promise<{ marker: string }>;
   loadedModules(): Promise<string[]>;
   run(request: { scopeId: string; steps: Array<{ type: string }> }): Promise<{
@@ -39,6 +41,8 @@ it.each(['in_process', 'child_process'] as const)(
   '%s: same graph, serialized RPC, step implementation absent until first reach and cached thereafter',
   async (backend) => {
     const directory = mkdtempSync(join(tmpdir(), 'runner-backends-'));
+    const previousHeaders = process.env.KBN_RUNNER_INTERNAL_HEADERS;
+    process.env.KBN_RUNNER_INTERNAL_HEADERS = 'parent-only-test-credential';
     const service = new RemoteService(loggingSystemMock.createLogger(), {
       maxOldGenerationSizeMb: 256,
       bundleDirectory: directory,
@@ -62,14 +66,25 @@ it.each(['in_process', 'child_process'] as const)(
         contributions: [createToken('demo.step')],
       });
       service.bind(createToken('demo.echo'), () => new CoordinatorEcho());
+      service.bindInProcess(createToken('demo.value'), () => ({ label: () => 'core' }));
+      service.bindInProcess(createToken('unrelated.graph'), () => {
+        throw new Error('Unrelated graph binding must not materialize');
+      });
       await service.start(backend);
       const session = await service.whenReady<DemoApi>('demo');
+      expect(await session.stub.bindingLabel()).toBe(
+        backend === 'in_process' ? 'core' : 'executor'
+      );
       const pid = await session.stub.pid();
       expect(pid === process.pid).toBe(backend === 'in_process');
+      expect(await session.stub.hasDispatchEnvironment()).toBe(backend === 'in_process');
       const original = { marker: 'copy me' };
       expect(await session.stub.copy(original)).toEqual(original);
       expect(await session.stub.copy(original)).not.toBe(original);
       const initial = await session.stub.loadedModules();
+      expect(initial.some((path) => path.endsWith('/executor_value.ts'))).toBe(
+        backend === 'child_process'
+      );
       expect(initial.some((path) => path.endsWith('/step.ts'))).toBe(false);
       const scopeId = session.openScope({});
       expect((await session.stub.run({ scopeId, steps: [] })).outputs).toEqual([]);
@@ -83,6 +98,8 @@ it.each(['in_process', 'child_process'] as const)(
       session.closeScope(scopeId);
     } finally {
       await service.stop();
+      if (previousHeaders === undefined) delete process.env.KBN_RUNNER_INTERNAL_HEADERS;
+      else process.env.KBN_RUNNER_INTERNAL_HEADERS = previousHeaders;
       rmSync(directory, { recursive: true });
     }
   },

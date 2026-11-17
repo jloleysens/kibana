@@ -20,6 +20,7 @@ const fixture = resolve(
 it('interprets existing remotable manifests and token ids without executing implementations', () => {
   const manifest = readRemoteManifest(fixture);
   expect(manifest.providers.map(({ token, placement }) => ({ token, placement }))).toEqual([
+    { token: 'demo.value', placement: 'executor' },
     { token: 'demo.echo', placement: 'coordinator' },
     { token: 'demo.catalog', placement: 'executor' },
     { token: 'demo.root', placement: 'executor' },

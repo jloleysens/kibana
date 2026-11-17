@@ -63,7 +63,8 @@ export async function buildExecutor(
   spec: RemoteWorkerSpec,
   coordinator: ReadonlyMap<string, unknown>,
   loaded: string[],
-  load: (modulePath: string, exportName: string, loaded: string[]) => unknown = loadExport
+  load: typeof loadExport = loadExport,
+  inProcessOverrides: ReadonlyMap<string, object> = new Map()
 ): Promise<object> {
   const container = new Container();
   for (const id of spec.coordinatorTokenIds) {
@@ -75,6 +76,11 @@ export async function buildExecutor(
   }
 
   for (const provider of spec.executorProviders) {
+    const override = inProcessOverrides.get(provider.tokenId);
+    if (override) {
+      container.bind(Symbol.for(provider.tokenId)).toConstantValue(override);
+      continue;
+    }
     const Ctor = (await load(
       provider.modulePath,
       provider.exportName,

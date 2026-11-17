@@ -8,13 +8,37 @@
  */
 
 import type { RemoteModule } from '@kbn/core-remote-common';
-import { WorkflowExecutorToken, WorkflowLogToken, WorkflowStorageToken } from './tokens';
+import {
+  WorkflowControlToken,
+  WorkflowDataPlaneToken,
+  WorkflowExecutorToken,
+  WorkflowLogToken,
+  WorkflowStorageToken,
+} from './tokens';
 
-export { WorkflowExecutorToken, WorkflowLogToken, WorkflowStorageToken } from './tokens';
+export {
+  WorkflowExecutorToken,
+  WorkflowLogToken,
+  WorkflowStorageToken,
+  WorkflowDataPlaneToken,
+  WorkflowControlToken,
+} from './tokens';
 export type { WorkflowExecutorApi, WorkflowLogApi, WorkflowStorageApi } from './tokens';
 
 export const remoteModule: RemoteModule = {
   providers: [
+    {
+      token: WorkflowDataPlaneToken,
+      placement: 'executor',
+      modulePath: require.resolve('./executor_data_plane'),
+      exportName: 'ExecutorDataPlane',
+    },
+    {
+      token: WorkflowControlToken,
+      placement: 'coordinator',
+      modulePath: require.resolve('./workflow_control'),
+      exportName: 'WorkflowControl',
+    },
     {
       token: WorkflowExecutorToken,
       placement: 'executor',
@@ -24,15 +48,15 @@ export const remoteModule: RemoteModule = {
     },
     {
       token: WorkflowStorageToken,
-      placement: 'coordinator',
-      modulePath: require.resolve('./workflow_storage'),
-      exportName: 'WorkflowStorage',
+      placement: 'executor',
+      modulePath: require.resolve('./executor_storage'),
+      exportName: 'ExecutorStorage',
     },
     {
       token: WorkflowLogToken,
-      placement: 'coordinator',
-      modulePath: require.resolve('./workflow_log'),
-      exportName: 'WorkflowLog',
+      placement: 'executor',
+      modulePath: require.resolve('./executor_log'),
+      exportName: 'ExecutorLog',
     },
   ],
 };

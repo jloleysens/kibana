@@ -8,12 +8,18 @@
  */
 
 import type { RemoteModule } from '@kbn/core-remote-common';
-import { DemoCatalogToken, DemoRootToken, DemoStepKind, EchoToken } from './tokens';
+import { DemoCatalogToken, DemoRootToken, DemoStepKind, EchoToken, DemoValueToken } from './tokens';
 
-export { DemoCatalogToken, DemoRootToken, DemoStepKind, EchoToken } from './tokens';
+export { DemoCatalogToken, DemoRootToken, DemoStepKind, EchoToken, DemoValueToken } from './tokens';
 
 export const remoteModule: RemoteModule = {
   providers: [
+    {
+      token: DemoValueToken,
+      placement: 'executor',
+      modulePath: require.resolve('./executor_value'),
+      exportName: 'ExecutorValue',
+    },
     {
       token: EchoToken,
       placement: 'coordinator',

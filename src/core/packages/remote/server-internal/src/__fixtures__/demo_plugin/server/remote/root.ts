@@ -11,13 +11,14 @@ import { isMainThread, threadId } from 'node:worker_threads';
 import { inject } from 'inversify';
 import { remotable } from '@kbn/core-remote-common';
 import type { DemoCatalog } from './catalog';
-import { DemoCatalogToken, EchoToken, type EchoApi } from './tokens';
+import { DemoCatalogToken, EchoToken, DemoValueToken, type EchoApi } from './tokens';
 
 @remotable()
 export class Root {
   constructor(
     @inject(EchoToken) private readonly echo: EchoApi,
-    @inject(DemoCatalogToken) private readonly catalog: DemoCatalog
+    @inject(DemoCatalogToken) private readonly catalog: DemoCatalog,
+    @inject(DemoValueToken) private readonly value: { label(): string }
   ) {}
 
   async run(request: {
@@ -38,6 +39,14 @@ export class Root {
       executor: { threadId, isMainThread },
       coordinator,
     };
+  }
+
+  hasDispatchEnvironment(): boolean {
+    return process.env.KBN_RUNNER_INTERNAL_HEADERS !== undefined;
+  }
+
+  bindingLabel(): string {
+    return this.value.label();
   }
 
   pid(): number {

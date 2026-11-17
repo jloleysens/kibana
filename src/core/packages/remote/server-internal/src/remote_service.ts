@@ -47,6 +47,7 @@ export class RemoteService implements RemoteSetup {
   private readonly modules: RemoteModule[] = [];
   private readonly registrations = new Map<string, RemoteRegistration>();
   private readonly bindings = new Map<string, (scopes: ScopeLookup) => object>();
+  private readonly inProcessBindings = new Map<string, (scopes: ScopeLookup) => object>();
   private readonly scopes = new Map<string, unknown>();
   private readonly sessions = new Map<string, Promise<RemoteSession<unknown>>>();
   private readonly resolvers = new Map<string, (session: RemoteSession<unknown>) => void>();
@@ -101,6 +102,13 @@ export class RemoteService implements RemoteSetup {
 
   public bind(token: ServiceToken<unknown>, factory: (scopes: ScopeLookup) => object): void {
     this.bindings.set(remoteTokenId(token), factory);
+  }
+
+  public bindInProcess(
+    token: ServiceToken<unknown>,
+    factory: (scopes: ScopeLookup) => object
+  ): void {
+    this.inProcessBindings.set(remoteTokenId(token), factory);
   }
 
   public whenReady<T>(id: string): Promise<RemoteSession<T>> {
@@ -289,7 +297,12 @@ export class RemoteService implements RemoteSetup {
       spec.coordinatorTokenIds.map((tokenId) => [tokenId, gateway.getCapability(tokenId)])
     );
     const loaded: string[] = [];
-    const executor = await buildExecutor(spec, values, loaded);
+    const overrides = new Map<string, object>();
+    for (const { tokenId } of spec.executorProviders) {
+      const factory = this.inProcessBindings.get(tokenId);
+      if (factory) overrides.set(tokenId, factory(this.lookup));
+    }
+    const executor = await buildExecutor(spec, values, loaded, undefined, overrides);
     bridge.attach(executor, loaded);
     this.openSession(id, stub);
     this.logger.info(`Remote graph "${id}" ready in-process`);
@@ -307,6 +320,18 @@ export class RemoteService implements RemoteSetup {
     const child = fork(entry, [], {
       execArgv: [`--max-old-space-size=${this.limits.maxOldGenerationSizeMb}`],
       stdio: ['ignore', 'ignore', 'inherit', 'ipc'],
+      env: Object.fromEntries(
+        [
+          'PATH',
+          'HOME',
+          'LANG',
+          'TZ',
+          'NODE_ENV',
+          'NODE_EXTRA_CA_CERTS',
+          'KBN_REMOTE_SEAM_LOG',
+          'KBN_REMOTE_HEAP_LOG',
+        ].flatMap((key) => (process.env[key] === undefined ? [] : [[key, process.env[key]]]))
+      ),
     });
     const session = openIpcSession<object>(child, new CoordinatorGateway(coordinator));
     this.children.push({ child, session });

@@ -7,13 +7,14 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import type { CoreStart, ElasticsearchClient, KibanaRequest, Logger } from '@kbn/core/server';
+import type { CoreStart, ElasticsearchClient, KibanaRequest } from '@kbn/core/server';
 import {
   type EsWorkflowExecution,
   type EsWorkflowStepExecution,
   type WorkflowYaml,
 } from '@kbn/workflows';
 import { WorkflowGraph } from '@kbn/workflows/graph';
+import { noopLogger } from './noop_logger';
 import type { WorkflowLogApi, WorkflowStepCatalogApi, WorkflowStorageApi } from './tokens';
 import type { ConnectorExecutor } from '../connector_executor';
 import { defaultWorkflowSettings } from '../default_workflow_settings';
@@ -40,6 +41,7 @@ interface EngineLoopRequest {
   storage: WorkflowStorageApi;
   log: WorkflowLogApi;
   resume: boolean;
+  esClient?: ElasticsearchClient;
 }
 
 /**
@@ -81,7 +83,7 @@ export async function runWorkflowEngineInWorker(request: EngineLoopRequest): Pro
   const coreStart = {
     http: { basePath: { publicBaseUrl: 'http://127.0.0.1:5601', serverBasePath: '' } },
   } as unknown as CoreStart;
-  const esClient = blockedEsClient();
+  const esClient = request.esClient ?? blockedEsClient();
   const dependencies = contextDependencies({
     coreStart,
     fakeRequest,
@@ -278,23 +280,4 @@ function blockedEsClient(): ElasticsearchClient {
       get: () => fail,
     }
   ) as ElasticsearchClient;
-}
-
-function noopLogger(): Logger {
-  const logger = {
-    debug() {},
-    info() {},
-    warn() {},
-    error() {},
-    trace() {},
-    fatal() {},
-    log() {},
-    isLevelEnabled() {
-      return false;
-    },
-    get() {
-      return logger;
-    },
-  };
-  return logger as unknown as Logger;
 }

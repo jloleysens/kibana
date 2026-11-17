@@ -12,7 +12,12 @@ import {
   type EsWorkflowStepExecution,
   ExecutionStatus,
 } from '@kbn/workflows';
-import type { WorkflowLogApi, WorkflowStepCatalogApi, WorkflowStorageApi } from './tokens';
+import type {
+  WorkflowDataPlaneApi,
+  WorkflowLogApi,
+  WorkflowStepCatalogApi,
+  WorkflowStorageApi,
+} from './tokens';
 import { WorkflowExecutor } from './workflow_executor';
 
 jest.setTimeout(60_000);
@@ -75,6 +80,56 @@ describe('WorkflowExecutor', () => {
     ).rejects.toThrow(/Unsupported remote step type "console"/);
     expect(steps.run).not.toHaveBeenCalled();
     expect(store.completed).toEqual([ExecutionStatus.FAILED]);
+  });
+  it.each([
+    {
+      name: 'else',
+      step: { name: 'branch', type: 'if', steps: [], else: [{ name: 'missing', type: 'missing' }] },
+    },
+    {
+      name: 'switch case',
+      step: {
+        name: 'branch',
+        type: 'switch',
+        cases: [{ steps: [{ name: 'missing', type: 'missing' }] }],
+      },
+    },
+    {
+      name: 'switch default',
+      step: { name: 'branch', type: 'switch', default: [{ name: 'missing', type: 'missing' }] },
+    },
+    {
+      name: 'fallback',
+      step: {
+        name: 'data',
+        type: 'data.set',
+        'on-failure': { fallback: [{ name: 'missing', type: 'missing' }] },
+      },
+    },
+  ])('validates an unvisited $name reference before any step executes', async ({ step }) => {
+    const store = createStore(execution([{ name: 'earlier', type: GRAPH }, step]));
+    const steps = catalog([]);
+    const executor = new WorkflowExecutor(steps, store.storage, log());
+    await expect(
+      executor.run({ scopeId: 'scope', workflowRunId: 'run-1', spaceId: 'default' })
+    ).rejects.toThrow('Unsupported remote step type "missing"');
+    expect(steps.run).not.toHaveBeenCalled();
+    expect(store.completed).toEqual([ExecutionStatus.FAILED]);
+  });
+  it('closes dispatch-scoped clients when the initial execution read fails', async () => {
+    const store = createStore(execution());
+    jest.spyOn(store.storage, 'getExecution').mockRejectedValue(new Error('read failed'));
+    const data: WorkflowDataPlaneApi = {
+      open: jest.fn(),
+      close: jest.fn(),
+      internal: jest.fn(),
+      user: jest.fn(),
+    };
+    const executor = new WorkflowExecutor(catalog([]), store.storage, log(), data);
+    await expect(
+      executor.run({ scopeId: 'scope', workflowRunId: 'run-1', spaceId: 'default' })
+    ).rejects.toThrow('read failed');
+    expect(data.close).toHaveBeenCalledWith('scope');
   });
 });
 

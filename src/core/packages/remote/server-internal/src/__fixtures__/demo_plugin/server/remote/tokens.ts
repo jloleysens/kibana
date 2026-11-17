@@ -31,3 +31,5 @@ export const DemoRootToken = createToken<{
   block(milliseconds: number): Promise<number>;
 }>('demo.root');
 export const DemoStepKind = createToken('demo.step');
+
+export const DemoValueToken = createToken<{ label(): string }>('demo.value');

@@ -12,9 +12,12 @@ import { isMainThread, threadId } from 'node:worker_threads';
 import { recordRemoteHeap, remotable } from '@kbn/core-remote-common';
 import { ExecutionStatus, isTerminalStatus } from '@kbn/workflows-runtime';
 import {
+  type WorkflowDataPlaneApi,
+  WorkflowDataPlaneToken,
   type WorkflowExecutorApi,
   type WorkflowLogApi,
   WorkflowLogToken,
+  type WorkflowRunRequest,
   type WorkflowStepCatalogApi,
   WorkflowStepCatalogToken,
   type WorkflowStorageApi,
@@ -26,6 +29,10 @@ interface ExecutableStep {
   type?: string;
   steps?: unknown;
   branches?: unknown;
+  else?: ExecutableStep[];
+  cases?: Array<{ steps?: ExecutableStep[] }>;
+  default?: ExecutableStep[];
+  'on-failure'?: { fallback?: ExecutableStep[] };
 }
 
 /**
@@ -61,7 +68,8 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
     @inject(WorkflowStorageToken)
     private readonly storage: WorkflowStorageApi,
     @inject(WorkflowLogToken)
-    private readonly log: WorkflowLogApi
+    private readonly log: WorkflowLogApi,
+    @inject(WorkflowDataPlaneToken) private readonly data?: WorkflowDataPlaneApi
   ) {}
 
   async placement(): Promise<{
@@ -82,11 +90,16 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
     return Date.now() - start;
   }
 
-  async run(request: {
-    scopeId: string;
-    workflowRunId: string;
-    spaceId: string;
-  }): Promise<{ status: string }> {
+  async run(request: WorkflowRunRequest): Promise<{ status: string }> {
+    await this.data?.open(request.scopeId, request.credentials);
+    try {
+      return await this.execute(request);
+    } finally {
+      await this.data?.close(request.scopeId);
+    }
+  }
+
+  private async execute(request: WorkflowRunRequest): Promise<{ status: string }> {
     const execution = await this.storage.getExecution(
       request.scopeId,
       request.workflowRunId,
@@ -110,6 +123,7 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
         storage: this.storage,
         log: this.log,
         resume,
+        esClient: this.data?.user(request.scopeId),
       });
       recordRemoteHeap('REMOTE_WORKER_HEAP', status);
       return { status };
@@ -126,8 +140,19 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
     }
   }
 
-  private assertRunnable(definition: { steps?: ExecutableStep[] } | undefined): void {
-    for (const step of walkSteps(definition?.steps)) {
+  private assertRunnable(
+    definition:
+      | {
+          steps?: ExecutableStep[];
+          settings?: { 'on-failure'?: { fallback?: ExecutableStep[] } };
+        }
+      | undefined
+  ): void {
+    const references = [
+      ...walkSteps(definition?.steps),
+      ...walkSteps(definition?.settings?.['on-failure']?.fallback),
+    ];
+    for (const step of references) {
       const stepName = step.name ?? step.type ?? 'step';
       if (!step.type) {
         throw new Error(`Remote step "${stepName}" is missing a type`);
@@ -137,7 +162,11 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
           `Unsupported remote step type "${step.type}". Parallel, human input, polling, and child workflows are not run in this remote proof.`
         );
       }
-      if (!IN_PROCESS_TYPES.has(step.type) && !this.steps.supports(step.type)) {
+      if (
+        !IN_PROCESS_TYPES.has(step.type) &&
+        !step.type.startsWith('elasticsearch.') &&
+        !this.steps.supports(step.type)
+      ) {
         throw new Error(
           `Unsupported remote step type "${step.type}". Experimental remote execution only runs steps registered for this anchor.`
         );
@@ -156,6 +185,10 @@ function walkSteps(steps: unknown): ExecutableStep[] {
       const record = step as ExecutableStep;
       found.push(record);
       found.push(...walkSteps(record.steps));
+      found.push(...walkSteps(record.else));
+      found.push(...walkSteps(record.default));
+      found.push(...walkSteps(record['on-failure']?.fallback));
+      for (const branch of record.cases ?? []) found.push(...walkSteps(branch.steps));
       if (Array.isArray(record.branches)) {
         for (const branch of record.branches) {
           if (branch && typeof branch === 'object') {

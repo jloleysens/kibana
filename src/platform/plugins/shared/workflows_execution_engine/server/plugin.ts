@@ -20,6 +20,7 @@ import type {
   PluginInitializerContext,
 } from '@kbn/core/server';
 import { recordRemoteHeap } from '@kbn/core-remote-common';
+import type { ScopeLookup } from '@kbn/core-remote-server';
 import {
   ExecutionStatus,
   isTerminalStatus,
@@ -81,7 +82,10 @@ import {
   stampWorkflowTaskRunEventFields,
 } from './lib/workflow_task_run_event_fields';
 import { WorkflowsMeteringService } from './metering/metering_service';
+import { CoreDataPlane } from './remote/core_data_plane';
 import {
+  WorkflowControlToken,
+  WorkflowDataPlaneToken,
   type WorkflowExecutorApi,
   WorkflowExecutorToken,
   WorkflowLogToken,
@@ -89,11 +93,16 @@ import {
   WorkflowStepKind,
   WorkflowStorageToken,
 } from './remote/tokens';
+import { WorkflowControl } from './remote/workflow_control';
+import { workflowDispatchCredentials } from './remote/workflow_dispatch_credentials';
 import { WorkflowLog } from './remote/workflow_log';
 import { WorkflowStorage } from './remote/workflow_storage';
 import { createDataClientBundle, type DataClientBundle } from './repositories/data_access_layer';
 import { LogsRepository } from './repositories/logs_repository';
-import { initializeLogsRepositoryDataStream } from './repositories/logs_repository/data_stream';
+import {
+  initializeDataStreamClient,
+  initializeLogsRepositoryDataStream,
+} from './repositories/logs_repository/data_stream';
 import { StepExecutionRepository } from './repositories/step_execution_repository';
 import { WorkflowExecutionRepository } from './repositories/workflow_execution_repository';
 import {
@@ -427,7 +436,12 @@ export class WorkflowsExecutionEnginePlugin
                   const session = await core.remote.whenReady<WorkflowExecutorApi>('workflows');
                   const scopeId = session.openScope(fakeRequest);
                   try {
-                    await session.stub.run({ scopeId, workflowRunId, spaceId });
+                    await session.stub.run({
+                      scopeId,
+                      workflowRunId,
+                      spaceId,
+                      credentials: workflowDispatchCredentials(fakeRequest),
+                    });
                   } finally {
                     session.closeScope(scopeId);
                     recordRemoteHeap('MAIN_HEAP', 'after-remote-run');
@@ -725,7 +739,12 @@ export class WorkflowsExecutionEnginePlugin
                   const session = await core.remote.whenReady<WorkflowExecutorApi>('workflows');
                   const scopeId = session.openScope(fakeRequest);
                   try {
-                    await session.stub.run({ scopeId, workflowRunId, spaceId });
+                    await session.stub.run({
+                      scopeId,
+                      workflowRunId,
+                      spaceId,
+                      credentials: workflowDispatchCredentials(fakeRequest),
+                    });
                   } finally {
                     session.closeScope(scopeId);
                     recordRemoteHeap('MAIN_HEAP', 'after-remote-resume');
@@ -1283,7 +1302,7 @@ export class WorkflowsExecutionEnginePlugin
 
     if (this.config.remoteExecution.enabled && this.coreSetup) {
       const logsRepository = new LogsRepository(coreStart.dataStreams, this.logger);
-      this.coreSetup.remote.bind(WorkflowStorageToken, (scopes) => {
+      const storageFactory = (scopes: ScopeLookup) => {
         return new WorkflowStorage(
           workflowExecutionRepository,
           stepExecutionRepository,
@@ -1314,8 +1333,24 @@ export class WorkflowsExecutionEnginePlugin
             },
           }
         );
+      };
+      this.coreSetup.remote.bindInProcess(WorkflowStorageToken, storageFactory);
+      this.coreSetup.remote.bindInProcess(
+        WorkflowDataPlaneToken,
+        (scopes) => new CoreDataPlane(coreStart, scopes)
+      );
+      this.coreSetup.remote.bind(WorkflowControlToken, (scopes) => {
+        const storage = storageFactory(scopes);
+        return new WorkflowControl({
+          scheduleResume: (...args) => storage.scheduleResume(...args),
+          executeConnector: (...args) => storage.executeConnector(...args),
+          info: (message) => this.logger.info(message),
+          initializeLogs: async () => {
+            await initializeDataStreamClient(coreStart.dataStreams);
+          },
+        });
       });
-      this.coreSetup.remote.bind(
+      this.coreSetup.remote.bindInProcess(
         WorkflowLogToken,
         () => new WorkflowLog(this.logger, logsRepository)
       );

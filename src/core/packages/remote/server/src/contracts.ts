@@ -41,5 +41,7 @@ export interface RemoteSession<T> {
 export interface RemoteSetup {
   register(registration: RemoteRegistration): void;
   bind(token: ServiceToken<unknown>, factory: (scopes: ScopeLookup) => object): void;
+  /** Uses Core-owned clients instead of direct worker clients for an executor capability. */
+  bindInProcess(token: ServiceToken<unknown>, factory: (scopes: ScopeLookup) => object): void;
   whenReady<T>(id: string): Promise<RemoteSession<T>>;
 }
