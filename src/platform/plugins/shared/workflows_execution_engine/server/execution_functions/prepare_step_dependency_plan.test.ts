@@ -94,6 +94,22 @@ describe('prepareStepDependencyPlan', () => {
     expect(changed.plan.definitionHash).toBe(workflowDefinitionHash(edited));
   });
 
+  it('builds the immutable graph only on a cache miss and invalidates definition edits', () => {
+    const workflow = definition('lazy-compiled-graph');
+    const build = jest.fn(() => WorkflowGraph.fromWorkflowDefinition(workflow));
+    const first = prepareStepDependencyPlan(workflow, build);
+    const second = prepareStepDependencyPlan(structuredClone(workflow), build);
+    expect(build).toHaveBeenCalledTimes(1);
+    expect(second.graph).toBe(first.graph);
+    expect(second.plan).toBe(first.plan);
+    const edited = { ...workflow, description: 'changed' };
+    const next = prepareStepDependencyPlan(edited, () =>
+      WorkflowGraph.fromWorkflowDefinition(edited)
+    );
+    expect(next.cached).toBe(false);
+    expect(next.graph).not.toBe(first.graph);
+  });
+
   it('does not ship literal input payloads or templates in the plan', () => {
     const workflow = definition('dependency-payload');
     workflow.steps.push({

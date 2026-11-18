@@ -296,6 +296,34 @@ describe('runWorkflow', () => {
         expect(mockWorkflowExecutionLoop).toHaveBeenCalled();
       });
 
+      it('does not touch deferred local runtime dependencies on remote dispatch', async () => {
+        const prepared = buildMockSetupDependenciesReturn({
+          workflowRuntime,
+          workflowExecutionRepository,
+        });
+        prepared.workflowExecutionState.getWorkflowExecution = mockGetWorkflowExecutionFromState;
+        const untouched = jest.fn(() => {
+          throw new Error('Local runtime was assembled');
+        });
+        for (const key of [
+          'workflowRuntime',
+          'stepExecutionRuntimeFactory',
+          'stepIoService',
+          'workflowLogger',
+          'eventQueue',
+          'nodesFactory',
+          'workflowExecutionGraph',
+          'workflowExecutionCursor',
+        ]) {
+          Object.defineProperty(prepared, key, { get: untouched });
+        }
+        mockSetupDependencies.mockResolvedValue(prepared);
+        const executeRemote = jest.fn().mockResolvedValue({ status: ExecutionStatus.COMPLETED });
+        await runWorkflowWithDefaults({ executeRemote });
+        expect(executeRemote).toHaveBeenCalled();
+        expect(untouched).not.toHaveBeenCalled();
+      });
+
       it('calls only the remote loop after admission', async () => {
         const executeRemote = jest.fn().mockResolvedValue({ status: ExecutionStatus.COMPLETED });
         await runWorkflowWithDefaults({ executeRemote });

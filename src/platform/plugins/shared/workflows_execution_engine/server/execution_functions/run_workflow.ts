@@ -107,21 +107,8 @@ async function runWorkflowWithRequest({
     setupSpan?.end();
   }
 
-  const {
-    dependencyPlan,
-    workflowRuntime,
-    stepExecutionRuntimeFactory,
-    workflowExecutionState,
-    stepIoService,
-    workflowLogger,
-    eventQueue,
-    nodesFactory,
-    workflowExecutionGraph,
-    workflowTaskManager,
-    esClient,
-    telemetryClient,
-    workflowExecutionCursor,
-  } = setupResult;
+  const { dependencyPlan, workflowExecutionState, workflowTaskManager, telemetryClient } =
+    setupResult;
 
   const execution = workflowExecutionState.getWorkflowExecution();
   if (isTerminalStatus(execution.status)) {
@@ -257,6 +244,18 @@ async function runWorkflowWithRequest({
     });
     return;
   }
+
+  const {
+    workflowExecutionGraph,
+    workflowRuntime,
+    stepExecutionRuntimeFactory,
+    stepIoService,
+    workflowLogger,
+    eventQueue,
+    nodesFactory,
+    workflowExecutionCursor,
+    esClient,
+  } = setupResult;
 
   // Span for runtime initialization (graph building, topsort, etc.)
   const startSpan = apm.startSpan('workflow runtime start', 'workflow', 'initialization');

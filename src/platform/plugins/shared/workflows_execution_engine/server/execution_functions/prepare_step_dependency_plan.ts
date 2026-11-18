@@ -35,21 +35,22 @@ export const sourceStepDependencyAnalyzer: StepDependencyAnalyzer = {
   },
 };
 
-const plans = new Map<string, StepDependencyPlan>();
+const plans = new Map<string, { plan: StepDependencyPlan; graph: WorkflowGraph }>();
 const MAX_CACHED_DEFINITIONS = 64;
 
 /** Memoizes definition-only IO dependencies on the coordinator; no run inputs or outputs are cached. */
 export const prepareStepDependencyPlan = (
   definition: EsWorkflowExecution['workflowDefinition'],
-  graph: WorkflowGraph
-): { plan: StepDependencyPlan; cached: boolean } => {
+  graphOrBuild: WorkflowGraph | (() => WorkflowGraph)
+): { plan: StepDependencyPlan; graph: WorkflowGraph; cached: boolean } => {
   const definitionHash = workflowDefinitionHash(definition);
   const existing = plans.get(definitionHash);
   if (existing) {
     plans.delete(definitionHash);
     plans.set(definitionHash, existing);
-    return { plan: existing, cached: true };
+    return { ...existing, cached: true };
   }
+  const graph = typeof graphOrBuild === 'function' ? graphOrBuild() : graphOrBuild;
   const nodes = new Map<string, readonly string[] | null>();
   const loops = new Map<string, readonly string[] | null>();
   for (const id of graph.topologicalOrder) {
@@ -79,10 +80,10 @@ export const prepareStepDependencyPlan = (
     nodes: Object.fromEntries(nodes),
     loops: Object.fromEntries(loops),
   };
-  plans.set(definitionHash, plan);
+  plans.set(definitionHash, { plan, graph });
   if (plans.size > MAX_CACHED_DEFINITIONS) {
     const oldest = plans.keys().next().value;
     if (oldest !== undefined) plans.delete(oldest);
   }
-  return { plan, cached: false };
+  return { plan, graph, cached: false };
 };

@@ -92,20 +92,7 @@ async function resumeWorkflowWithRequest({
     throw error;
   }
 
-  const {
-    dependencyPlan,
-    workflowRuntime,
-    stepExecutionRuntimeFactory,
-    workflowExecutionState,
-    stepIoService,
-    workflowLogger,
-    eventQueue,
-    nodesFactory,
-    workflowExecutionGraph,
-    esClient,
-    workflowTaskManager,
-    workflowExecutionCursor,
-  } = setupResult;
+  const { dependencyPlan, workflowExecutionState, workflowTaskManager } = setupResult;
 
   const loadedExecution = workflowExecutionState.getWorkflowExecution();
   if (isTerminalStatus(loadedExecution.status)) {
@@ -117,13 +104,16 @@ async function resumeWorkflowWithRequest({
 
   const waitingForInput = loadedExecution.status === ExecutionStatus.WAITING_FOR_INPUT;
   const hasResumeInput = loadedExecution.context?.resumeInput != null;
-  const node = loadedExecution.currentNodeId ? workflowRuntime.getCurrentNode() : undefined;
+  const node = loadedExecution.currentNodeId
+    ? setupResult.workflowRuntime.getCurrentNode()
+    : undefined;
   if (
     !loadedExecution.cancelRequested &&
     (loadedExecution.status === ExecutionStatus.WAITING || (waitingForInput && !hasResumeInput)) &&
     node?.type !== 'enter-parallel' &&
     node?.stepId
   ) {
+    const { stepIoService, workflowExecutionGraph, workflowExecutionCursor } = setupResult;
     // Read persisted metadata before deciding whether this notification may advance the workflow.
     await stepIoService.load();
     const stepExecution = workflowExecutionState.getLatestStepExecution(node.stepId);
@@ -162,6 +152,18 @@ async function resumeWorkflowWithRequest({
     });
     return {};
   }
+
+  const {
+    workflowExecutionGraph,
+    workflowRuntime,
+    stepExecutionRuntimeFactory,
+    stepIoService,
+    workflowLogger,
+    eventQueue,
+    nodesFactory,
+    workflowExecutionCursor,
+    esClient,
+  } = setupResult;
 
   await workflowRuntime.resume();
 
