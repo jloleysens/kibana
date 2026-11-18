@@ -138,7 +138,7 @@ export async function setupDependencies(
 
   const { plan: dependencyPlan, cached: dependencyCached } = preparedDefinition;
   let compiledGraph = preparedDefinition.graph;
-  recordRemoteTiming('definition_dependencies', {
+  recordRemoteTiming('definition_preparation', {
     executionId: workflowExecution.id,
     cached: dependencyCached,
     durationMs: performance.now() - dependencyStarted,
