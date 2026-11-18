@@ -127,6 +127,29 @@ const createMockWorkflow = (overrides: Partial<EsWorkflow> = {}): EsWorkflow =>
   } as EsWorkflow);
 
 describe('WorkflowExecuteStepImpl', () => {
+  it.each(['workflow.execute', 'workflow.executeAsync'] as const)(
+    'does not complete or navigate %s after cancellation during child scheduling',
+    async (type) => {
+      const init = createMockInit();
+      init.node.type = type;
+      init.node.stepType = type;
+      init.node.configuration.type = type;
+      const repository = init.workflowRepository as jest.Mocked<WorkflowRepository>;
+      repository.getWorkflow.mockResolvedValue(createMockWorkflow());
+      const engine =
+        init.workflowsExecutionEngine as jest.Mocked<WorkflowsExecutionEnginePluginStart>;
+      engine.executeWorkflow.mockImplementation(async () => {
+        init.stepExecutionRuntime.abortController.abort();
+        return { workflowExecutionId: 'cancelled-child-start' };
+      });
+      const implementation = new WorkflowExecuteStepImpl(init);
+      await implementation.run();
+      expect(init.stepExecutionRuntime.finishStep).not.toHaveBeenCalled();
+      expect(init.stepExecutionRuntime.failStep).not.toHaveBeenCalled();
+      expect(init.workflowExecutionRuntime.navigateToNextNode).not.toHaveBeenCalled();
+    }
+  );
+
   afterEach(() => {
     jest.restoreAllMocks();
   });
