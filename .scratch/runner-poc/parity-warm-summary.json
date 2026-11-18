@@ -1,0 +1,10 @@
+{
+  "n": 10,
+  "excludedIndex": 0,
+  "medianMs": 500.7554931640625,
+  "p10Ms": 457.0227294921875,
+  "p90Ms": 518.1636962890625,
+  "minMs": 440.462158203125,
+  "maxMs": 587.27099609375,
+  "note": "Clean warm child/direct, plain_index; default grant; 2.5s gap. No seam/timing/GC/load instrumentation. Independent restarted stack: not a causal speed comparison."
+}

@@ -1,0 +1,114 @@
+{
+  "parity-final-child": {
+    "WorkflowControl.persistence.request": {
+      "calls": 1,
+      "totalBytes": 2,
+      "minBytes": 2,
+      "maxBytes": 2
+    },
+    "WorkflowControl.persistence.response": {
+      "calls": 1,
+      "totalBytes": 4,
+      "minBytes": 4,
+      "maxBytes": 4
+    },
+    "WorkflowStepRunner.invoke.request": {
+      "calls": 12,
+      "totalBytes": 6690,
+      "minBytes": 316,
+      "maxBytes": 899
+    },
+    "WorkflowStepRunner.invoke.response": {
+      "calls": 10,
+      "totalBytes": 1226,
+      "minBytes": 0,
+      "maxBytes": 356
+    }
+  },
+  "parity-final-stream-child": {
+    "WorkflowControl.persistence.request": {
+      "calls": 1,
+      "totalBytes": 2,
+      "minBytes": 2,
+      "maxBytes": 2
+    },
+    "WorkflowControl.persistence.response": {
+      "calls": 1,
+      "totalBytes": 708,
+      "minBytes": 708,
+      "maxBytes": 708
+    },
+    "WorkflowStorage.getExecution.request": {
+      "calls": 32,
+      "totalBytes": 2848,
+      "minBytes": 89,
+      "maxBytes": 89
+    },
+    "WorkflowStorage.getExecution.response": {
+      "calls": 32,
+      "totalBytes": 42993,
+      "minBytes": 833,
+      "maxBytes": 2993
+    },
+    "WorkflowStorage.updateExecution.request": {
+      "calls": 109,
+      "totalBytes": 62092,
+      "minBytes": 105,
+      "maxBytes": 2784
+    },
+    "WorkflowStorage.updateExecution.response": {
+      "calls": 108,
+      "totalBytes": 0,
+      "minBytes": 0,
+      "maxBytes": 0
+    },
+    "WorkflowStorage.getCancelState.request": {
+      "calls": 156,
+      "totalBytes": 13884,
+      "minBytes": 89,
+      "maxBytes": 89
+    },
+    "WorkflowStorage.getCancelState.response": {
+      "calls": 156,
+      "totalBytes": 828,
+      "minBytes": 2,
+      "maxBytes": 88
+    },
+    "WorkflowStepRunner.invoke.request": {
+      "calls": 12,
+      "totalBytes": 6690,
+      "minBytes": 316,
+      "maxBytes": 899
+    },
+    "WorkflowStepRunner.invoke.response": {
+      "calls": 10,
+      "totalBytes": 1226,
+      "minBytes": 0,
+      "maxBytes": 356
+    },
+    "WorkflowStorage.upsertSteps.request": {
+      "calls": 39,
+      "totalBytes": 131942,
+      "minBytes": 181,
+      "maxBytes": 30760
+    },
+    "WorkflowStorage.upsertSteps.response": {
+      "calls": 39,
+      "totalBytes": 0,
+      "minBytes": 0,
+      "maxBytes": 0
+    },
+    "WorkflowStorage.getSteps.request": {
+      "calls": 18,
+      "totalBytes": 2518,
+      "minBytes": 119,
+      "maxBytes": 326
+    },
+    "WorkflowStorage.getSteps.response": {
+      "calls": 18,
+      "totalBytes": 39488,
+      "minBytes": 89,
+      "maxBytes": 25166
+    }
+  }
+}

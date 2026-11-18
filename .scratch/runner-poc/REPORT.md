@@ -1,3 +1,64 @@
+# Remotable workflow runner — parity follow-up (current)
+
+## Outcome
+
+Parity implementation: **c188d7007079** (on 017ff597). Removed the remote core/storage refusals. Parallel, HITL/approval notifications and resume, sync/async child workflows, workflow.output/fail, loop control, all registered extension phases, registered actions/spec connectors and Elasticsearch/Kibana request steps have native or by-reference coordinator paths in **both child_process and source-loopback in_process**. Unknown registrations still fail normally. No credentials policy, budget, package count, disposal owner or authoring/UI dependency relaxation.
+
+**COVERAGE.md** enumerates890 advertised step types:16 core,111 extension-only,741 action/spec operations,9 Elasticsearch and13 Kibana operations; plus33 cross-cutting capabilities. **923 supported routes/capabilities,0 identified runtime known issues per backend.** This counts implementation/shared-contract support, **not890 independently validated external SaaS outcomes**. Scheduled/event-triggered initial runs, every parallel/concurrency option and every third-party handler/channel were not individually persisted in the final profiles; the matrix names their shared-code/tests and states those evidence gaps. No genuinely impossible capability was identified. Independent reviewer acceptance is still required.
+
+## Fixes and placement
+
+- **P1 confirmed:** StepIoService.flush already wrote both document kinds, but overlapping drained writes could finish out of order. Full flushes now queue; coordinator phases await earlier writes and current step IO + execution references. Deterministic ENGINE negative holds an older execution-reference snapshot across a fast data.set immediately followed by coordinator context preparation: before fix run fails, after fix current output is seen. Separate IO queue regression also fails before fix. Raw parity-p1-fast-{negative,positive}.log and parity-p1-queue-negative.log. Earlier unsuccessful race probes retained, not presented as reproduction.
+- **P2 confirmed:** describe/preflight now accepts registered spec connector types, ordinary Actions types and subactions; base-type isSpecConnector metadata preserves original transport limits. Added the missing executeSystemConnector capability for HTTP and HITL notifications. Scope cancellation reaches both saved/system connectors.
+- Parallel and HITL keep the EXISTING lazy native implementations and branch/state/resume algorithms. Dispatch carries only scalar HITL configuration; no idle handler loading.
+- Service-heavy child workflows and Kibana request nodes execute the EXISTING node implementation on coordinator using persisted execution/node/scope references. No child definition/context snapshot round-trip. Only target step IO/state is persisted there; reply is empty, worker reloads that one step and retains workflow/navigation/error/usage ownership. Cancellation waits an in-flight child-start phase to settle/persist its id before reconstructing onCancel; late completion cannot overwrite worker cancellation.
+- **Data streams:** worker lazily obtains the EXISTING initialized coordinator WorkflowStorage as a capability. Same Core data-stream DAL, version/metadata/legacy-index lifecycle, no duplicate persistence algorithm or schema/timer graph in worker. Plain-index worker storage stays native; in_process keeps Core clients. Previous fail-fast limitation is removed, not worked around by disabling remote.
+- Task scheduling capability now preserves global-timeout/ensure-wake/wake semantics and the sync-child lost-wakeup handshake. Scheduling flushes current references/state first. WAITING_FOR_CHILD is a resume state.
+
+## Persisted business evidence (final source artifact)
+
+Artifact **parity-final/workflows**, **9,857,499bytes**; source c188d7007079. Identical workloads passed all four profiles:
+
+| Profile | Backend | Storage | Terminal top-level runs | Durable logs |
+|---|---|---|---:|---:|
+| parity-final-child | child_process | plain_index |21|484|
+| parity-final-loopback | source-loopback in_process | plain_index |21|598|
+| parity-final-stream-child | child_process | data_stream |21|483|
+| parity-final-stream-loopback | source-loopback in_process | data_stream |21|596|
+
+Each21 comprises12 business scenarios plus **nine exact existing engine scenario YAMLs with original business assertions**. Source bodies/line numbers/hashes stored per execution, API-required wrapper metadata only. Reused workflow_output/workflow_fail/wait_for_input/parallel/variables/output_eviction scenarios:36 real runs total. This is NOT a claim all440 original Jest assertions ran remotely. Spawned children are additional, not counted as top-level samples.
+
+Real12-scenario workload: owned HTTP system + actual registered Jenkins spec connector; if/foreach/while/switch, break/continue and1s inline wait; coordinator404 retry twice + fallback + continue; step timeout + continue and workflow timed_out; parallel branch progress, durable6s branch park/resume and exact gathered values; input/approval HTTP notification delivery with populated external resume links, API resume and downstream human values; sync child durable wait and parent WAITING_FOR_CHILD -> automatic authenticated parent resume with child output; async child; Kibana request; user cancellation with downstream step absent. Stream artifacts prove actual .ds execution AND step backing indices. No task/document edits to force outcomes.
+
+Evidence: parity-final-*/{outcome,existing}/validation.json + definition/execution/step files; parity-final-artifact-validation.json independently verifies all84 terminal executions and durable logs. **Additional final-artifact native ES + actual Cases runs in both backends**: parity-native-child/validation.json and parity-native-loopback/outcome/validation.json prove run-user native ES hit1, fast native prefix consumed by coordinator, actual Case GET title Native hits1.
+
+Harness corrections retained: output.response for HITL, output.data for HTTP, externalApproveLink for approval (not input's externalFormLink), synthetic retry/fallback wrapper docs distinguished by stepType, NRT step refresh for validation only, empty cancel response tolerated. One long combined four-profile shell exceeded the tool240s deadline AFTER both data-stream business validations; restored base config, confirmed no harness remained, completed remaining existing-scenario run separately. All final validation files exist. Initial independent logs probe lacked restricted-index product origin; corrected header, retry passes. None of these are silently counted as successful first attempts.
+
+## Leanness, seam cost, timing
+
+- Final bundle **9,857,499bytes**, +4,732 vs pre-parity9,852,767 (+0.048%); unchanged ceiling10,000,000.
+- Fresh idle n3 post-GC RSS **69.25MiB median** (69.016–69.344); readiness **49.04ms median** (46.48–49.20). No attributable memory regression versus earlier~69.3MiB samples.
+- Idle loaded chunk bytes **500,479**; **320** source inputs (same count), +1,051 chunk bytes versus earlier499,428. Exact same five implementation roots (executor/data/storage/log/catalog shells); **zero step/template/Zod/Joi/i18n implementations** in loaded idle set. No budget raises or sideEffects:false. Raw parity-idle-{clean,instrumented,summary,inputs}.json, parity-idle-loads.jsonl; full tooling budget suite green.
+- Data-stream seam measured over the final matching21-run workload (including resumes): **296,593 application-JSON bytes** across WorkflowStorage request/reply records. First lazy capability lookup:2-byte request/708-byte diagnostic response versus2/4 for plain-index null selection. Selection once/host, not idle/per-call; exact wire framing retained separately. Data IO must cross for coordinator placement (largest upsert30,760bytes; getSteps reply25,166), not hidden inside a tiny control request. Native plain-index avoids those storage RPCs. This is a workload-level seam price, not a paired latency causal claim; timer-driven flush counts differ.
+- Generic step/node invocation requests in both matching child workloads:12 calls,316–899bytes (6,690 total), including child/Kibana references, no context/output snapshots. Coordinator step/node responses10 successful rows,1,226bytes total; thrown phases naturally lack a successful response log. Raw parity-seam-summary.json and profile seam/wire.jsonl.
+- Conservative clean warm child/direct recheck after hot-path queue/selection change:11 persisted output/log-validated runs, index0excluded, **n10 median500.76ms [p10 457.02,p90 518.16] request -> first persisted step**, 2.5s gap, default fresh credential granting, no seam/GC/load/timing instrumentation. Raw parity-final-warm/runs/*, parity-warm-summary.json. Different restarted security-refresh phase/cadence: NOT an attributable slowdown/speedup versus prior reviews. No full cold/TM/backend latency matrix rerun claimed.
+
+## Validation and remaining review
+
+- Final engine remote/shared entry/IO:11 suites220 tests. Engine scoped types and read-only25-file lint pass.
+- Existing local engine integration suite:28 suites440 tests pass (existing forceExit config unchanged). Concurrency4 suites61; notification helpers4 suites63.
+- Tooling/real graph/both-backend closure+idle budgets:5 suites35 tests.
+- detectOpenHandles remote+IO rerun:9 suites141 tests passes with no remaining-handle report. Earlier ordinary combined engine run warned about delayed Jest exit; retained parity-final-engine-suite.log, not suppressed with a new forceExit option.
+- Raw parity-final-{engine-suite,tooling-suite,types,lint}.log; parity-existing-local-suites.log; parity-{concurrency-suite,notification-suite,open-handles}.log.
+
+Cleanup and final documentation commit recorded in LOG.md. No push/PR or Right Hand completion mutation. Full independent reviewer gate remains parent-owned; evidence gaps in COVERAGE are not a fabricated parity acceptance verdict.
+
+---
+
+# Historical pre-parity reports (superseded where noted above)
+
+The following prior results are preserved for traceability. In particular, their unsupported-core and plain_index-only limitations are HISTORICAL and removed by the parity implementation above. Prior timing distributions are not recomputed as current-source measurements.
+
 # Remotable workflow runner PoC — continuation results
 
 ## Plain-language result

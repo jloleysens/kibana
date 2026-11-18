@@ -1,0 +1,25 @@
+{
+  "inventoryStepTypes": 890,
+  "categories": {
+    "actions/spec connector": 741,
+    "extension": 111,
+    "core": 16,
+    "Elasticsearch request": 9,
+    "Kibana request": 13
+  },
+  "crosscuttingCapabilities": 33,
+  "perBackend": {
+    "child_process": {
+      "supported": 923,
+      "knownIssue": 0
+    },
+    "in_process": {
+      "supported": 923,
+      "knownIssue": 0
+    }
+  },
+  "realFourProfileTerminalRuns": 84,
+  "reusedExistingScenariosPerProfile": 9,
+  "nativeAdditionalTerminalRuns": 2,
+  "qualification": "Supported means native implementation or registered generic capability path exists and its shared contract is tested; not 890 independent external-provider business outcomes. Evidence gaps are explicit, not recast as impossible runtime limitations."
+}

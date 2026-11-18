@@ -1,0 +1,24 @@
+{
+  "bundleBytes": 9857499,
+  "idleLoadedChunkBytes": 500479,
+  "idleSourceInputCount": 320,
+  "idleRssBytes": [
+    72368128,
+    72613888,
+    72712192
+  ],
+  "medianRssMiB": 69.25,
+  "readyMs": [
+    46.4765625,
+    49.03955078125,
+    49.204833984375
+  ],
+  "implementationRoots": [
+    "/Users/jloleysens/.right-hand/projects/jloleysens-kibana-760e419e/worktrees/wt-14/src/platform/plugins/shared/workflows_execution_engine/server/remote/executor_data_plane.ts",
+    "/Users/jloleysens/.right-hand/projects/jloleysens-kibana-760e419e/worktrees/wt-14/src/platform/plugins/shared/workflows_execution_engine/server/remote/executor_storage.ts",
+    "/Users/jloleysens/.right-hand/projects/jloleysens-kibana-760e419e/worktrees/wt-14/src/platform/plugins/shared/workflows_execution_engine/server/remote/executor_log.ts",
+    "/Users/jloleysens/.right-hand/projects/jloleysens-kibana-760e419e/worktrees/wt-14/src/platform/plugins/shared/workflows_extensions/server/remote/step_catalog.ts",
+    "/Users/jloleysens/.right-hand/projects/jloleysens-kibana-760e419e/worktrees/wt-14/src/platform/plugins/shared/workflows_execution_engine/server/remote/workflow_executor.ts"
+  ],
+  "forbiddenLoadedInputs": []
+}
