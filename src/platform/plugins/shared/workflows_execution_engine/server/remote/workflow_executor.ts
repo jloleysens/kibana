@@ -12,6 +12,8 @@ import { isMainThread, threadId } from 'node:worker_threads';
 import { recordRemoteHeap, recordRemoteTiming, remotable } from '@kbn/core-remote-common';
 import { ExecutionStatus, isTerminalStatus } from '@kbn/workflows-runtime';
 import {
+  type WorkflowChildApi,
+  WorkflowChildToken,
   type WorkflowDataPlaneApi,
   WorkflowDataPlaneToken,
   type WorkflowExecutorApi,
@@ -73,7 +75,8 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
     @inject(WorkflowLogToken)
     private readonly log: WorkflowLogApi,
     @inject(WorkflowDataPlaneToken) private readonly data?: WorkflowDataPlaneApi,
-    @inject(WorkflowStepRunnerToken) private readonly stepRunner?: WorkflowStepRunnerApi
+    @inject(WorkflowStepRunnerToken) private readonly stepRunner?: WorkflowStepRunnerApi,
+    @inject(WorkflowChildToken) private readonly children?: WorkflowChildApi
   ) {}
 
   async placement(): Promise<{
@@ -179,6 +182,7 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
         resume,
         esClient: this.data?.user(request.scopeId),
         facts: request.facts,
+        children: this.children,
         remoteSteps: this.stepRunner ? { runner: this.stepRunner, descriptions } : undefined,
       });
       return outcome;

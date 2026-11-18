@@ -9,6 +9,7 @@
 
 import type { RemoteModule } from '@kbn/core-remote-common';
 import {
+  WorkflowChildToken,
   WorkflowControlToken,
   WorkflowDataPlaneToken,
   WorkflowExecutorToken,
@@ -29,6 +30,12 @@ export type { WorkflowExecutorApi, WorkflowLogApi, WorkflowStorageApi } from './
 
 export const remoteModule: RemoteModule = {
   providers: [
+    {
+      token: WorkflowChildToken,
+      placement: 'coordinator',
+      modulePath: require.resolve('./native_child_api'),
+      exportName: 'NativeChildApi',
+    },
     {
       token: WorkflowStepRunnerToken,
       placement: 'coordinator',

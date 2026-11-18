@@ -41,9 +41,18 @@ interface SubWorkflowWaitState extends Record<string, unknown> {
 
 export class WorkflowExecuteSyncStrategy {
   constructor(
-    private workflowsExecutionEngine: WorkflowsExecutionEnginePluginStart,
-    private workflowExecutionRepository: WorkflowExecutionRepository,
-    private stepExecutionRepository: StepExecutionRepository,
+    private workflowsExecutionEngine: Pick<
+      WorkflowsExecutionEnginePluginStart,
+      'executeWorkflow' | 'cancelWorkflowExecution'
+    >,
+    private workflowExecutionRepository: Pick<
+      WorkflowExecutionRepository,
+      'getWorkflowExecutionById'
+    >,
+    private stepExecutionRepository: Pick<
+      StepExecutionRepository,
+      'getStepExecutionsByWorkflowExecution'
+    >,
     private stepExecutionRuntime: StepExecutionRuntime,
     private workflowLogger: IWorkflowEventLogger
   ) {}

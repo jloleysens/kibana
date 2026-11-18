@@ -32,14 +32,17 @@ export interface WorkflowExecuteStepImplInit {
   node: WorkflowExecuteGraphNode | WorkflowExecuteAsyncGraphNode;
   stepExecutionRuntime: StepExecutionRuntime;
   workflowExecutionRuntime: WorkflowExecutionRuntimeManager;
-  workflowRepository: WorkflowRepository;
+  workflowRepository: Pick<WorkflowRepository, 'getWorkflow'>;
   spaceId: string;
   request: KibanaRequest;
-  workflowsExecutionEngine: WorkflowsExecutionEnginePluginStart;
-  workflowExecutionRepository: WorkflowExecutionRepository;
-  stepExecutionRepository: StepExecutionRepository;
+  workflowsExecutionEngine: Pick<
+    WorkflowsExecutionEnginePluginStart,
+    'executeWorkflow' | 'cancelWorkflowExecution'
+  >;
+  workflowExecutionRepository: Pick<WorkflowExecutionRepository, 'getWorkflowExecutionById'>;
+  stepExecutionRepository: Pick<StepExecutionRepository, 'getStepExecutionsByWorkflowExecution'>;
   workflowLogger: IWorkflowEventLogger;
-  config: WorkflowsExecutionEngineConfig;
+  config: Pick<WorkflowsExecutionEngineConfig, 'maxWorkflowDepth'>;
 }
 
 export class WorkflowExecuteStepImpl implements NodeImplementation, CancellableNode {

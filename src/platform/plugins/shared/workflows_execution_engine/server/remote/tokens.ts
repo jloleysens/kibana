@@ -10,6 +10,7 @@
 import type { ElasticsearchClient } from '@kbn/core/server';
 import { createToken } from '@kbn/core-di';
 import type {
+  EsWorkflow,
   EsWorkflowExecution,
   EsWorkflowStepExecution,
   SerializedError,
@@ -239,4 +240,31 @@ export interface WorkflowDispatchFacts {
   readonly maxResponseSizeBytes: number;
   readonly evictionMinBytes: number;
   readonly hitlExternalResumeEnabled?: boolean;
+  readonly maxWorkflowDepth?: number;
 }
+
+export interface WorkflowChildApi {
+  getWorkflow(
+    scopeId: string,
+    parentId: string,
+    spaceId: string,
+    workflowId: string
+  ): Promise<EsWorkflow | null>;
+  start(
+    scopeId: string,
+    parentId: string,
+    spaceId: string,
+    request: {
+      readonly workflowId: string;
+      readonly inputs: Record<string, unknown>;
+      readonly stepId: string;
+      readonly invocation: 'sync' | 'async';
+      readonly inheritParentIdentity: boolean;
+    }
+  ): Promise<{ workflowExecutionId: string }>;
+  getExecution(scopeId: string, id: string, spaceId: string): Promise<EsWorkflowExecution | null>;
+  getSteps(scopeId: string, id: string, ids?: string[]): Promise<EsWorkflowStepExecution[]>;
+  cancel(scopeId: string, id: string, spaceId: string): Promise<void>;
+}
+
+export const WorkflowChildToken = createToken<WorkflowChildApi>('workflows.child');

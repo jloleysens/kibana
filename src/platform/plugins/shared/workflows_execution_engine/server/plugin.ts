@@ -85,7 +85,9 @@ import {
 import { WorkflowsMeteringService } from './metering/metering_service';
 import { CoreDataPlane } from './remote/core_data_plane';
 import { dispatchWorkflow } from './remote/dispatch_workflow';
+import { NativeChildApi } from './remote/native_child_api';
 import {
+  WorkflowChildToken,
   WorkflowControlToken,
   WorkflowDataPlaneToken,
   WorkflowExecutorToken,
@@ -475,6 +477,7 @@ export class WorkflowsExecutionEnginePlugin
                             maxResponseSizeBytes: config.maxResponseSize.getValueInBytes(),
                             evictionMinBytes: config.eviction.minPayloadSize.getValueInBytes(),
                             hitlExternalResumeEnabled: config.hitlExternalResume.enabled,
+                            maxWorkflowDepth: config.maxWorkflowDepth,
                           },
                         })
                     : undefined,
@@ -782,6 +785,7 @@ export class WorkflowsExecutionEnginePlugin
                             maxResponseSizeBytes: config.maxResponseSize.getValueInBytes(),
                             evictionMinBytes: config.eviction.minPayloadSize.getValueInBytes(),
                             hitlExternalResumeEnabled: config.hitlExternalResume.enabled,
+                            maxWorkflowDepth: config.maxWorkflowDepth,
                           },
                         })
                     : undefined,
@@ -1221,6 +1225,7 @@ export class WorkflowsExecutionEnginePlugin
                               maxResponseSizeBytes: config.maxResponseSize.getValueInBytes(),
                               evictionMinBytes: config.eviction.minPayloadSize.getValueInBytes(),
                               hitlExternalResumeEnabled: config.hitlExternalResume.enabled,
+                              maxWorkflowDepth: config.maxWorkflowDepth,
                             },
                           })
                       : undefined,
@@ -1438,6 +1443,25 @@ export class WorkflowsExecutionEnginePlugin
     };
 
     if (this.config.remoteExecution.enabled && this.coreSetup) {
+      this.coreSetup.remote.bind(
+        WorkflowChildToken,
+        (scopes) =>
+          new NativeChildApi(
+            scopes,
+            new WorkflowRepository({
+              esClient: coreStart.elasticsearch.client.asInternalUser,
+              logger: this.logger,
+            }),
+            workflowExecutionRepository,
+            stepExecutionRepository,
+            () => {
+              if (!workflowsExecutionEngineForRemoteNodes)
+                throw new Error('Workflow engine is not ready');
+              return workflowsExecutionEngineForRemoteNodes;
+            },
+            this.config
+          )
+      );
       this.coreSetup.remote.bind(WorkflowStepRunnerToken, (scopes) => {
         const runner = new WorkflowStepRunner(
           {
@@ -1767,6 +1791,7 @@ export class WorkflowsExecutionEnginePlugin
                     maxResponseSizeBytes: this.config.maxResponseSize.getValueInBytes(),
                     evictionMinBytes: this.config.eviction.minPayloadSize.getValueInBytes(),
                     hitlExternalResumeEnabled: this.config.hitlExternalResume.enabled,
+                    maxWorkflowDepth: this.config.maxWorkflowDepth,
                   },
                 })
             : undefined,

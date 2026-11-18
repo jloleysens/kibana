@@ -17,10 +17,12 @@ import {
 } from '@kbn/workflows';
 import { WorkflowGraph } from '@kbn/workflows/graph';
 import type { StepHandlerContext, StepHandlerResult } from '@kbn/workflows-extensions/server';
+import { createNativeChildNode } from './native_child_node';
 import { noopLogger } from './noop_logger';
 import { createRemoteNode } from './remote_node';
 import { createRemoteStepDefinition } from './remote_step_definition';
 import type {
+  WorkflowChildApi,
   WorkflowDispatchFacts,
   WorkflowLogApi,
   WorkflowRunOutcome,
@@ -53,6 +55,7 @@ import { workflowExecutionLoop } from '../workflow_execution_loop/workflow_execu
 import type { WorkflowTaskManager } from '../workflow_task_manager/workflow_task_manager';
 
 interface EngineLoopRequest {
+  children?: WorkflowChildApi;
   execution: EsWorkflowExecution;
   dependencyPlan: StepDependencyPlan;
   scopeId: string;
@@ -143,6 +146,23 @@ export async function runWorkflowEngineInWorker(
   if (request.remoteSteps) {
     const { runner, descriptions } = request.remoteSteps;
     dependencies.remoteNode = (runtime) => {
+      if (
+        request.children &&
+        (runtime.node.stepType === 'workflow.execute' ||
+          runtime.node.stepType === 'workflow.executeAsync')
+      ) {
+        const maxWorkflowDepth = request.facts?.maxWorkflowDepth;
+        if (maxWorkflowDepth === undefined)
+          throw new Error('Child execution requires dispatch depth policy');
+        return createNativeChildNode({
+          children: request.children,
+          scopeId,
+          runtime,
+          workflowRuntime,
+          stepIoService,
+          maxWorkflowDepth,
+        });
+      }
       const description = descriptions.find(
         ({ type, mode }) => type === runtime.node.stepType && mode === 'node'
       );

@@ -8,14 +8,17 @@
  */
 
 import {
+  type EsWorkflow,
   type EsWorkflowExecution,
   type EsWorkflowStepExecution,
   ExecutionStatus,
 } from '@kbn/workflows';
 import type {
+  WorkflowChildApi,
   WorkflowDataPlaneApi,
   WorkflowLogApi,
   WorkflowStepCatalogApi,
+  WorkflowStepRunnerApi,
   WorkflowStorageApi,
 } from './tokens';
 import { WorkflowExecutor } from './workflow_executor';
@@ -249,6 +252,108 @@ describe('WorkflowExecutor', () => {
     expect(result.status).toBe(ExecutionStatus.COMPLETED);
     expect(runner.invoke).toHaveBeenCalledTimes(1);
   });
+
+  it.each(['workflow.execute', 'workflow.executeAsync'])(
+    'runs the original %s step in this isolate without a generic coordinator phase',
+    async (type) => {
+      const store = createStore(
+        execution([
+          {
+            name: 'child',
+            type,
+            with: { 'workflow-id': 'child-definition', inputs: { answer: 42 } },
+          },
+        ])
+      );
+      const childExecution = {
+        ...execution(),
+        id: 'child-run',
+        status: ExecutionStatus.COMPLETED,
+        context: { output: { value: 'child-result' } },
+      };
+      const children: WorkflowChildApi = {
+        getWorkflow: jest.fn(
+          async () =>
+            ({
+              id: 'child-definition',
+              name: 'Child',
+              enabled: true,
+              valid: true,
+              definition: {},
+              yaml: '',
+            } as EsWorkflow)
+        ),
+        start: jest.fn(async () => ({ workflowExecutionId: 'child-run' })),
+        getExecution: jest.fn(async () => childExecution),
+        getSteps: jest.fn(async () => []),
+        cancel: jest.fn(async () => {}),
+      };
+      const runner: WorkflowStepRunnerApi = {
+        describe: jest.fn(async () => [
+          {
+            type,
+            mode: 'node' as const,
+            configKeys: [],
+            hasStart: false,
+            hasOnCancel: true,
+            digest: 'test',
+          },
+        ]),
+        invoke: jest.fn(async () => {
+          throw new Error('Generic child phase must not run');
+        }),
+        cancel: jest.fn(),
+      };
+      const executor = new WorkflowExecutor(
+        catalog([]),
+        store.storage,
+        log(),
+        undefined,
+        runner,
+        children
+      );
+      const request = {
+        scopeId: 'scope',
+        workflowRunId: 'run-1',
+        spaceId: 'default',
+        dependencyPlan: store.dependencyPlan,
+        facts: {
+          kibanaUrl: 'http://kibana',
+          maxResponseSizeBytes: 1024,
+          evictionMinBytes: 128,
+          maxWorkflowDepth: 10,
+        },
+      };
+      const first = await executor.run(request);
+      if (type === 'workflow.execute') {
+        expect(first.status).toBe(ExecutionStatus.WAITING_FOR_CHILD);
+        expect((await executor.run({ ...request, scopeId: 'resumed' })).status).toBe(
+          ExecutionStatus.COMPLETED
+        );
+      } else {
+        expect(first.status).toBe(ExecutionStatus.COMPLETED);
+      }
+      expect(children.start).toHaveBeenCalledTimes(1);
+      expect(children.start).toHaveBeenCalledWith(
+        'scope',
+        'run-1',
+        'default',
+        expect.objectContaining({
+          workflowId: 'child-definition',
+          inputs: { answer: 42 },
+          invocation: type === 'workflow.execute' ? 'sync' : 'async',
+        })
+      );
+      expect(runner.invoke).not.toHaveBeenCalled();
+      const persisted = await store.storage.getExecution('scope', 'run-1', 'default');
+      const docs = await store.storage.getSteps('scope', persisted.stepExecutionIds ?? []);
+      expect(docs.find(({ stepId }) => stepId === 'child')?.output).toEqual(
+        type === 'workflow.execute'
+          ? { value: 'child-result' }
+          : expect.objectContaining({ awaited: false, executionId: 'child-run' })
+      );
+    }
+  );
 
   it('persists parallel branch progress and gathers both branch outputs', async () => {
     const store = createStore(

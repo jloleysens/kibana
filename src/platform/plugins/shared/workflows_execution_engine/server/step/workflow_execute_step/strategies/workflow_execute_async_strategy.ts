@@ -21,8 +21,14 @@ import type { StrategyResult } from '../types';
 
 export class WorkflowExecuteAsyncStrategy {
   constructor(
-    private workflowsExecutionEngine: WorkflowsExecutionEnginePluginStart,
-    private workflowExecutionRepository: WorkflowExecutionRepository,
+    private workflowsExecutionEngine: Pick<
+      WorkflowsExecutionEnginePluginStart,
+      'executeWorkflow' | 'cancelWorkflowExecution'
+    >,
+    private workflowExecutionRepository: Pick<
+      WorkflowExecutionRepository,
+      'getWorkflowExecutionById'
+    >,
     private stepExecutionRuntime: StepExecutionRuntime,
     private workflowLogger: IWorkflowEventLogger
   ) {}
