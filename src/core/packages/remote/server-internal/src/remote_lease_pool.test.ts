@@ -143,6 +143,32 @@ it('shares startup with a lease arriving before readiness', async () => {
   await pool.stop();
 });
 
+it('releases the slot when an acquisition is cancelled while its host is still booting', async () => {
+  let complete: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    complete = resolve;
+  });
+  const create = jest.fn(async () => {
+    await gate;
+    return { value: 1, close: async () => undefined, alive: () => true };
+  });
+  const pool = new RemoteLeasePool(create, { maxAgeMs: 1000, maxRuns: 10 });
+  const controller = new AbortController();
+  const cancelled = pool.acquire('a', controller.signal);
+  await new Promise((resolve) => setImmediate(resolve));
+  controller.abort(new Error('task cancelled'));
+  await expect(cancelled).rejects.toThrow('task cancelled');
+
+  // The pool still owns the in-flight startup; the next caller gets the shared host.
+  const next = pool.acquire('a');
+  complete();
+  const lease = await next;
+  expect(lease.value).toBe(1);
+  expect(create).toHaveBeenCalledTimes(1);
+  await lease.release();
+  await pool.stop();
+});
+
 it('closes a host that finishes booting after stop', async () => {
   let complete: () => void = () => {};
   const gate = new Promise<void>((resolve) => {

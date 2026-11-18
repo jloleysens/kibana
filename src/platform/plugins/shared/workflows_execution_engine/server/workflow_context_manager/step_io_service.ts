@@ -535,7 +535,9 @@ export class StepIoService implements StepIoWriter, StepIoLifecycle {
 
   public flush(): Promise<void> {
     const pending = this.flushQueue.then(() => this.flushPendingChanges());
-    this.flushQueue = pending;
+    // The caller observes this flush's failure; the queue itself recovers so a later flush
+    // (e.g. the terminal-status flush) still runs once storage is healthy again.
+    this.flushQueue = pending.catch(() => undefined);
     return pending;
   }
 

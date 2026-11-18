@@ -168,6 +168,23 @@ describe('StepIoService', () => {
       expect(workflowExecutionRepository.updateWorkflowExecution).toHaveBeenCalled();
     });
 
+    it('recovers the flush queue after a failed flush so later flushes still persist', async () => {
+      const { state, service, workflowExecutionRepository } = buildHarness();
+      workflowExecutionRepository.updateWorkflowExecution.mockRejectedValueOnce(
+        new Error('storage unavailable')
+      );
+      state.updateWorkflowExecution({ status: ExecutionStatus.RUNNING });
+      await expect(service.flush()).rejects.toThrow('storage unavailable');
+
+      workflowExecutionRepository.updateWorkflowExecution.mockResolvedValue(undefined);
+      state.updateWorkflowExecution({ status: ExecutionStatus.COMPLETED });
+      await expect(service.flush()).resolves.toBeUndefined();
+      expect(workflowExecutionRepository.updateWorkflowExecution).toHaveBeenLastCalledWith(
+        expect.objectContaining({ status: ExecutionStatus.COMPLETED }),
+        expect.anything()
+      );
+    });
+
     it('persists non-terminal workflow and step changes concurrently', async () => {
       const { state, service, stepExecutionRepository, workflowExecutionRepository } =
         buildHarness();

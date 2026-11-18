@@ -98,8 +98,8 @@ export class RemoteLeasePool<T> {
           current.runs >= this.policy.maxRuns ||
           (current.settingsKey !== undefined && current.settingsKey !== settingsKey))
       )
-        await this.retire();
-      await this.warm();
+        await this.untilAborted(this.retire(), signal);
+      await this.untilAborted(this.warm(), signal);
       signal?.throwIfAborted();
       const managed = this.host;
       if (!managed) throw new Error('Remote host was not initialized');
@@ -121,6 +121,26 @@ export class RemoteLeasePool<T> {
     } catch (error) {
       this.giveSlot();
       throw error;
+    }
+  }
+
+  /**
+   * Lets an acquisition stop waiting when it is cancelled. The underlying retirement/creation
+   * stays owned by the pool and keeps running; only this caller's wait ends.
+   */
+  private async untilAborted<R>(work: Promise<R>, signal?: AbortSignal): Promise<R> {
+    if (!signal) return work;
+    work.catch(() => undefined);
+    signal.throwIfAborted();
+    let onAbort = () => {};
+    const aborted = new Promise<never>((_, reject) => {
+      onAbort = () => reject(signal.reason ?? new Error('Remote lease acquisition aborted'));
+      signal.addEventListener('abort', onAbort, { once: true });
+    });
+    try {
+      return await Promise.race([work, aborted]);
+    } finally {
+      signal.removeEventListener('abort', onAbort);
     }
   }
 

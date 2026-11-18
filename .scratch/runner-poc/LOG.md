@@ -260,3 +260,9 @@
 - Because flush queue/storage selection touches hot path, clean warm child/direct rerun:11real persisted output+terminal-log assertions, index0excluded,n10 median500.76ms [p10 457.02,p90 518.16] request->first persisted step,2.5s quiet gap, default granting, no instrumentation. Raw parity-final-warm/runs/*; parity-warm-summary.json. Independent restarted security phase; NOT an attributable timing regression/improvement or full-matrix refresh.
 - REPORT.md now leads with current parity outcomes and clearly archives/supersedes prior explicit refusals. Reproduction harnesses preserve per-scenario YAML/source line/hash and actual outputs, not exit-code-only success. No push/PR/completion mutation.
 - Cleanup DONE: inspected root command lines (Kibana85135 profile parity-native-loopback, ES74608 install .es/runner-poc ports9234/9534), then stopped ONLY those owned trees via stop_owned.ts. Both5634/9234 unreachable afterward (parity-services-cleanup.json, parity-stop-{kibana,es}.log, pid.stopped.json). Base scratch config restored, HTTP fixture servers closed by their harness finally; no parity harness remains. Data/raw artifacts preserved; no active credential probes were created. Reviewer gate remains parent-owned.
+
+## Review-fix 7 (supervisor, direct)
+
+- [P2] Flush queue stuck after one failure: CONFIRMED (flushQueue kept the rejected promise). Queue now recovers (`pending.catch`) while the caller still observes the rejection, so a later terminal-status flush persists. Test fails before fix (review7-before.log), passes after.
+- [P2] Lease acquisition ignored cancellation while retiring/booting: CONFIRMED. acquire races retire()/warm() against the abort signal; the pool keeps owning the in-flight retirement/creation (next caller shares the same host). Test fails before (5s hang), passes after.
+- Suites: core remote server-internal 39/39; workflow context manager 482/482. Scoped typechecks pass.
