@@ -68,6 +68,8 @@ export class NodesFactory {
 
   public async create(stepExecutionRuntime: StepExecutionRuntime): Promise<NodeImplementation> {
     const { node } = stepExecutionRuntime;
+    const remoteNode = this.dependencies.remoteNode?.(stepExecutionRuntime);
+    if (remoteNode) return remoteNode;
 
     // Built-in steps - checked first before workflows_extensions
     // Note: Some built-in steps (like data.set) are also registered in workflows_extensions

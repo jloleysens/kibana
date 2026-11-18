@@ -189,23 +189,144 @@ describe('WorkflowExecutor', () => {
     );
   });
 
-  it('rejects a parallel step before the run starts', async () => {
+  it('awaits in-flight execution references before a coordinator reads a fast native output', async () => {
     const store = createStore(
-      execution([{ name: 'branches', type: 'parallel', branches: [{ steps: [] }] }])
+      execution([
+        { name: 'delay', type: GRAPH, with: {} },
+        { name: 'seed', type: 'data.set', with: { value: 'current' } },
+        { name: 'inspect', type: 'test.inspect', with: { value: '{{ steps.seed.output.value }}' } },
+      ])
     );
-    const steps = catalog([]);
-    const executor = new WorkflowExecutor(steps, store.storage, log());
-
-    await expect(
-      executor.run({
-        dependencyPlan: store.dependencyPlan,
-        scopeId: 'scope-1',
-        workflowRunId: 'run-1',
-        spaceId: 'default',
-      })
-    ).rejects.toThrow(/Unsupported remote step type "parallel"/);
-    expect(steps.run).not.toHaveBeenCalled();
+    const update = store.storage.updateExecution;
+    const backgroundSnapshot = Promise.withResolvers<void>();
+    let heldSnapshot = false;
+    jest.spyOn(store.storage, 'updateExecution').mockImplementation(async (...args) => {
+      if (!heldSnapshot && args[1].stepExecutionIds?.length === 1) {
+        heldSnapshot = true;
+        backgroundSnapshot.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      return update(...args);
+    });
+    const nativeSteps = catalog([]);
+    nativeSteps.run.mockImplementation(async () => {
+      await backgroundSnapshot.promise;
+      return { output: 'released' };
+    });
+    const runner = {
+      describe: jest.fn(async () => [
+        {
+          type: 'test.inspect',
+          mode: 'handler' as const,
+          configKeys: [],
+          hasStart: false,
+          hasOnCancel: false,
+          digest: 'test',
+        },
+      ]),
+      invoke: jest.fn(async () => {
+        // Coordinator preparation may yield while an older background snapshot is still writing.
+        await new Promise((resolve) => setTimeout(resolve, 75));
+        const persisted = await store.storage.getExecution('scope', 'run-1', 'default');
+        const docs = await store.storage.getSteps('scope', persisted.stepExecutionIds ?? []);
+        expect(docs.find(({ stepId }) => stepId === 'seed')?.output).toEqual({ value: 'current' });
+        return { output: 'observed' };
+      }),
+      cancel: jest.fn(),
+    };
+    const result = await new WorkflowExecutor(
+      nativeSteps,
+      store.storage,
+      log(),
+      undefined,
+      runner
+    ).run({
+      dependencyPlan: store.dependencyPlan,
+      scopeId: 'scope',
+      workflowRunId: 'run-1',
+      spaceId: 'default',
+    });
+    expect(result.status).toBe(ExecutionStatus.COMPLETED);
+    expect(runner.invoke).toHaveBeenCalledTimes(1);
   });
+
+  it('persists parallel branch progress and gathers both branch outputs', async () => {
+    const store = createStore(
+      execution([
+        {
+          name: 'branches',
+          type: 'parallel',
+          branches: [
+            {
+              name: 'left',
+              steps: [{ name: 'left_value', type: 'data.set', with: { value: 'left' } }],
+            },
+            {
+              name: 'right',
+              steps: [{ name: 'right_value', type: 'data.set', with: { value: 'right' } }],
+            },
+          ],
+        },
+      ])
+    );
+    const executor = new WorkflowExecutor(catalog([]), store.storage, log());
+    const result = await executor.run({
+      dependencyPlan: store.dependencyPlan,
+      scopeId: 'scope',
+      workflowRunId: 'run-1',
+      spaceId: 'default',
+    });
+    expect(result.status).toBe(ExecutionStatus.COMPLETED);
+    const persisted = await store.storage.getExecution('scope', 'run-1', 'default');
+    const docs = await store.storage.getSteps('scope', persisted.stepExecutionIds ?? []);
+    expect(docs.find(({ stepId }) => stepId === 'branches')?.state).toEqual(
+      expect.objectContaining({
+        branches: expect.arrayContaining([
+          expect.objectContaining({ status: 'completed', key: 'left' }),
+          expect.objectContaining({ status: 'completed', key: 'right' }),
+        ]),
+      })
+    );
+    expect(
+      docs.filter(({ stepType }) => stepType === 'data.set').map(({ output }) => output)
+    ).toEqual(expect.arrayContaining([{ value: 'left' }, { value: 'right' }]));
+  });
+
+  it.each(['waitForInput', 'waitForApproval'])(
+    'parks %s and consumes resumeInput',
+    async (type) => {
+      const store = createStore(
+        execution([
+          {
+            name: 'human',
+            type,
+            with: {
+              message: 'Continue?',
+              ...(type === 'waitForInput' ? { schema: { type: 'object' } } : {}),
+            },
+          },
+        ])
+      );
+      const executor = new WorkflowExecutor(catalog([]), store.storage, log());
+      const run = () =>
+        executor.run({
+          dependencyPlan: store.dependencyPlan,
+          scopeId: 'scope',
+          workflowRunId: 'run-1',
+          spaceId: 'default',
+        });
+      expect((await run()).status).toBe(ExecutionStatus.WAITING_FOR_INPUT);
+      const parked = await store.storage.getExecution('scope', 'run-1', 'default');
+      await store.storage.updateExecution('scope', {
+        id: parked.id,
+        context: { ...parked.context, resumeInput: { approved: true, value: 'human' } },
+      });
+      expect((await run()).status).toBe(ExecutionStatus.COMPLETED);
+      const completed = await store.storage.getExecution('scope', 'run-1', 'default');
+      const docs = await store.storage.getSteps('scope', completed.stepExecutionIds ?? []);
+      expect(docs.find(({ stepId }) => stepId === 'human')?.output).toBeDefined();
+    }
+  );
 
   it('rejects an unregistered step before earlier steps run', async () => {
     const store = createStore(

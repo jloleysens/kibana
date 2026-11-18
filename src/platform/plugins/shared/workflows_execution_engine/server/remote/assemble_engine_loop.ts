@@ -18,6 +18,7 @@ import {
 import { WorkflowGraph } from '@kbn/workflows/graph';
 import type { StepHandlerContext, StepHandlerResult } from '@kbn/workflows-extensions/server';
 import { noopLogger } from './noop_logger';
+import { createRemoteNode } from './remote_node';
 import { createRemoteStepDefinition } from './remote_step_definition';
 import type {
   WorkflowDispatchFacts,
@@ -139,6 +140,23 @@ export async function runWorkflowEngineInWorker(
     coreStart,
     dependencies,
   });
+  if (request.remoteSteps) {
+    const { runner, descriptions } = request.remoteSteps;
+    dependencies.remoteNode = (runtime) => {
+      const description = descriptions.find(
+        ({ type, mode }) => type === runtime.node.stepType && mode === 'node'
+      );
+      if (!description) return;
+      return createRemoteNode({
+        description,
+        runner,
+        runtime,
+        workflowRuntime,
+        stepIoService,
+        scopeId,
+      });
+    };
+  }
   const stepExecutionRuntimeFactory = new StepExecutionRuntimeFactory({
     workflowExecutionState,
     stepIoService,
@@ -180,7 +198,7 @@ export async function runWorkflowEngineInWorker(
     fakeRequest,
     coreStart,
     signal: request.signal,
-    workflowTaskManager: taskManagerStandIn(scopeId, storage),
+    workflowTaskManager: taskManagerStandIn(scopeId, storage, stepIoService),
   });
 
   return {
@@ -203,6 +221,8 @@ function executionRepository(
         update as Partial<EsWorkflowExecution> & { id: string }
       );
     },
+    getWorkflowExecutionById: (id: string, spaceId: string) =>
+      storage.getExecution(scopeId, id, spaceId),
     getWorkflowExecutionCancelState: (id: string, spaceId: string) =>
       storage.getCancelState(scopeId, id, spaceId),
   } as unknown as WorkflowExecutionRepository;
@@ -225,21 +245,53 @@ function logsRepository(log: WorkflowLogApi): LogsRepository {
   } as unknown as LogsRepository;
 }
 
-function taskManagerStandIn(scopeId: string, storage: WorkflowStorageApi): WorkflowTaskManager {
+function taskManagerStandIn(
+  scopeId: string,
+  storage: WorkflowStorageApi,
+  stepIoService: StepIoService
+): WorkflowTaskManager {
+  const schedule = async (
+    execution: EsWorkflowExecution,
+    resumeAt: Date,
+    kind: Parameters<WorkflowStorageApi['scheduleResume']>[4]
+  ) => {
+    await stepIoService.flush();
+    return storage.scheduleResume(
+      scopeId,
+      execution.id,
+      execution.spaceId,
+      resumeAt.toISOString(),
+      kind
+    );
+  };
   return {
-    scheduleResumeTask: async ({
+    scheduleResumeTask: ({
       workflowExecution,
       resumeAt,
-    }: {
-      workflowExecution: EsWorkflowExecution;
-      resumeAt: Date;
-    }) =>
-      storage.scheduleResume(
+    }: Parameters<WorkflowTaskManager['scheduleResumeTask']>[0]) =>
+      schedule(workflowExecution, resumeAt, 'resume'),
+    scheduleWorkflowGlobalTimeoutResumeTask: ({
+      workflowExecution,
+      resumeAt,
+    }: Parameters<WorkflowTaskManager['scheduleWorkflowGlobalTimeoutResumeTask']>[0]) =>
+      schedule(workflowExecution, resumeAt, 'global_timeout'),
+    ensureWakeTask: async ({
+      executionId,
+      spaceId,
+      runAt,
+    }: Parameters<WorkflowTaskManager['ensureWakeTask']>[0]) => {
+      await stepIoService.flush();
+      await storage.scheduleResume(
         scopeId,
-        workflowExecution.id,
-        workflowExecution.spaceId,
-        resumeAt.toISOString()
-      ),
+        executionId,
+        spaceId,
+        (runAt ?? new Date()).toISOString(),
+        'ensure_wake'
+      );
+    },
+    runExistingResumeTask: async (executionId: string) => {
+      await storage.scheduleResume(scopeId, executionId, '', new Date().toISOString(), 'wake');
+    },
   } as unknown as WorkflowTaskManager;
 }
 
@@ -249,33 +301,37 @@ function connectorStandIn(
   logger: Pick<IWorkflowEventLogger, 'logWarn'>,
   runner?: WorkflowStepRunnerApi
 ): ConnectorExecutor {
+  const execute = async (params: Parameters<ConnectorExecutor['execute']>[0], system = false) => {
+    if (!runner) return storage.executeConnector(scopeId, { ...params, system });
+    params.abortController.signal.throwIfAborted();
+    const invocationId = randomUUID();
+    const pending = runner.invoke({
+      invocationId,
+      scopeId,
+      phase: 'connector',
+      system,
+      connectorType: params.connectorType,
+      connectorNameOrId: params.connectorNameOrId,
+      input: params.input,
+      aborted: params.abortController.signal.aborted,
+    });
+    const onAbort = () => {
+      void runner
+        .cancel(invocationId)
+        .catch(() => logger.logWarn('Remote connector cancellation failed'));
+    };
+    params.abortController.signal.addEventListener('abort', onAbort, { once: true });
+    try {
+      const result = await pending;
+      return result?.output;
+    } finally {
+      params.abortController.signal.removeEventListener('abort', onAbort);
+    }
+  };
   return {
-    execute: async (params: Parameters<ConnectorExecutor['execute']>[0]) => {
-      if (!runner) return storage.executeConnector(scopeId, params);
-      params.abortController.signal.throwIfAborted();
-      const invocationId = randomUUID();
-      const pending = runner.invoke({
-        invocationId,
-        scopeId,
-        phase: 'connector',
-        connectorType: params.connectorType,
-        connectorNameOrId: params.connectorNameOrId,
-        input: params.input,
-        aborted: params.abortController.signal.aborted,
-      });
-      const onAbort = () => {
-        void runner
-          .cancel(invocationId)
-          .catch(() => logger.logWarn('Remote connector cancellation failed'));
-      };
-      params.abortController.signal.addEventListener('abort', onAbort, { once: true });
-      try {
-        const result = await pending;
-        return result?.output;
-      } finally {
-        params.abortController.signal.removeEventListener('abort', onAbort);
-      }
-    },
+    execute,
+    executeSystemConnector: (params: Parameters<ConnectorExecutor['executeSystemConnector']>[0]) =>
+      execute({ ...params, connectorNameOrId: `system-connector-${params.connectorType}` }, true),
   } as unknown as ConnectorExecutor;
 }
 
@@ -309,7 +365,8 @@ function contextDependencies({
       elasticsearchDefinition: (type) =>
         remoteSteps?.descriptions.find((item) => item.type === type)?.elasticsearch,
       isSpecConnector: (type) =>
-        remoteSteps?.descriptions.find((item) => item.type === type)?.isSpecConnector ?? false,
+        remoteSteps?.descriptions.find((item) => item.type.split('.', 2)[0] === type)
+          ?.isSpecConnector ?? false,
     },
     cloudSetup: undefined,
     coreStart,
@@ -367,7 +424,10 @@ function contextDependencies({
       }),
     } as unknown as ContextDependencies['workflowsExtensions'],
     dispatchFacts: facts,
-    config: { logging: { console: false } } as ContextDependencies['config'],
+    config: {
+      logging: { console: false },
+      hitlExternalResume: { enabled: facts?.hitlExternalResumeEnabled ?? false },
+    } as ContextDependencies['config'],
     spaceId: execution.spaceId,
     request: fakeRequest,
   };

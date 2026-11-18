@@ -72,13 +72,22 @@ export class WorkflowStepRunner implements WorkflowStepRunnerApi {
 
   private describeType(type: string, optional: boolean): WorkflowStepDescription | undefined {
     const definition = this.dependencies.workflowsExtensions.getStepDefinition(type);
+    const [connectorType] = type.split('.', 2);
+    const isSpecConnector = this.dependencies.runtimeMetadata.isSpecConnector(connectorType);
+    const isActionsConnector = this.dependencies.actions
+      .getAllTypes()
+      .includes(`.${connectorType}`);
     const mode = definition
       ? 'poll' in definition
         ? 'poll'
         : 'handler'
+      : type === 'workflow.execute' ||
+        type === 'workflow.executeAsync' ||
+        type.startsWith('kibana.')
+      ? 'node'
       : this.esTypes.has(type) || type === 'elasticsearch.request'
       ? 'native'
-      : type === 'console' || type === 'http'
+      : type === 'console' || type === 'http' || isSpecConnector || isActionsConnector
       ? 'connector'
       : undefined;
     if (!mode) {
@@ -95,7 +104,7 @@ export class WorkflowStepRunner implements WorkflowStepRunnerApi {
         : {}),
       ...(mode === 'connector'
         ? {
-            isSpecConnector: this.dependencies.runtimeMetadata.isSpecConnector(type),
+            isSpecConnector,
           }
         : {}),
       configKeys: Object.keys(definition?.configSchema?.shape ?? {}),
@@ -139,23 +148,34 @@ export class WorkflowStepRunner implements WorkflowStepRunnerApi {
         const fakeRequest = this.scopes.get<KibanaRequest>(request.scopeId);
         const client = await this.dependencies.actions.getActionsClientWithRequest(fakeRequest);
         initialAbort.signal.throwIfAborted();
-        const output = await new ConnectorExecutor(client).execute({
-          connectorType: request.connectorType,
-          connectorNameOrId: request.connectorNameOrId,
-          input: request.input,
-          abortController: initialAbort,
-        });
+        const executor = new ConnectorExecutor(client);
+        const output = await (request.system
+          ? executor.executeSystemConnector({
+              connectorType: request.connectorType,
+              input: request.input,
+              abortController: initialAbort,
+            })
+          : executor.execute({
+              connectorType: request.connectorType,
+              connectorNameOrId: request.connectorNameOrId,
+              input: request.input,
+              abortController: initialAbort,
+            }));
         return { output };
       }
       const [description] = await this.describe([request.description.type]);
       if (description.digest !== request.description.digest)
         throw new Error('Workflow step registration changed');
       const definition = this.dependencies.workflowsExtensions.getStepDefinition(description.type);
-      if (!definition) throw new Error('Step has no coordinator phase');
+      if (!definition && description.mode !== 'node')
+        throw new Error('Step has no coordinator phase');
       if (
-        ('poll' in definition && request.phase === 'handler') ||
-        (!('poll' in definition) && request.phase !== 'handler' && request.phase !== 'onCancel') ||
-        (request.phase === 'start' && !('start' in definition && definition.start))
+        definition &&
+        (('poll' in definition && request.phase === 'handler') ||
+          (!('poll' in definition) &&
+            request.phase !== 'handler' &&
+            request.phase !== 'onCancel') ||
+          (request.phase === 'start' && !('start' in definition && definition.start)))
       )
         throw new Error('Workflow step phase mismatch');
       const fakeRequest = this.scopes.get<KibanaRequest>(request.scopeId);
@@ -167,7 +187,8 @@ export class WorkflowStepRunner implements WorkflowStepRunnerApi {
         this.dependencies,
         this.executions,
         this.steps,
-        fakeRequest
+        fakeRequest,
+        this.dependencies.workflowsExecutionEngine
       );
       await prepared.stepIoService.load();
       const runtime = prepared.stepExecutionRuntimeFactory.createStepExecutionRuntime({
@@ -178,9 +199,27 @@ export class WorkflowStepRunner implements WorkflowStepRunnerApi {
         throw new Error('Workflow step reference mismatch');
       if (initialAbort.signal.aborted) runtime.abortController.abort(initialAbort.signal.reason);
       this.active.set(request.invocationId, runtime.abortController);
-      if (request.phase !== 'onCancel') runtime.abortController.signal.throwIfAborted();
+      if (request.phase !== 'onCancel' && request.phase !== 'nodeCancel')
+        runtime.abortController.signal.throwIfAborted();
       await runtime.contextManager.ensureContextReady();
-      if (request.phase !== 'onCancel') runtime.abortController.signal.throwIfAborted();
+      if (request.phase !== 'onCancel' && request.phase !== 'nodeCancel')
+        runtime.abortController.signal.throwIfAborted();
+      if (description.mode === 'node') {
+        if (request.phase !== 'node' && request.phase !== 'nodeCancel')
+          throw new Error('Workflow node phase mismatch');
+        const implementation = await prepared.nodesFactory.create(runtime);
+        if (request.phase === 'nodeCancel') {
+          if ('onCancel' in implementation && typeof implementation.onCancel === 'function')
+            await implementation.onCancel();
+        } else {
+          runtime.abortController.signal.throwIfAborted();
+          await implementation.run();
+        }
+        // Only this step's state/IO is owned here; navigation and workflow persistence stay in worker.
+        await prepared.stepIoService.flushStepChanges();
+        return;
+      }
+      if (!definition) throw new Error('Step has no coordinator definition');
       const snapshot = { ...runtime.contextManager.getContext(), now: request.now };
       const node = runtime.node as AtomicGraphNode;
       const input =

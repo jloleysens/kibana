@@ -250,21 +250,17 @@ describe('runWorkflow', () => {
     });
 
     describe('remote engine preserves coordinator guards', () => {
-      it('refuses data-stream dispatch without starting or modifying the persisted execution', async () => {
-        const executeRemote = jest.fn();
-
-        await expect(
-          runWorkflowWithDefaults({
-            executeRemote,
-            config: { ...mockConfig, storage: { ...mockConfig.storage, source: 'data_stream' } },
-          })
-        ).rejects.toThrow('Remote workflow execution does not support data_stream storage');
-        expect(mockSetupDependencies).not.toHaveBeenCalled();
+      it('admits data-stream dispatch through the same durable start barrier', async () => {
+        const executeRemote = jest.fn().mockResolvedValue({ status: ExecutionStatus.COMPLETED });
+        await runWorkflowWithDefaults({
+          executeRemote,
+          config: { ...mockConfig, storage: { ...mockConfig.storage, source: 'data_stream' } },
+        });
+        expect(mockSetupDependencies).toHaveBeenCalled();
         expect(
           workflowExecutionRepository.tryUpdateWorkflowExecutionWithVersion
-        ).not.toHaveBeenCalled();
-        expect(workflowExecutionRepository.updateWorkflowExecution).not.toHaveBeenCalled();
-        expect(executeRemote).not.toHaveBeenCalled();
+        ).toHaveBeenCalled();
+        expect(executeRemote).toHaveBeenCalled();
         expect(workflowRuntime.start).not.toHaveBeenCalled();
       });
 

@@ -398,7 +398,7 @@ export class StepExecutionRuntime {
    * (returns `undefined`) for steps that don't report usage. Shared by
    * `finishStep` (full output) and `failStep` (partial output before a failure).
    */
-  private recordTokenUsage(stepOutput: unknown): WorkflowTokenUsage | undefined {
+  public recordTokenUsage(stepOutput: unknown): WorkflowTokenUsage | undefined {
     const usage = extractTokenUsage(stepOutput);
     this.workflowExecutionState.accumulateUsage(usage);
     if (usage) {

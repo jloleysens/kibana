@@ -41,23 +41,20 @@ interface ExecutableStep {
   'on-failure'?: { fallback?: ExecutableStep[] };
 }
 
-/**
- * Steps that finish inside the current task. `if` and `foreach` are in this set.
- * A `wait` of at least five seconds parks and comes back through the resume task.
- */
-const CORE_STEP_TYPES = new Set(['wait', 'if', 'foreach', 'while', 'switch', 'data.set']);
-
-/**
- * Pauses this proof does not run. They use the same resume entry as a long wait.
- * Parallel also stores branch progress. Human input also sends a message through
- * `executeConnector` and reads `resumeInput`.
- */
-const UNSUPPORTED_CORE_STEP_TYPES = new Set([
+const CORE_STEP_TYPES = new Set([
+  'wait',
+  'if',
+  'foreach',
+  'while',
+  'switch',
+  'data.set',
   'parallel',
   'waitForInput',
   'waitForApproval',
-  'workflow.execute',
-  'workflow.executeAsync',
+  'workflow.output',
+  'workflow.fail',
+  'loop.break',
+  'loop.continue',
 ]);
 
 /**
@@ -163,6 +160,7 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
       const resume =
         execution.status === ExecutionStatus.WAITING ||
         execution.status === ExecutionStatus.WAITING_FOR_INPUT ||
+        execution.status === ExecutionStatus.WAITING_FOR_CHILD ||
         (execution.status === ExecutionStatus.RUNNING && Boolean(execution.currentNodeId));
       const importStarted = performance.now();
       const { runWorkflowEngineInWorker } = await import('./assemble_engine_loop');
@@ -212,11 +210,6 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
       const stepName = step.name ?? step.type ?? 'step';
       if (!step.type) {
         throw new Error(`Remote step "${stepName}" is missing a type`);
-      }
-      if (UNSUPPORTED_CORE_STEP_TYPES.has(step.type)) {
-        throw new Error(
-          `Unsupported remote step type "${step.type}". Parallel, human input, and child workflows are not run in this remote proof.`
-        );
       }
       if (
         !this.stepRunner &&

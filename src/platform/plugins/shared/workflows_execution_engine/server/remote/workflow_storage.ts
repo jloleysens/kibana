@@ -24,11 +24,17 @@ export interface WorkflowStorageCallbacks {
     scopeId: string,
     workflowRunId: string,
     spaceId: string,
-    resumeAt: string
+    resumeAt: string,
+    kind?: 'resume' | 'global_timeout' | 'ensure_wake' | 'wake'
   ): Promise<{ taskId: string }>;
   executeConnector(
     scopeId: string,
-    params: { connectorType: string; connectorNameOrId: string; input: Record<string, unknown> }
+    params: {
+      connectorType: string;
+      connectorNameOrId: string;
+      input: Record<string, unknown>;
+      system?: boolean;
+    }
   ): Promise<unknown>;
 }
 
@@ -125,14 +131,20 @@ export class WorkflowStorage implements WorkflowStorageApi {
     scopeId: string,
     workflowRunId: string,
     spaceId: string,
-    resumeAt: string
+    resumeAt: string,
+    kind?: 'resume' | 'global_timeout' | 'ensure_wake' | 'wake'
   ): Promise<{ taskId: string }> {
-    return this.callbacks.scheduleResume(scopeId, workflowRunId, spaceId, resumeAt);
+    return this.callbacks.scheduleResume(scopeId, workflowRunId, spaceId, resumeAt, kind);
   }
 
   async executeConnector(
     scopeId: string,
-    params: { connectorType: string; connectorNameOrId: string; input: Record<string, unknown> }
+    params: {
+      connectorType: string;
+      connectorNameOrId: string;
+      input: Record<string, unknown>;
+      system?: boolean;
+    }
   ): Promise<unknown> {
     return this.callbacks.executeConnector(scopeId, params);
   }

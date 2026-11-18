@@ -80,7 +80,7 @@ const configSchema = schema.object({
   }),
   /**
    * Experimental. Workflow task loops use the Core remote graph; scheduling stays in Task Manager.
-   * Unsupported builtins fail before any step runs, rather than silently falling back to another engine.
+   * Service-heavy core nodes and registered extension phases execute through coordinator capabilities.
    */
   remoteExecution: schema.object({
     enabled: schema.boolean({ defaultValue: false }),

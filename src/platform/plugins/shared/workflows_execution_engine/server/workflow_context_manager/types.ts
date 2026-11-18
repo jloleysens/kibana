@@ -21,6 +21,7 @@ import type { WorkflowLogEvent } from '../repositories/logs_repository';
 import type { StepExecutionRepository } from '../repositories/step_execution_repository';
 import type { WorkflowExecutionRepository } from '../repositories/workflow_execution_repository';
 import type { RuntimeStepDefinition } from '../step/custom_step_impl/types';
+import type { NodeImplementation } from '../step/node_implementation';
 import type { WorkflowsExecutionEnginePluginStart } from '../types';
 
 export interface ContextDependencies {
@@ -34,6 +35,7 @@ export interface ContextDependencies {
   taskManager: TaskManagerStartContract;
   workflowsExtensions: WorkflowsExtensionsServerPluginStart;
   dispatchFacts?: WorkflowDispatchFacts;
+  remoteNode?: (runtime: StepExecutionRuntime) => NodeImplementation | undefined;
   remoteStepDefinition?: (
     stepType: string,
     runtime: StepExecutionRuntime

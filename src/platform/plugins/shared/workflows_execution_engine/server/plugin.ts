@@ -474,6 +474,7 @@ export class WorkflowsExecutionEnginePlugin
                             kibanaUrl: getKibanaUrl(coreStart, setupDependencies.cloudSetup),
                             maxResponseSizeBytes: config.maxResponseSize.getValueInBytes(),
                             evictionMinBytes: config.eviction.minPayloadSize.getValueInBytes(),
+                            hitlExternalResumeEnabled: config.hitlExternalResume.enabled,
                           },
                         })
                     : undefined,
@@ -780,6 +781,7 @@ export class WorkflowsExecutionEnginePlugin
                             kibanaUrl: getKibanaUrl(coreStart, setupDependencies.cloudSetup),
                             maxResponseSizeBytes: config.maxResponseSize.getValueInBytes(),
                             evictionMinBytes: config.eviction.minPayloadSize.getValueInBytes(),
+                            hitlExternalResumeEnabled: config.hitlExternalResume.enabled,
                           },
                         })
                     : undefined,
@@ -1218,6 +1220,7 @@ export class WorkflowsExecutionEnginePlugin
                               kibanaUrl: getKibanaUrl(coreStart, setupDependencies.cloudSetup),
                               maxResponseSizeBytes: config.maxResponseSize.getValueInBytes(),
                               evictionMinBytes: config.eviction.minPayloadSize.getValueInBytes(),
+                              hitlExternalResumeEnabled: config.hitlExternalResume.enabled,
                             },
                           })
                       : undefined,
@@ -1345,13 +1348,34 @@ export class WorkflowsExecutionEnginePlugin
           stepExecutionRepository,
           this.logger,
           {
-            scheduleResume: async (scopeId, workflowRunId, spaceId, resumeAt) => {
+            scheduleResume: async (scopeId, workflowRunId, spaceId, resumeAt, kind) => {
+              if (kind === 'wake') {
+                await workflowTaskManager.runExistingResumeTask(workflowRunId);
+                return { taskId: workflowRunId };
+              }
               const execution = await workflowExecutionRepository.getWorkflowExecutionById(
                 workflowRunId,
                 spaceId
               );
               if (!execution) {
                 throw new Error(`Workflow execution ${workflowRunId} was not found`);
+              }
+              const fakeRequest = scopes.get<KibanaRequest>(scopeId);
+              if (kind === 'ensure_wake') {
+                await workflowTaskManager.ensureWakeTask({
+                  executionId: workflowRunId,
+                  spaceId,
+                  fakeRequest,
+                  runAt: new Date(resumeAt),
+                });
+                return { taskId: workflowRunId };
+              }
+              if (kind === 'global_timeout') {
+                return workflowTaskManager.scheduleWorkflowGlobalTimeoutResumeTask({
+                  workflowExecution: execution,
+                  resumeAt: new Date(resumeAt),
+                  fakeRequest,
+                });
               }
               return workflowTaskManager.scheduleResumeTask({
                 workflowExecution: execution,
@@ -1363,10 +1387,19 @@ export class WorkflowsExecutionEnginePlugin
               const actionsClient = await plugins.actions.getActionsClientWithRequest(
                 scopes.get<KibanaRequest>(scopeId)
               );
-              return new ConnectorExecutor(actionsClient).execute({
-                ...params,
-                abortController: new AbortController(),
-              });
+              const executor = new ConnectorExecutor(actionsClient);
+              const abortController = new AbortController();
+              const signal = scopes.getAbortSignal(scopeId);
+              const onAbort = () => abortController.abort(signal.reason);
+              signal.addEventListener('abort', onAbort, { once: true });
+              if (signal.aborted) onAbort();
+              try {
+                return await (params.system
+                  ? executor.executeSystemConnector({ ...params, abortController })
+                  : executor.execute({ ...params, abortController }));
+              } finally {
+                signal.removeEventListener('abort', onAbort);
+              }
             },
           }
         );
@@ -1379,6 +1412,7 @@ export class WorkflowsExecutionEnginePlugin
       this.coreSetup.remote.bind(WorkflowControlToken, (scopes) => {
         const storage = storageFactory(scopes);
         return new WorkflowControl({
+          persistence: async () => (this.config.storage.source === 'data_stream' ? storage : null),
           scheduleResume: (...args) => storage.scheduleResume(...args),
           executeConnector: (...args) => storage.executeConnector(...args),
           info: (message) => this.logger.info(message),
@@ -1406,7 +1440,12 @@ export class WorkflowsExecutionEnginePlugin
     if (this.config.remoteExecution.enabled && this.coreSetup) {
       this.coreSetup.remote.bind(WorkflowStepRunnerToken, (scopes) => {
         const runner = new WorkflowStepRunner(
-          dependencies,
+          {
+            ...dependencies,
+            get workflowsExecutionEngine() {
+              return workflowsExecutionEngineForRemoteNodes;
+            },
+          },
           workflowExecutionRepository,
           stepExecutionRepository,
           scopes,
@@ -1727,6 +1766,7 @@ export class WorkflowsExecutionEnginePlugin
                     kibanaUrl: getKibanaUrl(coreStart, dependencies.cloudSetup),
                     maxResponseSizeBytes: this.config.maxResponseSize.getValueInBytes(),
                     evictionMinBytes: this.config.eviction.minPayloadSize.getValueInBytes(),
+                    hitlExternalResumeEnabled: this.config.hitlExternalResume.enabled,
                   },
                 })
             : undefined,
@@ -2285,7 +2325,7 @@ export class WorkflowsExecutionEnginePlugin
       },
     };
 
-    return {
+    const workflowsExecutionEngineForRemoteNodes: WorkflowsExecutionEnginePluginStart = {
       workflowEventLoggerService,
       executeWorkflow,
       executeWorkflowStep,
@@ -2301,6 +2341,7 @@ export class WorkflowsExecutionEnginePlugin
         stepExecutionsDataClient: this.dataClientBundle.createStepDataClient(),
       },
     };
+    return workflowsExecutionEngineForRemoteNodes;
   }
 
   public stop() {

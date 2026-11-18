@@ -531,7 +531,15 @@ export class StepIoService implements StepIoWriter, StepIoLifecycle {
    * runs IO bookkeeping (deferred output eviction + immediate input eviction)
    * on the freshly-flushed step IDs.
    */
-  public async flush(): Promise<void> {
+  private flushQueue: Promise<void> = Promise.resolve();
+
+  public flush(): Promise<void> {
+    const pending = this.flushQueue.then(() => this.flushPendingChanges());
+    this.flushQueue = pending;
+    return pending;
+  }
+
+  private async flushPendingChanges(): Promise<void> {
     if (isTerminalStatus(this.state.getWorkflowExecutionStatus())) {
       await this.flushStepChanges();
       await this.state.flushWorkflowDoc();
@@ -562,6 +570,15 @@ export class StepIoService implements StepIoWriter, StepIoLifecycle {
    * marked deferred — their outputs will be rehydrated on demand by
    * `prepareForRead`.
    */
+  /** Reloads one coordinator-owned node without replacing concurrently executing sibling state. */
+  public async loadStep(stepExecutionId: string): Promise<void> {
+    const [step] = await this.stepRepository.getStepExecutionsByIds([stepExecutionId]);
+    if (!step) throw new Error(`Coordinator step ${stepExecutionId} was not persisted`);
+    this.state.ingestLoadedStepDocs([stripIo(step)]);
+    if (step.input !== undefined) this.setStepInput(step.id, step.input);
+    if (Object.hasOwn(step, 'output')) this.setStepOutput(step.id, step.output ?? null);
+  }
+
   public async load(): Promise<void> {
     this.dataSetOutputs.clear();
     this.dataSetVariablesCache.clear();

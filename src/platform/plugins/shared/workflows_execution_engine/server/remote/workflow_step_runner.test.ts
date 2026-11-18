@@ -35,6 +35,7 @@ import { WorkflowContextManager } from '../workflow_context_manager/workflow_con
 
 const setup = (handler: ServerHandlerStepDefinition['handler']) => {
   const dependencies = mockContextDependencies();
+  dependencies.actions.getAllTypes.mockReturnValue([]);
   const request = httpServerMock.createKibanaRequest({
     headers: { authorization: 'ApiKey scoped' },
   });
@@ -349,3 +350,59 @@ it.each(['handler', 'start', 'poll'] as const)(
     expect(handler).not.toHaveBeenCalled();
   }
 );
+
+it('describes registered spec connectors for the generic connector transport', async () => {
+  const { runner, dependencies } = await setup(async () => ({ output: null }));
+  jest
+    .spyOn(dependencies.runtimeMetadata, 'isSpecConnector')
+    .mockImplementation((type) => type === 'slack');
+  expect(await runner.describe(['slack'])).toEqual([
+    expect.objectContaining({ type: 'slack', mode: 'connector', isSpecConnector: true }),
+  ]);
+});
+
+it('describes registered action connector subactions without rejecting non-spec types', async () => {
+  const { runner, dependencies } = setup(async () => ({ output: null }));
+  dependencies.actions.getAllTypes.mockReturnValue(['.test_action']);
+  expect(await runner.describe(['test_action.run'])).toEqual([
+    expect.objectContaining({ type: 'test_action.run', mode: 'connector', isSpecConnector: false }),
+  ]);
+});
+
+it('keeps spec connector metadata for subactions', async () => {
+  const { runner, dependencies } = setup(async () => ({ output: null }));
+  jest
+    .spyOn(dependencies.runtimeMetadata, 'isSpecConnector')
+    .mockImplementation((type) => type === 'test_spec');
+  expect(await runner.describe(['test_spec.search'])).toEqual([
+    expect.objectContaining({ type: 'test_spec.search', mode: 'connector', isSpecConnector: true }),
+  ]);
+});
+
+it('executes a system connector without looking up a saved connector', async () => {
+  const { runner, dependencies } = setup(async () => ({ output: null }));
+  const client = await dependencies.actions.getActionsClientWithRequest(
+    httpServerMock.createKibanaRequest()
+  );
+  jest.mocked(client.execute).mockResolvedValue({
+    status: 'ok',
+    data: { reached: true },
+    actionId: 'system-connector-.http',
+  });
+  expect(
+    await runner.invoke({
+      phase: 'connector',
+      system: true,
+      invocationId: 'system',
+      scopeId: 'scope',
+      connectorType: '.http',
+      connectorNameOrId: 'unused',
+      input: { url: 'http://example.test' },
+      aborted: false,
+    })
+  ).toEqual({ output: expect.objectContaining({ data: { reached: true } }) });
+  expect(client.get).not.toHaveBeenCalled();
+  expect(client.execute).toHaveBeenCalledWith(
+    expect.objectContaining({ actionId: 'system-connector-.http' })
+  );
+});

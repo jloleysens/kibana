@@ -15,6 +15,7 @@ const setup = () => {
   const client = elasticsearchServiceMock.createElasticsearchClient();
   client.bulk.mockResolvedValue({ errors: false, took: 1, items: [] });
   const control: jest.Mocked<WorkflowControlApi> = {
+    persistence: jest.fn(),
     initializeLogs: jest.fn().mockResolvedValue(undefined),
     info: jest.fn(),
     scheduleResume: jest.fn(),

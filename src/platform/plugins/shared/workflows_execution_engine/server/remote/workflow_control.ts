@@ -15,6 +15,10 @@ import type { WorkflowControlApi } from './tokens';
 export class WorkflowControl implements WorkflowControlApi {
   constructor(private readonly callbacks: WorkflowControlApi) {}
 
+  async persistence(): ReturnType<WorkflowControlApi['persistence']> {
+    return this.callbacks.persistence();
+  }
+
   async scheduleResume(
     ...args: Parameters<WorkflowControlApi['scheduleResume']>
   ): Promise<{ taskId: string }> {

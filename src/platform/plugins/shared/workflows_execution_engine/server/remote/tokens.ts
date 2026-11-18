@@ -86,7 +86,8 @@ export interface WorkflowStorageApi {
     scopeId: string,
     workflowRunId: string,
     spaceId: string,
-    resumeAt: string
+    resumeAt: string,
+    kind?: 'resume' | 'global_timeout' | 'ensure_wake' | 'wake'
   ): Promise<{ taskId: string }>;
   /**
    * Asks the coordinator to run a connector with the execution's user.
@@ -94,7 +95,12 @@ export interface WorkflowStorageApi {
    */
   executeConnector(
     scopeId: string,
-    params: { connectorType: string; connectorNameOrId: string; input: Record<string, unknown> }
+    params: {
+      connectorType: string;
+      connectorNameOrId: string;
+      input: Record<string, unknown>;
+      system?: boolean;
+    }
   ): Promise<unknown>;
   complete(
     scopeId: string,
@@ -154,6 +160,7 @@ export interface WorkflowDataPlaneApi {
 }
 
 export type WorkflowControlApi = Pick<WorkflowStorageApi, 'scheduleResume' | 'executeConnector'> & {
+  persistence(): Promise<WorkflowStorageApi | null>;
   info(message: string): void | Promise<void>;
   initializeLogs(): Promise<void>;
 };
@@ -174,7 +181,7 @@ export interface WorkflowStepDescription {
   readonly elasticsearch?: ElasticsearchRequestDefinition;
   readonly isSpecConnector?: boolean;
   readonly type: string;
-  readonly mode: 'handler' | 'poll' | 'native' | 'connector';
+  readonly mode: 'handler' | 'poll' | 'native' | 'connector' | 'node';
   readonly configKeys: readonly string[];
   readonly hasStart: boolean;
   readonly hasOnCancel: boolean;
@@ -191,7 +198,7 @@ export interface WorkflowStepInvocation {
   readonly nodeId: string;
   readonly stackFrames: StackFrame[];
   readonly description: WorkflowStepDescription;
-  readonly phase: 'handler' | 'start' | 'poll' | 'onCancel';
+  readonly phase: 'handler' | 'start' | 'poll' | 'onCancel' | 'node' | 'nodeCancel';
   readonly now: Date;
   readonly aborted: boolean;
 }
@@ -220,6 +227,7 @@ export interface WorkflowConnectorInvocation {
   readonly invocationId: string;
   readonly scopeId: string;
   readonly phase: 'connector';
+  readonly system?: boolean;
   readonly connectorType: string;
   readonly connectorNameOrId: string;
   readonly input: Parameters<WorkflowStorageApi['executeConnector']>[1]['input'];
@@ -230,4 +238,5 @@ export interface WorkflowDispatchFacts {
   readonly kibanaUrl: string;
   readonly maxResponseSizeBytes: number;
   readonly evictionMinBytes: number;
+  readonly hitlExternalResumeEnabled?: boolean;
 }

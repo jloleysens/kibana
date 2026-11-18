@@ -22,6 +22,7 @@ import {
 /** Imports repository persistence only on first access, using the current dispatch's clients. */
 @remotable()
 export class ExecutorStorage implements WorkflowStorageApi {
+  private coordinatorPersistence?: Promise<WorkflowStorageApi | null>;
   constructor(
     @inject(WorkflowDataPlaneToken) private readonly data: WorkflowDataPlaneApi,
     @inject(WorkflowControlToken) private readonly control: WorkflowControlApi
@@ -100,6 +101,9 @@ export class ExecutorStorage implements WorkflowStorageApi {
   }
 
   private async persistence(scopeId: string): Promise<WorkflowStorageApi> {
+    this.coordinatorPersistence ??= this.control.persistence();
+    const coordinator = await this.coordinatorPersistence;
+    if (coordinator) return coordinator;
     const { createExecutorPersistence } = await import('./executor_persistence');
     return createExecutorPersistence(this.data.internal(scopeId), this.control);
   }

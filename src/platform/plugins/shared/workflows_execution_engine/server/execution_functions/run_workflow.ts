@@ -16,7 +16,6 @@ import {
   WorkflowRepository,
 } from '@kbn/workflows';
 import { acquireWorkflowStartBarrier } from './acquire_workflow_start_barrier';
-import { assertRemoteStorageSupported } from './assert_remote_storage_supported';
 import { completeIdentityFailureCleanup } from './complete_identity_failure_cleanup';
 import { executeWorkflowRemotely, type RemoteWorkflowExecution } from './execute_workflow_remotely';
 import { finalizeWorkflowIdentityFailure } from './finalize_workflow_identity_failure';
@@ -77,8 +76,6 @@ async function runWorkflowWithRequest({
   workflowExecutionRepository: WorkflowExecutionRepository;
   stepExecutionRepository: StepExecutionRepository;
 }): Promise<RunWorkflowResult | void> {
-  assertRemoteStorageSupported(config, Boolean(executeRemote));
-
   // Span for setup/initialization phase
   const setupSpan = apm.startSpan('workflow setup', 'workflow', 'setup');
   let setupResult: Awaited<ReturnType<typeof setupDependencies>>;

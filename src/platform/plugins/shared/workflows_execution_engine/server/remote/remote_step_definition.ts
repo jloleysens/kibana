@@ -41,8 +41,7 @@ export const createRemoteStepDefinition = ({
     phase: WorkflowStepInvocation['phase'],
     context: StepHandlerContext | PollHandlerContext
   ) => {
-    // A concurrent persistence flush may already be draining an earlier snapshot.
-    await flush();
+    // The queued flush awaits earlier writes and persists both step docs and execution references.
     await flush();
     if (phase !== 'onCancel') context.abortSignal.throwIfAborted();
     const invocationId = randomUUID();
