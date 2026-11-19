@@ -146,6 +146,87 @@ describe('WorkflowExecutor', () => {
     expect(caseTitles).toEqual(['Graph nodes 2']);
   });
 
+  it('drains connector finalization before publishing terminal status and closes before returning', async () => {
+    const store = createStore(
+      execution([{ name: 'native', type: 'data.set', with: { value: 1 } }])
+    );
+    let acknowledge: () => void = () => {};
+    const durable = new Promise<void>((resolve) => {
+      acknowledge = resolve;
+    });
+    const connectors = {
+      run: jest.fn(),
+      drain: jest.fn(() => durable),
+      close: jest.fn(async () => {}),
+    };
+    const pending = new WorkflowExecutor(
+      catalog([]),
+      store.storage,
+      log(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      connectors
+    ).run({
+      dependencyPlan: store.dependencyPlan,
+      scopeId: 'scope',
+      workflowRunId: 'run-1',
+      spaceId: 'default',
+    });
+    for (let attempt = 0; attempt < 100 && connectors.drain.mock.calls.length === 0; attempt++)
+      await new Promise((resolve) => setImmediate(resolve));
+    expect(connectors.drain).toHaveBeenCalledWith('scope');
+    expect((await store.storage.getExecution('scope', 'run-1', 'default')).status).not.toBe(
+      ExecutionStatus.COMPLETED
+    );
+    expect(connectors.close).not.toHaveBeenCalled();
+    acknowledge();
+    await expect(pending).resolves.toMatchObject({ status: ExecutionStatus.COMPLETED });
+    expect(connectors.close).toHaveBeenCalledWith('scope');
+  });
+
+  it('surfaces connector drain failure and still closes data clients', async () => {
+    const store = createStore(
+      execution([{ name: 'native', type: 'data.set', with: { value: 1 } }])
+    );
+    const connectors = {
+      run: jest.fn(),
+      drain: jest.fn(async () => {
+        throw new Error('durable finalization failed');
+      }),
+      close: jest.fn(async () => {
+        throw new Error('durable finalization failed');
+      }),
+    };
+    const data = {
+      open: jest.fn(async () => {}),
+      close: jest.fn(async () => {}),
+      internal: jest.fn(),
+      user: jest.fn(),
+    };
+    await expect(
+      new WorkflowExecutor(
+        catalog([]),
+        store.storage,
+        log(),
+        data,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        connectors
+      ).run({
+        dependencyPlan: store.dependencyPlan,
+        scopeId: 'scope',
+        workflowRunId: 'run-1',
+        spaceId: 'default',
+      })
+    ).rejects.toThrow('durable finalization failed');
+    expect(data.close).toHaveBeenCalledWith('scope');
+  });
+
   it('refuses to start a pending execution without a durable start barrier', async () => {
     const job = execution([{ name: 'native', type: GRAPH, with: {} }]);
     job.startedAt = '';

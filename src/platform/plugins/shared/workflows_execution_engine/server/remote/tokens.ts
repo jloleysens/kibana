@@ -303,3 +303,7 @@ export interface WorkflowCredentialsApi {
 }
 export const WorkflowCredentialsToken =
   createToken<WorkflowCredentialsApi>('workflows.credentials');
+export const NativeActionsToken =
+  createToken<import('@kbn/actions-plugin/server').NativeActionsApi>('actions.native');
+export const SpecRuntimeToken =
+  createToken<import('@kbn/connector-specs').SpecRuntimeApi>('actions.specRuntime');

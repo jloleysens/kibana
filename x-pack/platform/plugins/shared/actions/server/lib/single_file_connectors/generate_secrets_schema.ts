@@ -7,7 +7,7 @@
 
 import type { ConnectorSpec } from '@kbn/connector-specs';
 import { generateSecretsSchemaFromSpec } from '@kbn/connector-specs/src/lib/generate_secrets_schema_from_spec';
-import { isEarsExperimentalAuthType } from '@kbn/connector-specs/src/lib/ears_experimental_utils';
+import { isEarsExperimentalAuthType } from '@kbn/connector-specs/src/lib/is_ears_experimental_auth_type';
 import { getSchemaForAuthType } from '@kbn/connector-specs/src/lib/get_schema_for_auth_type';
 import type { ActionTypeSecrets, ValidatorType, ValidatorServices } from '../../types';
 import type { ActionsConfigurationUtilities } from '../../actions_config';

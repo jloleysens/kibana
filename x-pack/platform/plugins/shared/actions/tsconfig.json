@@ -11,6 +11,9 @@
     "common/**/*"
   ],
   "kbn_references": [
+    "@kbn/core-di",
+    "@kbn/core-remote-common",
+    "@kbn/connector-specs-runtime",
     "@kbn/agent-builder-elastic-ai-index-ki-types",
     "@kbn/core",
     "@kbn/human-readable-id",

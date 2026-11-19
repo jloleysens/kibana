@@ -40,6 +40,51 @@ describe('EventLogger', () => {
     eventLogger = service.getLogger({});
   });
 
+  test('logEvents waits for one acknowledged batch and surfaces indexing failures', async () => {
+    service.registerProviderActions('test-provider', ['test-action-1']);
+    eventLogger = service.getLogger({
+      event: { provider: 'test-provider', action: 'test-action-1' },
+    });
+    let acknowledge: () => void = () => {};
+    jest.mocked(esContext.esAdapter.indexDocuments).mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          acknowledge = resolve;
+        })
+    );
+    let complete = false;
+    const pending = eventLogger.logEvents([{ message: 'one' }, { message: 'two' }]).then(() => {
+      complete = true;
+    });
+    await Promise.resolve();
+    expect(complete).toBe(false);
+    expect(esContext.esAdapter.indexDocuments).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({ body: expect.objectContaining({ message: 'one' }) }),
+        expect.objectContaining({ body: expect.objectContaining({ message: 'two' }) }),
+      ],
+      true
+    );
+    expect(esContext.esAdapter.indexDocument).not.toHaveBeenCalled();
+    acknowledge();
+    await pending;
+    jest
+      .mocked(esContext.esAdapter.indexDocuments)
+      .mockRejectedValue(new Error('bulk unavailable'));
+    await expect(eventLogger.logEvents([{ message: 'three' }])).rejects.toThrow('bulk unavailable');
+  });
+
+  test('logEvents validates the whole batch before writing anything', async () => {
+    service.registerProviderActions('test-provider', ['test-action-1']);
+    eventLogger = service.getLogger({
+      event: { provider: 'test-provider', action: 'test-action-1' },
+    });
+    await expect(
+      eventLogger.logEvents([{ message: 'valid' }, { event: { provider: 'unregistered' } }])
+    ).rejects.toThrow();
+    expect(esContext.esAdapter.indexDocuments).not.toHaveBeenCalled();
+  });
+
   test('handles successful initialization', async () => {
     service.registerProviderActions('test-provider', ['test-action-1']);
     eventLogger = service.getLogger({

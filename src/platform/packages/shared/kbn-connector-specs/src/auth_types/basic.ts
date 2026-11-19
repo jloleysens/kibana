@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { AUTH_TYPE_METADATA } from '@kbn/connector-specs-runtime';
 import { z, lazySchema } from '@kbn/zod/v4';
 import type { AxiosInstance } from 'axios';
 import type { AuthContext, AuthTypeSpec } from '../connector_spec';
@@ -34,7 +35,7 @@ type AuthSchemaType = z.infer<typeof authSchema>;
  * Use for: Username + Password auth (Jira, etc.)
  */
 export const BasicAuth: AuthTypeSpec<AuthSchemaType> = {
-  id: 'basic',
+  ...AUTH_TYPE_METADATA.basic,
   schema: authSchema,
   configure: async (
     _: AuthContext,

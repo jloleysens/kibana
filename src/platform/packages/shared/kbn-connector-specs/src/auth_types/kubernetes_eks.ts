@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { AUTH_TYPE_METADATA } from '@kbn/connector-specs-runtime';
 import { z, lazySchema } from '@kbn/zod/v4';
 import type { AuthTypeDefinition } from '../connector_spec';
 import * as i18n from './translations';
@@ -56,6 +57,6 @@ export type KubernetesEksAuthSchema = z.infer<typeof authSchema>;
  * and minted locally per action execution — no extra network round trip.
  */
 export const KubernetesEksAuth: AuthTypeDefinition = {
-  id: KUBERNETES_EKS_AUTH_ID,
+  ...AUTH_TYPE_METADATA.kubernetes_eks,
   schema: authSchema,
 };

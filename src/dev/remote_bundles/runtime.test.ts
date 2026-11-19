@@ -182,3 +182,49 @@ it('keeps workflow runtime contracts free of authoring, schemas, catalogs, i18n 
   expect(isTerminalStatus(ExecutionStatus.COMPLETED)).toBe(true);
   expect(isTerminalStatus(ExecutionStatus.RUNNING)).toBe(false);
 });
+
+it('keeps connector execution helpers free of catalogs, schemas, SDKs and UI', async () => {
+  const result = await build({
+    entryPoints: [
+      resolve(__dirname, '../../platform/packages/shared/kbn-connector-specs-runtime/index.ts'),
+    ],
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    metafile: true,
+    write: false,
+  });
+  const inputs = Object.keys(result.metafile.inputs);
+  expect(inputs.length).toBeGreaterThan(0);
+  expect(inputs.every((path) => path.includes('/kbn-connector-specs-runtime/'))).toBe(true);
+  expect(
+    inputs.filter((path) =>
+      /all_specs|all_auth_types|node_modules|kbn-connector-specs\//.test(path)
+    )
+  ).toEqual([]);
+});
+
+it('keeps the original spec executor independent of default SDK and Task Manager services', async () => {
+  const result = await build({
+    entryPoints: [
+      resolve(
+        __dirname,
+        '../../../x-pack/platform/plugins/shared/actions/server/lib/single_file_connectors/create_spec_executor.ts'
+      ),
+    ],
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    metafile: true,
+    write: false,
+  });
+  const inputs = Object.keys(result.metafile.inputs);
+  expect(inputs).toContainEqual(expect.stringContaining('/create_spec_executor.ts'));
+  expect(
+    inputs.filter((path) =>
+      /node_modules|kbn-connector-specs\/|task_manager\/|get_axios_instance|generate_executor_function/.test(
+        path
+      )
+    )
+  ).toEqual([]);
+});

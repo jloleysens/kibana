@@ -9,6 +9,7 @@
 
 import type { RemoteModule } from '@kbn/core-remote-common';
 import {
+  NativeActionsToken,
   WorkflowChildToken,
   WorkflowControlToken,
   WorkflowCredentialsToken,
@@ -43,6 +44,12 @@ export const remoteModule: RemoteModule = {
       placement: 'executor',
       modulePath: require.resolve('@kbn/core-http-server-internal/src/worker_http_provider'),
       exportName: 'WorkerHttpProvider',
+    },
+    {
+      token: NativeActionsToken,
+      placement: 'coordinator',
+      modulePath: require.resolve('./native_actions_api'),
+      exportName: 'NativeActions',
     },
     {
       token: WorkflowChildToken,

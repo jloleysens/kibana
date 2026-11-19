@@ -7,14 +7,4 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-/**
- * OAuth token responses often use `token_type: "bearer"` (lowercase). If the stored header begins
- * with `bearer ` (after trim), rewrites the scheme to `Bearer `; otherwise returns the trimmed value.
- */
-export function normalizeAuthorizationHeaderValue(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed.startsWith('bearer ')) {
-    return `Bearer ${trimmed.slice('bearer '.length)}`;
-  }
-  return trimmed;
-}
+export { normalizeAuthorizationHeaderValue } from '@kbn/connector-specs-runtime';

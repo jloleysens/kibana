@@ -6,6 +6,8 @@
   "include": ["**/*.js", "**/*.ts", "**/*.mjs", "**/*.cjs", "../../typings/**/*"],
   "exclude": ["target/**/*", "packages/**/*", "type_check_validation_loader.js"],
   "kbn_references": [
+    "@kbn/actions-plugin",
+    "@kbn/connector-specs",
     "@kbn/workflows-runtime",
     "@kbn/scout",
     "@kbn/core",

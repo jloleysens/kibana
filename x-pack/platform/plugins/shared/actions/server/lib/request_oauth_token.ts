@@ -7,7 +7,7 @@
 
 import qs from 'query-string';
 import axios from 'axios';
-import { get } from 'lodash';
+import get from 'lodash/get';
 import { stableStringify } from '@kbn/std';
 import type { Logger } from '@kbn/core/server';
 import type { RefreshTokenOAuthRequestParams } from './request_oauth_refresh_token';

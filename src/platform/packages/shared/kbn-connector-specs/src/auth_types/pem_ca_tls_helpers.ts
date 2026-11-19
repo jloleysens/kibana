@@ -8,7 +8,7 @@
  */
 
 import type { AxiosInstance } from 'axios';
-import { isString } from 'lodash';
+import isString from 'lodash/isString';
 import type { SSLSettings } from '@kbn/actions-utils';
 import type { AuthContext } from '../connector_spec';
 import { configureAxiosInstanceWithSsl } from '../lib/configure_axios_instance_with_ssl';

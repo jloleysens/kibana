@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { AUTH_TYPE_METADATA } from '@kbn/connector-specs-runtime';
 import { z, lazySchema } from '@kbn/zod/v4';
 import type { AxiosInstance } from 'axios';
 import isString from 'lodash/isString';
@@ -38,7 +39,7 @@ type NormalizedAuthSchemaType = Record<string, string>;
  * `paramNames` is omitted, falls back to a single `apiKey` field.
  */
 export const ApiKeyQueryAuth: AuthTypeSpec<AuthSchemaType> = {
-  id: 'api_key_query',
+  ...AUTH_TYPE_METADATA.api_key_query,
   schema: authSchema,
   normalizeSchema: (defaults?: Record<string, unknown>) => {
     const meta = authSchema.meta() ?? {};

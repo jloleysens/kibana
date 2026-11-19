@@ -25,6 +25,7 @@ import type { AxiosInstance } from 'axios';
 import type { SpacesServiceSetup } from '@kbn/spaces-plugin/server';
 import type { EncryptedSavedObjectsClient } from '@kbn/encrypted-saved-objects-shared';
 import type { AuthMode } from '@kbn/connector-specs';
+import type { IEvent } from '@kbn/event-log-plugin/server';
 import type { Connector, ConnectorWithExtraFindData } from '../application/connector/types';
 import type { RotateInboundIngressResult } from '../application/connector/methods/rotate_inbound_ingress/types';
 import type { ConnectorType } from '../application/connector/types';
@@ -38,6 +39,7 @@ import { rotateInboundIngress } from '../application/connector/methods/rotate_in
 import { listTypes } from '../application/connector/methods/list_types';
 import { create } from '../application/connector/methods/create';
 import { execute } from '../application/connector/methods/execute';
+import type { ExecuteOptions } from '../lib/action_executor';
 import type {
   GetGlobalExecutionKPIParams,
   GetGlobalExecutionLogParams,
@@ -703,6 +705,17 @@ export class ActionsClient {
     connectorExecuteParams: ConnectorExecuteParams
   ): Promise<ActionTypeExecutorResult<unknown>> {
     return execute(this.context, connectorExecuteParams);
+  }
+
+  public async executeWithRuntime(
+    params: ConnectorExecuteParams,
+    runtime: NonNullable<ExecuteOptions['runtime']>
+  ): Promise<ActionTypeExecutorResult<unknown>> {
+    return execute(this.context, params, runtime);
+  }
+
+  public async finalizeExecutionEvents(events: IEvent[]): Promise<void> {
+    await this.context.actionExecutor.finalizeExecutionEvents(events);
   }
 
   public async getAxiosInstance(actionId: string): Promise<AxiosInstance> {

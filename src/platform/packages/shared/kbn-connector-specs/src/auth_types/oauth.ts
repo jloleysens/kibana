@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { AUTH_TYPE_METADATA } from '@kbn/connector-specs-runtime';
 import { z, lazySchema } from '@kbn/zod/v4';
 import type { AxiosInstance } from 'axios';
 import type { AuthContext, AuthTypeSpec, OAuthGetTokenOpts } from '../connector_spec';
@@ -72,7 +73,7 @@ const resolveAccessToken = async (ctx: AuthContext, secret: AuthSchemaType): Pro
  * OAuth2 Client Credentials Flow
  */
 export const OAuth: AuthTypeSpec<AuthSchemaType> = {
-  id: 'oauth_client_credentials',
+  ...AUTH_TYPE_METADATA.oauth_client_credentials,
   schema: authSchema,
   configure: async (
     ctx: AuthContext,

@@ -18,6 +18,7 @@ import {
 } from '@kbn/workflows';
 import { WorkflowGraph } from '@kbn/workflows/graph';
 import type { StepHandlerContext, StepHandlerResult } from '@kbn/workflows-extensions/server';
+import { isTerminalStatus } from '@kbn/workflows-runtime';
 import { createNativeChildNode } from './native_child_node';
 import { NativeKibanaHttp } from './native_kibana_http';
 import { noopLogger } from './noop_logger';
@@ -59,6 +60,7 @@ import { workflowExecutionLoop } from '../workflow_execution_loop/workflow_execu
 import type { WorkflowTaskManager } from '../workflow_task_manager/workflow_task_manager';
 
 interface EngineLoopRequest {
+  finalize?: () => Promise<void>;
   children?: WorkflowChildApi;
   execution: EsWorkflowExecution;
   dependencyPlan: StepDependencyPlan;
@@ -91,7 +93,7 @@ export async function runWorkflowEngineInWorker(
     defaultWorkflowSettings
   );
   const workflowExecutionGraph = new WorkflowRuntimeGraph(compiled, execution.scopeStack ?? []);
-  const workflowExecutionRepository = executionRepository(scopeId, storage);
+  const workflowExecutionRepository = executionRepository(scopeId, storage, request.finalize);
   const stepExecutionRepository = stepRepository(scopeId, storage);
   const logger = noopLogger();
   const workflowExecutionState = new WorkflowExecutionState(
@@ -254,13 +256,15 @@ export async function runWorkflowEngineInWorker(
 
 function executionRepository(
   scopeId: string,
-  storage: WorkflowStorageApi
+  storage: WorkflowStorageApi,
+  finalize?: () => Promise<void>
 ): WorkflowExecutionRepository {
   return {
     updateWorkflowExecution: async (update: Partial<EsWorkflowExecution>) => {
       if (!update.id) {
         throw new Error('Remote execution update is missing an id');
       }
+      if (update.status && isTerminalStatus(update.status)) await finalize?.();
       await storage.updateExecution(
         scopeId,
         update as Partial<EsWorkflowExecution> & { id: string }

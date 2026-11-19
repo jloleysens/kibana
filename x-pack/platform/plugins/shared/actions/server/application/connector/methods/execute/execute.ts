@@ -6,6 +6,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import type { ExecuteOptions } from '../../../../lib/action_executor';
 import type { RawAction, ActionTypeExecutorResult } from '../../../../types';
 import { getActionKibanaPrivileges } from '../../../../lib/get_action_kibana_privileges';
 import { isPreconfigured } from '../../../../lib/is_preconfigured';
@@ -16,7 +17,8 @@ import type { ActionsClientContext } from '../../../../actions_client';
 
 export async function execute(
   context: ActionsClientContext,
-  connectorExecuteParams: ConnectorExecuteParams
+  connectorExecuteParams: ConnectorExecuteParams,
+  runtime?: ExecuteOptions['runtime']
 ): Promise<ActionTypeExecutorResult<unknown>> {
   const log = context.logger;
   const { actionId, params, source, relatedSavedObjects, signal } = connectorExecuteParams;
@@ -53,7 +55,7 @@ export async function execute(
     actionTypeId,
   });
 
-  return context.actionExecutor.execute({
+  const options = {
     actionId,
     params,
     source,
@@ -63,5 +65,8 @@ export async function execute(
     actionExecutionId: uuidv4(),
     connectorTokenClient: context.connectorTokenClient,
     signal,
-  });
+  };
+  return runtime
+    ? context.actionExecutor.executeWithRuntime({ ...options, runtime })
+    : context.actionExecutor.execute(options);
 }

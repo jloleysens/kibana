@@ -7,9 +7,9 @@
 
 import type { Logger } from '@kbn/core/server';
 import type { AuthMode } from '@kbn/connector-specs';
-import { OAUTH_AUTHORIZATION_CODE_AUTH_ID } from '@kbn/connector-specs';
+import { OAUTH_AUTHORIZATION_CODE_AUTH_ID } from '@kbn/connector-specs-runtime';
 import type { ActionsConfigurationUtilities } from '../actions_config';
-import type { ConnectorTokenClientContract } from '../types';
+import type { ConnectorTokenStore } from '../types';
 import type { TokenResponseOptions } from './request_oauth_token';
 import { requestOAuthRefreshToken } from './request_oauth_refresh_token';
 import { getStoredTokenWithRefresh } from './get_stored_oauth_token_with_refresh';
@@ -33,7 +33,7 @@ interface GetOAuthAuthorizationCodeAccessTokenOpts {
     config: GetOAuthAuthorizationCodeConfig;
     secrets: GetOAuthAuthorizationCodeSecrets;
   };
-  connectorTokenClient: ConnectorTokenClientContract;
+  connectorTokenClient: ConnectorTokenStore;
   scope?: string;
   authMode?: AuthMode;
   profileUid?: string;

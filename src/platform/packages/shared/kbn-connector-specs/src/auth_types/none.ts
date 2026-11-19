@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { AUTH_TYPE_METADATA } from '@kbn/connector-specs-runtime';
 import { z, lazySchema } from '@kbn/zod/v4';
 import type { AxiosInstance } from 'axios';
 import type { AuthContext, AuthTypeSpec } from '../connector_spec';
@@ -20,7 +21,7 @@ type AuthSchemaType = z.infer<typeof authSchema>;
  * No Authentication
  */
 export const NoAuth: AuthTypeSpec<AuthSchemaType> = {
-  id: 'none',
+  ...AUTH_TYPE_METADATA.none,
   schema: authSchema,
   configure: async (_: AuthContext, axiosInstance: AxiosInstance): Promise<AxiosInstance> => {
     return axiosInstance;

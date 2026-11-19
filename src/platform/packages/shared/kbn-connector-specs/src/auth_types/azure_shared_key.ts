@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { AUTH_TYPE_METADATA } from '@kbn/connector-specs-runtime';
 import { z, lazySchema } from '@kbn/zod/v4';
 import type { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import type { AuthContext, AuthTypeSpec } from '../connector_spec';
@@ -145,7 +146,7 @@ function formatMsDate(): string {
  * @see https://learn.microsoft.com/en-us/rest/api/storageservices/authorize-with-shared-key
  */
 export const AzureSharedKeyAuth: AuthTypeSpec<AuthSchemaType> = {
-  id: 'azure_shared_key',
+  ...AUTH_TYPE_METADATA.azure_shared_key,
   schema: authSchema,
   configure: (
     ctx: AuthContext,
