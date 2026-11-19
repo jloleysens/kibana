@@ -131,6 +131,65 @@ describe('SavedObjectsService', () => {
     jest.clearAllMocks();
   });
 
+  describe('#createWorkerAdmissionProducer()', () => {
+    const sourceDigest = 'a'.repeat(64);
+    const createProducer = (service: SavedObjectsService) =>
+      service.createWorkerAdmissionProducer({
+        buildIdentity: 'coordinator-build',
+        getSourceDigest: () => sourceDigest,
+      });
+
+    beforeEach(() => {
+      typeRegistryInstanceMock.getType.mockReturnValue(createType({}));
+    });
+
+    it('requires actual coordinator migration completion, not merely setup', async () => {
+      const service = new SavedObjectsService(createCoreContext({ skipMigration: false }));
+      await service.setup(createSetupDeps());
+      const producer = createProducer(service);
+      await expect(producer.create(['test-type'])).rejects.toThrow('have not completed');
+      await service.start(createStartDeps());
+      await expect(producer.create(['test-type'])).resolves.toMatchObject({
+        buildIdentity: 'coordinator-build',
+      });
+      await service.stop();
+      await expect(producer.create(['test-type'])).rejects.toThrow('have not completed');
+    });
+
+    it.each(['skip', 'plugins-not-initialized', 'worker'] as const)(
+      'never treats %s as coordinator migration completion',
+      async (mode) => {
+        const service = new SavedObjectsService(
+          createCoreContext({ skipMigration: mode === 'skip' })
+        );
+        await service.setupTask({ elasticsearch: createSetupDeps().elasticsearch });
+        if (mode === 'worker') {
+          await service.startTask(createStartDeps(), async () => undefined);
+        } else {
+          await service.start(createStartDeps(mode !== 'plugins-not-initialized'));
+        }
+        await expect(createProducer(service).create(['test-type'])).rejects.toThrow(
+          'have not completed'
+        );
+      }
+    );
+
+    it('rechecks the original migrator on cached leases and refuses a stopped service mid-check', async () => {
+      const service = new SavedObjectsService(createCoreContext({ skipMigration: false }));
+      await service.setupTask({ elasticsearch: createSetupDeps().elasticsearch });
+      await service.start(createStartDeps());
+      const producer = createProducer(service);
+      const admission = await producer.create(['test-type']);
+      migratorInstanceMock.getStatus$.mockReturnValueOnce(
+        new BehaviorSubject({ status: 'running' })
+      );
+      await expect(producer.verify(admission)).rejects.toThrow('migrations are running');
+      const pending = producer.verify(admission);
+      await service.stop();
+      await expect(pending).rejects.toThrow('no longer active');
+    });
+  });
+
   describe('#startTask()', () => {
     it('requires coordinator verification before preparing document migrations and never runs index migrations', async () => {
       const service = new SavedObjectsService(createCoreContext({ skipMigration: false }));

@@ -68,6 +68,8 @@ import { registerCoreObjectTypes } from './object_types';
 import { getSavedObjectsDeprecationsProvider } from './deprecations';
 import { getAllIndices } from './utils';
 import { MIGRATION_CLIENT_OPTIONS } from './constants';
+import { WorkerSavedObjectsAdmissionProducer } from './worker_saved_objects_admission';
+import type { WorkerSavedObjectsAdmissionDependencies } from './worker_saved_objects_admission';
 import removedTypes from '../removed_types.json';
 import wipTypes from '../wip_types.json';
 
@@ -145,6 +147,7 @@ export class SavedObjectsService
   });
 
   private started = false;
+  private coordinatorMigrator?: IKibanaMigrator;
 
   private readonly dependencies: SavedObjectsServiceDependencies;
 
@@ -388,6 +391,8 @@ export class SavedObjectsService
       this.logger.info(`Completed all migrations in ${migrationDuration}ms`);
     }
 
+    if (!skipMigrations) this.coordinatorMigrator = migrator;
+
     const createRepository = (
       esClient: ElasticsearchClient,
       includedHiddenTypes: string[] = [],
@@ -536,7 +541,32 @@ export class SavedObjectsService
     };
   }
 
-  public async stop() {}
+  /** Binds admission to this coordinator's real migration lifecycle and registered types. */
+  public createWorkerAdmissionProducer(
+    dependencies: Pick<WorkerSavedObjectsAdmissionDependencies, 'buildIdentity' | 'getSourceDigest'>
+  ): WorkerSavedObjectsAdmissionProducer {
+    return new WorkerSavedObjectsAdmissionProducer({
+      ...dependencies,
+      typeRegistry: this.typeRegistry,
+      assertMigrationsReady: async () => {
+        if (!this.started || !this.coordinatorMigrator) {
+          throw new Error('Coordinator saved object migrations have not completed');
+        }
+        const migrator = this.coordinatorMigrator;
+        const { status } = await firstValueFrom(migrator.getStatus$());
+        if (migrator !== this.coordinatorMigrator) {
+          throw new Error('Coordinator saved object migrator is no longer active');
+        }
+        if (status !== 'completed') {
+          throw new Error(`Coordinator saved object migrations are ${status}`);
+        }
+      },
+    });
+  }
+
+  public async stop() {
+    this.coordinatorMigrator = undefined;
+  }
 
   private assertNoUnallowedWipTypes() {
     const wipTypeNames = new Set<string>(wipTypes);

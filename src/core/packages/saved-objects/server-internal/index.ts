@@ -13,6 +13,7 @@ export {
   CoreSavedObjectsRouteHandlerContext,
   SAVED_OBJECT_TYPES_COUNT,
   WorkerSavedObjects,
+  WorkerSavedObjectsAdmissionProducer,
   resolveSavedObjectsType,
   savedObjectsTypeParity,
 } from './src';
@@ -25,6 +26,7 @@ export type {
   SavedObjectsStartDeps,
   SavedObjectsServiceDependencies,
   WorkerSavedObjectsAdmission,
+  WorkerSavedObjectsAdmissionDependencies,
   WorkerSavedObjectsLease,
   WorkerSavedObjectsOptions,
   WorkerSavedObjectsType,

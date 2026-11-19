@@ -23,6 +23,7 @@ import {
   type SavedObjectsServiceDependencies,
 } from './saved_objects_service';
 import {
+  assertSavedObjectsTypeParity,
   resolveSavedObjectsType,
   savedObjectsTypeParity,
   type SavedObjectsTypeParity,
@@ -64,26 +65,6 @@ interface Generation {
   readonly parity: readonly SavedObjectsTypeParity[];
   references: number;
 }
-
-const assertParity = (
-  local: readonly SavedObjectsTypeParity[],
-  coordinator: readonly SavedObjectsTypeParity[]
-): void => {
-  const expected = new Map(coordinator.map((type) => [type.name, type]));
-  if (expected.size !== coordinator.length || local.length !== coordinator.length) {
-    throw new Error('Worker saved object type set does not match coordinator');
-  }
-  for (const type of local) {
-    const match = expected.get(type.name);
-    if (
-      !match ||
-      match.sourceDigest !== type.sourceDigest ||
-      match.structureDigest !== type.structureDigest
-    ) {
-      throw new Error(`Worker saved object parity mismatch for '${type.name}'`);
-    }
-  }
-};
 
 /** Owns cumulative immutable registries; old in-flight leases never observe newly registered types. */
 export class WorkerSavedObjects {
@@ -140,7 +121,7 @@ export class WorkerSavedObjects {
       const resolved = resolveSavedObjectsType(type);
       const prior = cumulative.get(type.name);
       if (prior) {
-        assertParity(
+        assertSavedObjectsTypeParity(
           [savedObjectsTypeParity(prior.type, prior.sourceDigest)],
           [savedObjectsTypeParity(resolved, sourceDigest)]
         );
@@ -151,7 +132,7 @@ export class WorkerSavedObjects {
 
     let generation = this.current;
     if (generation && cumulative.size === generation.types.size) {
-      assertParity(generation.parity, admission.types);
+      assertSavedObjectsTypeParity(generation.parity, admission.types);
       await this.options.verifyMigrations(admission);
     } else {
       generation = await this.createGeneration(cumulative, admission);
@@ -199,7 +180,7 @@ export class WorkerSavedObjects {
             types.get(type.name)?.sourceDigest ?? this.options.coreSourceDigest
           )
         );
-      assertParity(parity, admission.types);
+      assertSavedObjectsTypeParity(parity, admission.types);
       // Core's registry freezes only in development; retained worker generations must also be
       // immutable in production, including the resolved supplier results used by the migrator.
       setup

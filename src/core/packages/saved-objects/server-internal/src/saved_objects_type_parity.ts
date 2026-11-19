@@ -35,6 +35,26 @@ export interface SavedObjectsTypeParity {
   readonly structureDigest: string;
 }
 
+export const assertSavedObjectsTypeParity = (
+  local: readonly SavedObjectsTypeParity[],
+  coordinator: readonly SavedObjectsTypeParity[]
+): void => {
+  const expected = new Map(coordinator.map((type) => [type.name, type]));
+  if (expected.size !== coordinator.length || local.length !== coordinator.length) {
+    throw new Error('Worker saved object type set does not match coordinator');
+  }
+  for (const type of local) {
+    const match = expected.get(type.name);
+    if (
+      !match ||
+      match.sourceDigest !== type.sourceDigest ||
+      match.structureDigest !== type.structureDigest
+    ) {
+      throw new Error(`Worker saved object parity mismatch for '${type.name}'`);
+    }
+  }
+};
+
 // Executable semantics belong to the generated original-source digest, never Function.toString().
 const canonicalStructure = (value: StructuralValue, ancestors = new Set<object>()): string => {
   if (value === undefined) return 'undefined;';

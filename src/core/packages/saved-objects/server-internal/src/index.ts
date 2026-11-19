@@ -31,3 +31,6 @@ export type {
   InternalSavedObjectRouter,
 } from './internal_types';
 export { SAVED_OBJECT_TYPES_COUNT } from './object_types';
+
+export { WorkerSavedObjectsAdmissionProducer } from './worker_saved_objects_admission';
+export type { WorkerSavedObjectsAdmissionDependencies } from './worker_saved_objects_admission';
