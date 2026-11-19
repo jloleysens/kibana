@@ -53,7 +53,7 @@ The full matrix intentionally runs serially and restarts Kibana many times.
   read and a real by-reference workflow YAML origin resolution; original rerank
   over a local Hugging Face-compatible fake through a real ES inference endpoint,
   retaining the original rank-window tail. Every run persists an ES outcome;
-  independent Case/comment/fingerprint/conversation/event/attachment/outcome reads
+  independent Case/comment/user-action-source/fingerprint/conversation/event/attachment/outcome reads
   validate it. No mocked business service or empty fingerprint fast path.
 - Uninstrumented timing: ordinary Kibana (`remoteExecution.enabled:false`) vs
   child_process; delays **0/1/5/30ms one-way per outbound IPC frame** for extension
@@ -185,3 +185,5 @@ allowlist and292-input static closure. Merged-graph shell heap44,304–44,960B;
 same-input repartition policy, not an unchanged40KiB claim. Source cap may grow only for explicit
 reviewed API methods with this unchanged allowlist. Any new input requires a
 source fix, not a higher cap. Both token-tracker imports remain dynamic.
+
+Cases audit proof now independently reads original user-actions API after create/update/comment, retains the raw API response, and checks every action source against the persisted workflow ID/name/run ID for ordinary and both runner backends. No worker-supplied ActionSource is admitted on the remote path.

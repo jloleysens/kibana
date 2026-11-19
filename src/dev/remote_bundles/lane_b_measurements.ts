@@ -230,6 +230,21 @@ const execute = async (
       `/api/cases/${caseId}/comments/${attachment.id}`
     );
     assert.equal(comment.comment, id);
+    const actions = await api<{
+      userActions: Array<{ source?: { type: string; id: string; name?: string; run_id?: string } }>;
+      total: number;
+    }>(`/api/cases/${caseId}/user_actions/_find?perPage=100&page=1`);
+    save(join(directory, `${workflowExecutionId}-case.json`), { current, comment, actions });
+    assert.equal(actions.userActions.length, actions.total);
+    assert(actions.total >= 3, 'Expected original create, update and comment audit actions');
+    for (const action of actions.userActions) {
+      assert.deepEqual(action.source, {
+        type: 'workflow',
+        id,
+        name: id,
+        run_id: workflowExecutionId,
+      });
+    }
     assert.equal(persisted._source.caseId, caseId);
   } else if (family === 'rerank') {
     assert.equal(persisted._source.first, 'Second');
