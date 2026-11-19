@@ -414,10 +414,10 @@ export const restrictedImportsOverrides: OxlintOverride[] = [
     },
   },
   {
-    // The server entry, tests and test tooling are never bundled into UI code, so they may import
-    // server modules.
+    // Server entries/implementations, tests and test tooling are never bundled into UI code.
     files: [
       'src/platform/packages/shared/kbn-connector-specs/server.ts',
+      'src/platform/packages/shared/kbn-connector-specs/server/remote/**/*.{js,mjs,ts,tsx}',
       'src/platform/packages/shared/kbn-connector-specs/**/*.test.{ts,tsx}',
       'src/platform/packages/shared/kbn-connector-specs/src/test/**/*.ts',
       'src/platform/packages/shared/kbn-connector-specs/scripts/**/*.ts',

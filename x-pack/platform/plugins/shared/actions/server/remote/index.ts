@@ -11,6 +11,78 @@ export const remoteModule: RemoteModule = {
   contributions: [
     {
       kind: WorkflowConnectorKind,
+      stepType: 'google_threat_intelligence',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/google_threat_intelligence'),
+      exportName: 'GoogleThreatIntelligenceConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'ansible_controller',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/ansible_controller'),
+      exportName: 'AnsibleControllerConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'misp',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/misp'),
+      exportName: 'MispConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'sublime_security',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/sublime_security'),
+      exportName: 'SublimeSecurityConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'urlscan_io',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/urlscan_io'),
+      exportName: 'UrlscanIoConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'firecrawl',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/firecrawl'),
+      exportName: 'FirecrawlConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'solarwinds_platform',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/solarwinds_platform'),
+      exportName: 'SolarwindsPlatformConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'abuseipdb',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/abuseipdb'),
+      exportName: 'AbuseipdbConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'virustotal',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/virustotal'),
+      exportName: 'VirustotalConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'zendesk',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/zendesk'),
+      exportName: 'ZendeskConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'alienvault-otx',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/alienvault_otx'),
+      exportName: 'AlienvaultOtxConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'confluence-cloud',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/confluence'),
+      exportName: 'ConfluenceConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
       stepType: 'rootly',
       modulePath: require.resolve('@kbn/connector-specs/server/remote/rootly'),
       exportName: 'RootlyConnector',

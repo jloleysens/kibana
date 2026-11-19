@@ -94,6 +94,13 @@ const main = async (): Promise<void> => {
     'api.datadoghq.com',
     'api.newrelic.com',
     'api.platform.censys.io',
+    'urlscan.io',
+    'api.firecrawl.dev',
+    'api.abuseipdb.com',
+    'www.virustotal.com',
+    'fake.zendesk.com',
+    'otx.alienvault.com',
+    'fake.atlassian.net',
   ];
   execFileSync(
     'openssl',
@@ -112,7 +119,7 @@ const main = async (): Promise<void> => {
       '-subj',
       '/CN=connector-local-fake',
       '-addext',
-      'subjectAltName=' + domains.map((d) => 'DNS:' + d).join(','),
+      'subjectAltName=' + domains.map((d) => 'DNS:' + d).join(',') + ',IP:127.0.0.1',
     ],
     { stdio: 'ignore' }
   );
@@ -123,7 +130,9 @@ const main = async (): Promise<void> => {
     for await (const c of req) text += c;
     requests++;
     seen.push({ host: req.headers.host, path: req.url });
-    let body: object = { marker: 'local-business', data: [] };
+    let body: object = { marker: 'local-business', data: [], results: [], total: 'local-business' };
+    if (req.headers.host === 'www.virustotal.com')
+      body = { data: { id: 'local-business', attributes: { country: 'GB' } } };
     if (req.url?.includes('/organizations/fake/issues/'))
       body = [{ id: 'fake', marker: 'local-business' }];
     if (req.headers.host === 'api.rootly.com')
@@ -184,9 +193,169 @@ const main = async (): Promise<void> => {
     return address.port;
   };
   const url = `http://127.0.0.1:${port(fake)}`;
+  const tlsUrl = `https://127.0.0.1:${port(tlsFake)}`;
+  const tlsSecrets = {
+    caCert: readFileSync(join(temp, 'cert.pem'), 'utf8'),
+    verificationMode: 'full',
+  };
   const bearer = { authType: 'bearer', token: 'fake-token' };
   const basic = { authType: 'basic', username: 'fake', password: 'fake' };
   const cases: Case[] = [
+    {
+      type: 'google_threat_intelligence',
+      op: 'getIpReport',
+      config: {
+        baseUrl: url,
+      },
+      secrets: {
+        authType: 'api_key_header',
+        'x-apikey': 'fake-key',
+      },
+      params: {
+        ipAddress: '1.1.1.1',
+      },
+    },
+    {
+      type: 'ansible_controller',
+      op: 'request',
+      config: {
+        apiUrl: tlsUrl,
+      },
+      secrets: {
+        authType: 'bearer_with_tls',
+        token: 'fake-token',
+        ...tlsSecrets,
+      },
+      params: {
+        method: 'GET',
+        path: '/business',
+      },
+    },
+    {
+      type: 'misp',
+      op: 'getEvent',
+      config: {
+        url: tlsUrl,
+      },
+      secrets: {
+        authType: 'api_key_header_with_tls',
+        apiKey: 'fake-key',
+        ...tlsSecrets,
+      },
+      params: {
+        eventId: '1',
+      },
+    },
+    {
+      type: 'sublime_security',
+      op: 'listMailboxes',
+      config: {
+        baseUrl: url,
+      },
+      secrets: {
+        authType: 'bearer',
+        token: 'fake-token',
+      },
+    },
+    {
+      type: 'urlscan_io',
+      op: 'searchScans',
+      config: {},
+      secrets: {
+        authType: 'none',
+      },
+      params: {
+        q: 'domain:fake.example',
+      },
+    },
+    {
+      type: 'firecrawl',
+      op: 'getCrawlStatus',
+      config: {},
+      secrets: {
+        authType: 'bearer',
+        token: 'fake-token',
+      },
+      params: {
+        id: '00000000-0000-4000-a000-000000000001',
+      },
+    },
+    {
+      type: 'solarwinds_platform',
+      op: 'query',
+      config: {
+        url: tlsUrl,
+      },
+      secrets: {
+        authType: 'basic_with_tls',
+        username: 'fake',
+        password: 'fake',
+        ...tlsSecrets,
+      },
+      params: {
+        query: 'SELECT Caption FROM Orion.Nodes',
+      },
+    },
+    {
+      type: 'abuseipdb',
+      op: 'checkIp',
+      config: {},
+      secrets: {
+        authType: 'api_key_header',
+        Key: 'fake-key',
+      },
+      params: {
+        ipAddress: '1.1.1.1',
+      },
+    },
+    {
+      type: 'virustotal',
+      op: 'getIpReport',
+      config: {},
+      secrets: {
+        authType: 'api_key_header',
+        'x-apikey': 'fake-key',
+      },
+      params: {
+        ip: '1.1.1.1',
+      },
+    },
+    {
+      type: 'zendesk',
+      op: 'whoAmI',
+      config: {
+        subdomain: 'fake',
+      },
+      secrets: {
+        authType: 'basic',
+        username: 'fake',
+        password: 'fake',
+      },
+    },
+    {
+      type: 'alienvault-otx',
+      op: 'getPulse',
+      config: {},
+      secrets: {
+        authType: 'api_key_header',
+        'X-OTX-API-KEY': 'fake-key',
+      },
+      params: {
+        pulseId: 'fake',
+      },
+    },
+    {
+      type: 'confluence-cloud',
+      op: 'listSpaces',
+      config: {
+        subdomain: 'fake',
+      },
+      secrets: {
+        authType: 'basic',
+        username: 'fake',
+        password: 'fake',
+      },
+    },
     {
       type: 'jenkins',
       op: 'request',

@@ -64,6 +64,18 @@ it('bounds first business execution of each simple-auth spec and the shared MCP 
       expect(mcpSample.heapUsed - actions.heapUsed).toBeLessThanOrEqual(4 * 1024 * 1024);
       expect(result.mcpMs).toBeLessThanOrEqual(500);
       expect(result.events.map(({ type }) => type)).toEqual([
+        'google_threat_intelligence',
+        'ansible_controller',
+        'misp',
+        'sublime_security',
+        'urlscan_io',
+        'firecrawl',
+        'solarwinds_platform',
+        'abuseipdb',
+        'virustotal',
+        'zendesk',
+        'alienvault-otx',
+        'confluence-cloud',
         'jenkins',
         'rootly',
         'unifi',
@@ -81,8 +93,8 @@ it('bounds first business execution of each simple-auth spec and the shared MCP 
         expect(event.heapIncrement).toBeLessThanOrEqual(2 * 1024 * 1024);
         expect(event.requests).toBeGreaterThan(0);
       }
-      expect(result.prepares).toBe(12);
-      expect(result.finalizes).toEqual([12]);
+      expect(result.prepares).toBe(24);
+      expect(result.finalizes).toEqual([24]);
       process.stdout.write(`${JSON.stringify({ connectorTypeCurve: result })}\n`);
     }
   } finally {
