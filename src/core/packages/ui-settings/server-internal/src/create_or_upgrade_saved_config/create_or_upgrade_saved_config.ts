@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { defaults } from 'lodash';
+import defaults from 'lodash/defaults';
 
 import type { Logger, LogMeta } from '@kbn/logging';
 import { asyncForEach } from '@kbn/std';

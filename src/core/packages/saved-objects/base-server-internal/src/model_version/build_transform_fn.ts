@@ -7,7 +7,8 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { merge as lodashMerge, unset } from 'lodash';
+import lodashMerge from 'lodash/merge';
+import unset from 'lodash/unset';
 import type {
   SavedObjectsModelChange,
   SavedObjectModelTransformationFn,

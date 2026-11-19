@@ -7,7 +7,9 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { ary, isFunction, mergeWith } from 'lodash';
+import ary from 'lodash/ary';
+import isFunction from 'lodash/isFunction';
+import mergeWith from 'lodash/mergeWith';
 import type {
   SavedObjectMigrationContext,
   SavedObjectMigration,

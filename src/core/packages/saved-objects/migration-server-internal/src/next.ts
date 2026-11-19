@@ -8,7 +8,7 @@
  */
 
 import * as Option from 'fp-ts/Option';
-import { omit } from 'lodash';
+import omit from 'lodash/omit';
 import type { ElasticsearchClient } from '@kbn/core-elasticsearch-server';
 import type {
   AllActionStates,

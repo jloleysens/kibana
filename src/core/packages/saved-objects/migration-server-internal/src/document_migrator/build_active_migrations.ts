@@ -7,7 +7,12 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import _ from 'lodash';
+import isFunction from 'lodash/isFunction';
+import groupBy from 'lodash/groupBy';
+import mapValues from 'lodash/mapValues';
+import filter from 'lodash/filter';
+import last from 'lodash/last';
+import get from 'lodash/get';
 import type { Logger } from '@kbn/logging';
 import type { ISavedObjectTypeRegistry, SavedObjectsType } from '@kbn/core-saved-objects-server';
 import { type ActiveMigrations, type Transform, type TypeTransforms, TransformType } from './types';
@@ -73,7 +78,7 @@ const buildTypeTransforms = ({
   const migrationTransforms = Object.entries(migrationsMap ?? {}).map<Transform>(
     ([version, transform]) => ({
       version,
-      deferred: !_.isFunction(transform) && !!transform.deferred,
+      deferred: !isFunction(transform) && !!transform.deferred,
       transform: convertMigrationFunction(version, type, transform, log),
       transformType: TransformType.Migrate,
     })
@@ -94,20 +99,13 @@ const buildTypeTransforms = ({
   const modelVersionSchemas = getModelVersionSchemas({ typeDefinition: type });
 
   return {
-    immediateVersion: _.chain(transforms)
-      .groupBy('transformType')
-      .mapValues((items) =>
-        _.chain(items)
-          .filter(({ deferred }) => !deferred)
-          .last()
-          .get('version')
-          .value()
-      )
-      .value() as Record<TransformType, string>,
-    latestVersion: _.chain(transforms)
-      .groupBy('transformType')
-      .mapValues((items) => _.last(items)?.version)
-      .value() as Record<TransformType, string>,
+    immediateVersion: mapValues(groupBy(transforms, 'transformType'), (items) =>
+      get(last(filter(items, ({ deferred }) => !deferred)), 'version')
+    ) as Record<TransformType, string>,
+    latestVersion: mapValues(
+      groupBy(transforms, 'transformType'),
+      (items) => last(items)?.version
+    ) as Record<TransformType, string>,
     transforms,
     versionSchemas: {
       ...modelVersionSchemas,

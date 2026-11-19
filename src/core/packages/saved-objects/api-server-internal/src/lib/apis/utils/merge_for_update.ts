@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { isPlainObject } from 'lodash';
+import isPlainObject from 'lodash/isPlainObject';
 import { set } from '@kbn/safer-lodash-set';
 import type { MappingProperty as EsMappingProperty } from '@elastic/elasticsearch/lib/api/types';
 import type {

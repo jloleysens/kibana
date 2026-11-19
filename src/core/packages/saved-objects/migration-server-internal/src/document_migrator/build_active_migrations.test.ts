@@ -17,6 +17,7 @@ import {
   validateTypeMigrationsMock,
 } from './build_active_migrations.test.mocks';
 
+import { chain, last } from 'lodash';
 import type { MockedLogger } from '@kbn/logging-mocks';
 import { loggerMock } from '@kbn/logging-mocks';
 import type { SavedObjectsType } from '@kbn/core-saved-objects-server';
@@ -410,6 +411,41 @@ describe('buildActiveMigrations', () => {
   });
 
   describe('versions', () => {
+    it.each([
+      { transforms: [transform(TransformType.Core, '8.8.0')] },
+      { transforms: [transform(TransformType.Core, '8.8.0', true)] },
+      {
+        transforms: [
+          transform(TransformType.Core, '8.9.0', true),
+          transform(TransformType.Core, '8.8.0'),
+          transform(TransformType.Reference, '7.12.0', true),
+          transform(TransformType.Reference, '7.11.0'),
+        ],
+      },
+    ])('matches the original chain-based version selection for $transforms', ({ transforms }) => {
+      addType({ name: 'foo' });
+      getCoreTransformsMock.mockReturnValue(transforms);
+
+      const result = buildMigrations().foo;
+      const originalImmediateVersion = chain(result.transforms)
+        .groupBy('transformType')
+        .mapValues((items) =>
+          chain(items)
+            .filter(({ deferred }) => !deferred)
+            .last()
+            .get('version')
+            .value()
+        )
+        .value();
+      const originalLatestVersion = chain(result.transforms)
+        .groupBy('transformType')
+        .mapValues((items) => last(items)?.version)
+        .value();
+
+      expect(result.immediateVersion).toEqual(originalImmediateVersion);
+      expect(result.latestVersion).toEqual(originalLatestVersion);
+    });
+
     it('returns the latest migrations versions', () => {
       addType({
         name: 'foo',

@@ -26,7 +26,7 @@ import {
   type SavedObjectsTypeMappingDefinitions,
 } from '@kbn/core-saved-objects-base-server-internal';
 import Semver, { SemVer } from 'semver';
-import { pick } from 'lodash';
+import pick from 'lodash/pick';
 import type { Histogram } from '@opentelemetry/api';
 import type { DocumentMigrator } from './document_migrator';
 import { buildActiveMappings, createIndexMap } from './core';

@@ -8,7 +8,8 @@
  */
 
 import { set } from '@kbn/safer-lodash-set';
-import { get, cloneDeep } from 'lodash';
+import get from 'lodash/get';
+import cloneDeep from 'lodash/cloneDeep';
 import * as esKuery from '@kbn/es-query';
 import { SavedObjectsErrorHelpers } from '@kbn/core-saved-objects-server';
 import type { IndexMapping } from '@kbn/core-saved-objects-base-server-internal';

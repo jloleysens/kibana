@@ -12,7 +12,8 @@ import {
   ELASTIC_HTTP_VERSION_HEADER,
   ELASTIC_HTTP_VERSION_QUERY_PARAM,
 } from '@kbn/core-http-common';
-import { isObject, get } from 'lodash';
+import isObject from 'lodash/isObject';
+import get from 'lodash/get';
 import type { KibanaRequest } from '@kbn/core-http-server';
 import moment from 'moment';
 import type { Mutable } from 'utility-types';

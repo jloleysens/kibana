@@ -13,7 +13,7 @@ import type {
   VersionedRouteConfig,
   VersionedRouterRoute,
 } from '@kbn/core-http-server';
-import { omit } from 'lodash';
+import omit from 'lodash/omit';
 import type { Logger } from '@kbn/logging';
 import type { Env } from '@kbn/config';
 import { CoreVersionedRoute } from './core_versioned_route';

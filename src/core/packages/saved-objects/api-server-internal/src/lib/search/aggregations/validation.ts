@@ -9,7 +9,8 @@
 
 import type { estypes } from '@elastic/elasticsearch';
 import type { ObjectType } from '@kbn/config-schema';
-import { isPlainObject, isArray } from 'lodash';
+import isPlainObject from 'lodash/isPlainObject';
+import isArray from 'lodash/isArray';
 
 import type { IndexMapping } from '@kbn/core-saved-objects-base-server-internal';
 import { getRootFields } from '../../utils';

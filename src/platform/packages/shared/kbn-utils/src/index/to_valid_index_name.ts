@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { kebabCase } from 'lodash';
+import kebabCase from 'lodash/kebabCase';
 
 /** Converts a given string into a valid Elasticsearch index name. */
 export const toValidIndexName = (str: string): string => {

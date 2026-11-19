@@ -13,7 +13,8 @@ import { inspect } from 'util';
 import type { Request, RouteOptions } from '@hapi/hapi';
 import { fromEvent, NEVER } from 'rxjs';
 import { shareReplay, first, filter } from 'rxjs';
-import { isNil, omitBy } from 'lodash';
+import isNil from 'lodash/isNil';
+import omitBy from 'lodash/omitBy';
 import type { RecursiveReadonly } from '@kbn/utility-types';
 import { deepFreeze } from '@kbn/std';
 import type {

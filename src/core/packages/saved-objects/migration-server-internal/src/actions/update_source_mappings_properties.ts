@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { omit } from 'lodash';
+import omit from 'lodash/omit';
 import * as TaskEither from 'fp-ts/TaskEither';
 import { pipe } from 'fp-ts/function';
 import type { ElasticsearchClient } from '@kbn/core-elasticsearch-server';
