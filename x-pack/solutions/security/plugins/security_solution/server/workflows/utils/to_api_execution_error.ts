@@ -5,8 +5,7 @@
  * 2.0.
  */
 
-import { KibanaApiCallError } from '@kbn/workflows-extensions/server';
-import { ExecutionError } from '@kbn/workflows/server';
+import { KibanaApiCallError, ExecutionError } from '@kbn/workflows-runtime';
 
 /**
  * Normalizes an error thrown while calling a detection-engine API from a security workflow step

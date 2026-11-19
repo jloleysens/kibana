@@ -148,9 +148,20 @@ export async function runWorkflowEngineInWorker(
     coreStart,
     dependencies,
   });
-  const kibana = new NativeKibanaHttp(request.kibana, execution.spaceId, request.http);
+  const kibana = new NativeKibanaHttp(
+    request.kibana,
+    execution.spaceId,
+    execution.id,
+    request.http
+  );
+  dependencies.callKibanaApi = (params) => kibana.call(params);
   dependencies.remoteNode = (runtime) => {
-    if (runtime.node.stepType?.startsWith('kibana.')) return kibana.node(runtime, workflowRuntime);
+    if (runtime.node.stepType?.startsWith('kibana.')) {
+      const description = request.remoteSteps?.descriptions.find(
+        ({ type }) => type === runtime.node.stepType
+      );
+      return kibana.node(runtime, workflowRuntime, description?.kibana);
+    }
     if (request.remoteSteps) {
       const { runner, descriptions } = request.remoteSteps;
       if (

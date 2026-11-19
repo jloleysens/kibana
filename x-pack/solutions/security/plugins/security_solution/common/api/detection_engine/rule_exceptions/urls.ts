@@ -8,7 +8,7 @@
 import {
   DETECTION_ENGINE_RULES_URL as PUBLIC_RULES_URL,
   INTERNAL_DETECTION_ENGINE_URL as INTERNAL_URL,
-} from '../../../constants';
+} from '../../../api_urls';
 
 const INTERNAL_RULES_URL = `${INTERNAL_URL}/rules` as const;
 

@@ -16,6 +16,7 @@ import type { WorkflowsExtensionsServerPluginStart } from '@kbn/workflows-extens
 import type { ElasticsearchRequestDefinition } from '@kbn/workflows-runtime';
 import type { StepExecutionRuntime } from './step_execution_runtime';
 import type { WorkflowsExecutionEngineConfig } from '../config';
+import type { CallKibanaApiParams, CallKibanaApiResult } from '../lib/call_kibana_api';
 import type { WorkflowDispatchFacts } from '../remote/tokens';
 import type { WorkflowLogEvent } from '../repositories/logs_repository';
 import type { StepExecutionRepository } from '../repositories/step_execution_repository';
@@ -35,6 +36,7 @@ export interface ContextDependencies {
   taskManager: TaskManagerStartContract;
   workflowsExtensions: WorkflowsExtensionsServerPluginStart;
   dispatchFacts?: WorkflowDispatchFacts;
+  callKibanaApi?: <T = unknown>(params: CallKibanaApiParams) => Promise<CallKibanaApiResult<T>>;
   remoteNode?: (runtime: StepExecutionRuntime) => NodeImplementation | undefined;
   remoteStepDefinition?: (
     stepType: string,

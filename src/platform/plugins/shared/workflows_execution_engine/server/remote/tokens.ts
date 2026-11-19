@@ -186,6 +186,7 @@ export interface WorkflowRunRequest {
 
 export interface WorkflowStepDescription {
   readonly elasticsearch?: ElasticsearchRequestDefinition;
+  readonly kibana?: import('@kbn/workflows').KibanaRequestDefinition;
   readonly isSpecConnector?: boolean;
   readonly type: string;
   readonly mode: 'handler' | 'poll' | 'native' | 'connector' | 'node';

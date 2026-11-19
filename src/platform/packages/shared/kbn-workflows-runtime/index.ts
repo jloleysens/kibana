@@ -106,3 +106,5 @@ export type { LoopStepType } from './loop_step_types';
 export { PollStepDefaults } from './poll_step_defaults';
 
 export { DEFAULT_WAIT_FOR_INPUT_TIMEOUT, DEFAULT_WAIT_FOR_APPROVAL_TIMEOUT } from './hitl_defaults';
+
+export { KibanaHttpMethods, IGNORED_KIBANA_FETCHER_SETTING_MESSAGE } from './kibana_http';

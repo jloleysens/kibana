@@ -9,10 +9,11 @@
 
 import { kibanaRequestFactory } from '@kbn/core-http-server-utils';
 import { asSpaceId } from '@kbn/core-spaces-common';
+import type { KibanaRequestDefinition } from '@kbn/workflows';
 import type { KibanaGraphNode } from '@kbn/workflows/graph/types';
 import { noopLogger } from './noop_logger';
 import type { WorkflowHttpApi, WorkflowKibanaDispatch } from './tokens';
-import { callKibanaApi } from '../lib/call_kibana_api';
+import { callKibanaApi, type CallKibanaApiParams } from '../lib/call_kibana_api';
 import { KibanaActionStepImpl } from '../step/kibana_action_step';
 import type { StepExecutionRuntime } from '../workflow_context_manager/step_execution_runtime';
 import type { WorkflowExecutionRuntimeManager } from '../workflow_context_manager/workflow_execution_runtime_manager';
@@ -21,6 +22,7 @@ import type { WorkflowExecutionRuntimeManager } from '../workflow_context_manage
 export const createNativeKibanaHttp = async (
   dispatch: WorkflowKibanaDispatch,
   spaceId: string,
+  workflowRunId: string,
   provider: WorkflowHttpApi
 ) => {
   const http = await provider.create(dispatch.config, noopLogger(), dispatch);
@@ -33,23 +35,22 @@ export const createNativeKibanaHttp = async (
     },
     spaceId: asSpaceId(spaceId),
   });
+  const call = <T = unknown>(params: CallKibanaApiParams) =>
+    callKibanaApi<T>({ fakeRequest, coreStart: { http }, spaceId, workflowRunId }, params);
   return {
-    node: (runtime: StepExecutionRuntime, workflowRuntime: WorkflowExecutionRuntimeManager) =>
+    call,
+    node: (
+      runtime: StepExecutionRuntime,
+      workflowRuntime: WorkflowExecutionRuntimeManager,
+      definition: KibanaRequestDefinition | null
+    ) =>
       new KibanaActionStepImpl(
         runtime.node as KibanaGraphNode,
         runtime,
         workflowRuntime,
         runtime.stepLogger,
-        (params) =>
-          callKibanaApi(
-            {
-              fakeRequest,
-              coreStart: { http },
-              spaceId,
-              workflowRunId: runtime.workflowExecution.id,
-            },
-            params
-          )
+        call,
+        definition
       ),
     close: () => http.selfClient.close(),
   };

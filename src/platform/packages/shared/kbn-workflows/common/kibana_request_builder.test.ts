@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { buildKibanaRequest } from './kibana_request_builder';
+import { buildKibanaRequest, getKibanaRequestDefinition } from './kibana_request_builder';
 
 describe('buildKibanaRequest', () => {
   describe('Space ID handling', () => {
@@ -445,4 +445,24 @@ describe('buildKibanaRequest', () => {
       expect(result.path).toBe('/s/../../admin/api/cases');
     });
   });
+});
+
+describe('portable Kibana request definitions', () => {
+  it.each(['kibana.createCase', 'kibana.getCase', 'kibana.updateCase'])(
+    '%s uses identical request construction with schema-free dispatch metadata',
+    (type) => {
+      const definition = getKibanaRequestDefinition(type);
+      expect(definition).toBeDefined();
+      const params = { caseId: 'case-id', title: 'Portable', owner: 'cases' };
+      expect(buildKibanaRequest(type, params, 'space', definition)).toEqual(
+        buildKibanaRequest(type, params, 'space')
+      );
+      expect(Object.keys(definition ?? {}).sort()).toEqual([
+        'methods',
+        'parameterTypes',
+        'patterns',
+      ]);
+      expect(() => buildKibanaRequest(type, params, 'space', null)).toThrow();
+    }
+  );
 });

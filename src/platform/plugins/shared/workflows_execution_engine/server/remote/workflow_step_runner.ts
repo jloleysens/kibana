@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 import type { KibanaRequest, Logger } from '@kbn/core/server';
 import { remotable } from '@kbn/core-remote-common';
 import type { ScopeLookup } from '@kbn/core-remote-server';
-import { getElasticsearchConnectors } from '@kbn/workflows';
+import { getElasticsearchConnectors, getKibanaRequestDefinition } from '@kbn/workflows';
 import type { AtomicGraphNode } from '@kbn/workflows/graph';
 import type { StepHandlerContext } from '@kbn/workflows-extensions/server';
 import type {
@@ -97,6 +97,7 @@ export class WorkflowStepRunner implements WorkflowStepRunnerApi {
     const metadata: Omit<WorkflowStepDescription, 'digest'> = {
       type,
       mode,
+      ...(type.startsWith('kibana.') ? { kibana: getKibanaRequestDefinition(type) } : {}),
       ...(mode === 'native'
         ? {
             elasticsearch: this.dependencies.runtimeMetadata.elasticsearchDefinition(type),

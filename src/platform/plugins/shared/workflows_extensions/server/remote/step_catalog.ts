@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { recordRemoteHeap, recordRemoteTiming } from '@kbn/core-remote-common';
 import type { RemoteStepContext, RemoteWorkflowStep } from './tokens';
 
 type StepFactory = () => RemoteWorkflowStep;
@@ -54,7 +55,23 @@ export class WorkflowStepCatalog {
     if (!this.supports(stepType)) {
       throw new Error(`Unsupported remote step type "${stepType}"`);
     }
-    return this.invoke(stepType, scopeId, input, context);
+    const started = performance.now();
+    recordRemoteHeap('EXTENSION_HANDLER_BEFORE', stepType);
+    recordRemoteTiming('extension_handler', {
+      scopeId,
+      stepType,
+      executionId: context.handlerContext?.contextManager.getContext().execution.id,
+    });
+    try {
+      return await this.invoke(stepType, scopeId, input, context);
+    } finally {
+      recordRemoteHeap('EXTENSION_HANDLER_AFTER', stepType);
+      recordRemoteTiming('extension_handler_complete', {
+        scopeId,
+        stepType,
+        durationMs: performance.now() - started,
+      });
+    }
   }
 
   private async invoke(

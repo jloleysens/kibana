@@ -6,41 +6,10 @@
  */
 
 import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
-import { DETECTION_ENGINE_SIGNALS_STATUS_URL } from '../../../../common/constants';
 import { setAlertStatusStepCommonDefinition } from '../../../../common/workflows/step_types/set_alert_status_step/set_alert_status_step_common';
-import { toApiExecutionError } from '../../utils/to_api_execution_error';
+import { handleSetAlertStatusStep } from './set_alert_status_step_runtime';
 
 export const setAlertStatusStepDefinition = createServerStepDefinition({
   ...setAlertStatusStepCommonDefinition,
-  handler: async (context) => {
-    const { alert_ids: alertIds, status } = context.input;
-    const closeReason = 'close_reason' in context.input ? context.input.close_reason : undefined;
-
-    const signalIds = Array.isArray(alertIds) ? alertIds : [alertIds];
-
-    try {
-      await context.contextManager.callKibanaApi<{
-        took?: number;
-        errors?: boolean;
-        items?: unknown[];
-      }>({
-        method: 'POST',
-        path: DETECTION_ENGINE_SIGNALS_STATUS_URL,
-        body: {
-          signal_ids: signalIds,
-          status,
-          ...(closeReason ? { reason: closeReason } : {}),
-        },
-      });
-
-      return {
-        output: {
-          success: true,
-          message: `Successfully updated status to ${status} for ${signalIds.length} alert(s)`,
-        },
-      };
-    } catch (error) {
-      throw toApiExecutionError(error, 'set alert status');
-    }
-  },
+  handler: handleSetAlertStatusStep,
 });

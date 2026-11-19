@@ -6,7 +6,7 @@
  */
 
 import { z, lazySchema } from '@kbn/zod/v4';
-import { KibanaApiCallError } from '@kbn/workflows-extensions/server';
+import { KibanaApiCallError } from '@kbn/workflows-runtime';
 import {
   BulkEditActionSummary,
   NormalizedRuleError,

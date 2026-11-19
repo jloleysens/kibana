@@ -6,9 +6,8 @@
  */
 
 import { z, lazySchema } from '@kbn/zod/v4';
-import { ExecutionError } from '@kbn/workflows/server';
+import { ExecutionError, KibanaApiCallError } from '@kbn/workflows-runtime';
 import type { StepHandlerContext } from '@kbn/workflows-extensions/server';
-import { KibanaApiCallError } from '@kbn/workflows-extensions/server';
 import { stringifyZodError } from '@kbn/zod-helpers/v4';
 import { EXCEPTION_LIST_ITEM_URL } from '@kbn/securitysolution-list-constants';
 import { ExceptionListItem } from '@kbn/securitysolution-exceptions-common/api';
@@ -24,7 +23,7 @@ import type {
   ExceptionItemOutput,
 } from '@kbn/securitysolution-exceptions-common/workflows';
 import { CREATE_RULE_EXCEPTIONS_URL } from '../../../common/api/detection_engine/rule_exceptions';
-import { DETECTION_ENGINE_RULES_URL } from '../../../common/constants';
+import { DETECTION_ENGINE_RULES_URL } from '../../../common/api_urls';
 import { RuleExceptionList } from '../../../common/api/detection_engine/model/rule_schema';
 import {
   MissingExceptionEntryOperandError,

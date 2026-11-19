@@ -7,7 +7,8 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { LoopStepTypes } from '@kbn/workflows-runtime';
+import { KibanaHttpMethods, LoopStepTypes } from '@kbn/workflows-runtime';
+export { KibanaHttpMethods, IGNORED_KIBANA_FETCHER_SETTING_MESSAGE } from '@kbn/workflows-runtime';
 import { z } from '@kbn/zod/v4';
 import { convertLegacyFieldsToJsonSchema } from './lib/field_conversion';
 import { BaseEventSchema } from './schema/common/base_event';
@@ -628,8 +629,6 @@ export const DataSetStepSchema = BaseStepSchema.extend({
 export type DataSetStep = z.infer<typeof DataSetStepSchema>;
 
 // Fetcher configuration for HTTP request customization (shared across formats)
-export const IGNORED_KIBANA_FETCHER_SETTING_MESSAGE =
-  'The "fetcher" setting is deprecated and some options are already ignored. Please remove this setting. Configure self HTTP routing, TLS, and redirects with `server.selfHttp`. Use `max-step-size` for response limits.';
 
 /** Editor schema copy. Unlike the warning above, this is shown while the self client is still off. */
 const KIBANA_FETCHER_SCHEMA_DESCRIPTION =
@@ -667,7 +666,6 @@ export const KibanaFetcherConfigSchema = FetcherConfigObjectSchema.meta({
 // Single source of truth for the kibana.request HTTP method enum (mirrors the `http` step's
 // valid values). Reused by the connector schema (editor + validation) and the runtime guard so
 // the editor and runtime can never accept/reject different methods.
-export const KibanaHttpMethods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const;
 export const KibanaHttpMethodSchema = z.enum(KibanaHttpMethods);
 
 export const ElasticsearchStepInputSchema = z.union([

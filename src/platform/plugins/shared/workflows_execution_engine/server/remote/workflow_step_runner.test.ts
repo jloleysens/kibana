@@ -406,3 +406,22 @@ it('executes a system connector without looking up a saved connector', async () 
     expect.objectContaining({ actionId: 'system-connector-.http' })
   );
 });
+
+it('describes Kibana operations and aliases with original scalar request metadata, never schemas', async () => {
+  const { runner } = setup(async () => ({ output: null }));
+  const [operation, alias] = await runner.describe([
+    'kibana.createCase',
+    'kibana.createCaseDefaultSpace',
+  ]);
+  expect(operation.mode).toBe('node');
+  expect(operation.kibana?.methods).toEqual(['POST']);
+  expect(operation.kibana?.patterns).toEqual(['/api/cases']);
+  expect(alias.kibana).toEqual(operation.kibana);
+  expect(Object.keys(operation.kibana ?? {}).sort()).toEqual([
+    'methods',
+    'parameterTypes',
+    'patterns',
+  ]);
+  const serialized = JSON.stringify(operation);
+  expect(serialized).not.toMatch(/paramsSchema|inputSchema|outputSchema|safeParse/);
+});

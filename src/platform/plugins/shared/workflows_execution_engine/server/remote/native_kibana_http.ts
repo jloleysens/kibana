@@ -8,7 +8,9 @@
  */
 
 import { recordRemoteHeap, recordRemoteTiming } from '@kbn/core-remote-common';
+import type { KibanaRequestDefinition } from '@kbn/workflows';
 import type { WorkflowHttpApi, WorkflowKibanaDispatch } from './tokens';
+import type { CallKibanaApiParams, CallKibanaApiResult } from '../lib/call_kibana_api';
 import type { StepExecutionRuntime } from '../workflow_context_manager/step_execution_runtime';
 import type { WorkflowExecutionRuntimeManager } from '../workflow_context_manager/workflow_execution_runtime_manager';
 
@@ -23,10 +25,19 @@ export class NativeKibanaHttp {
   constructor(
     private dispatch: WorkflowKibanaDispatch | undefined,
     private readonly spaceId: string,
+    private readonly executionId: string,
     private readonly http?: WorkflowHttpApi
   ) {}
 
-  node(runtime: StepExecutionRuntime, workflowRuntime: WorkflowExecutionRuntimeManager) {
+  async call<T = unknown>(params: CallKibanaApiParams): Promise<CallKibanaApiResult<T>> {
+    return (await this.get(this.executionId)).call<T>(params);
+  }
+
+  node(
+    runtime: StepExecutionRuntime,
+    workflowRuntime: WorkflowExecutionRuntimeManager,
+    definition?: KibanaRequestDefinition
+  ) {
     return {
       run: async () => {
         runtime.abortController.signal.throwIfAborted();
@@ -38,7 +49,7 @@ export class NativeKibanaHttp {
         });
         const started = performance.now();
         recordRemoteHeap('KIBANA_HANDLER_BEFORE', runtime.node.stepType);
-        await services.node(runtime, workflowRuntime).run();
+        await services.node(runtime, workflowRuntime, definition ?? null).run();
         recordRemoteHeap('KIBANA_HANDLER_AFTER', runtime.node.stepType);
         recordRemoteTiming('kibana_handler_complete', {
           executionId: runtime.workflowExecution.id,
@@ -78,7 +89,12 @@ export class NativeKibanaHttp {
       this.pending = implementation
         .then(async ({ createNativeKibanaHttp }) => {
           if (this.closed) throw new Error('Kibana HTTP lease is closed');
-          const services = await createNativeKibanaHttp(dispatch, this.spaceId, http);
+          const services = await createNativeKibanaHttp(
+            dispatch,
+            this.spaceId,
+            this.executionId,
+            http
+          );
           if (this.closed) {
             await services.close();
             throw new Error('Kibana HTTP lease is closed');

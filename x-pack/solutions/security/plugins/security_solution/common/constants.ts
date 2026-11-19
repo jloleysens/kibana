@@ -10,6 +10,29 @@ import {
   RULES_FEATURE_LATEST,
   SECURITY_FEATURE_ID_V5,
 } from '@kbn/security-solution-features/constants';
+import {
+  DETECTION_ENGINE_RULES_URL,
+  INTERNAL_DETECTION_ENGINE_URL,
+  DETECTION_ENGINE_SIGNALS_URL,
+  DETECTION_ENGINE_URL,
+  DETECTION_ENGINE_ATTACKS_URL,
+} from './api_urls';
+export {
+  DETECTION_ENGINE_ALERT_ASSIGNEES_URL,
+  DETECTION_ENGINE_ATTACKS_ASSIGNEES_URL,
+  DETECTION_ENGINE_RULES_URL,
+  INTERNAL_DETECTION_ENGINE_URL,
+  NOTE_URL,
+  DETECTION_ENGINE_RULES_BULK_ACTION,
+  DETECTION_ENGINE_SIGNALS_STATUS_URL,
+  DETECTION_ENGINE_ALERT_TAGS_URL,
+  DETECTION_ENGINE_ATTACKS_STATUS_URL,
+  DETECTION_ENGINE_ATTACKS_TAGS_URL,
+  DETECTION_ENGINE_SIGNALS_URL,
+  DETECTION_ENGINE_URL,
+  DETECTION_ENGINE_ATTACKS_URL,
+} from './api_urls';
+
 import * as i18n from './translations';
 
 export {
@@ -314,15 +337,13 @@ export const SHARED_EXCEPTION_LIST_URL = `/api${EXCEPTIONS_PATH}/shared` as cons
 /**
  * Detection engine routes
  */
-export const DETECTION_ENGINE_URL = '/api/detection_engine' as const;
+
 export const DETECTION_ENGINE_PRIVILEGES_URL = `${DETECTION_ENGINE_URL}/privileges` as const;
 export const DETECTION_ENGINE_INDEX_URL = `${DETECTION_ENGINE_URL}/index` as const;
 
-export const DETECTION_ENGINE_RULES_URL = `${DETECTION_ENGINE_URL}/rules` as const;
 export const DETECTION_ENGINE_RULES_URL_FIND = `${DETECTION_ENGINE_RULES_URL}/_find` as const;
 export const DETECTION_ENGINE_TAGS_URL = `${DETECTION_ENGINE_URL}/tags` as const;
-export const DETECTION_ENGINE_RULES_BULK_ACTION =
-  `${DETECTION_ENGINE_RULES_URL}/_bulk_action` as const;
+
 export const DETECTION_ENGINE_RULES_PREVIEW = `${DETECTION_ENGINE_RULES_URL}/preview` as const;
 export const DETECTION_ENGINE_RULES_IMPORT_URL = `${DETECTION_ENGINE_RULES_URL}/_import` as const;
 
@@ -334,7 +355,7 @@ export const INTERNAL_TAGS_URL = `/internal/tags`;
 /**
  * Internal detection engine routes
  */
-export const INTERNAL_DETECTION_ENGINE_URL = '/internal/detection_engine' as const;
+
 export const DETECTION_ENGINE_ALERTS_INDEX_URL =
   `${INTERNAL_DETECTION_ENGINE_URL}/signal/index` as const;
 export const DETECTION_ENGINE_ALERT_SUGGEST_USERS_URL =
@@ -357,14 +378,9 @@ export const DETECTION_ENGINE_SET_UNIFIED_ALERTS_ASSIGNEES_URL =
 /**
  * Detection Engine attacks routes (public)
  */
-export const DETECTION_ENGINE_ATTACKS_URL = `${DETECTION_ENGINE_URL}/attacks` as const;
+
 export const DETECTION_ENGINE_ATTACKS_SEARCH_URL =
   `${DETECTION_ENGINE_ATTACKS_URL}/search` as const;
-export const DETECTION_ENGINE_ATTACKS_STATUS_URL =
-  `${DETECTION_ENGINE_ATTACKS_URL}/status` as const;
-export const DETECTION_ENGINE_ATTACKS_TAGS_URL = `${DETECTION_ENGINE_ATTACKS_URL}/tags` as const;
-export const DETECTION_ENGINE_ATTACKS_ASSIGNEES_URL =
-  `${DETECTION_ENGINE_ATTACKS_URL}/assignees` as const;
 
 /**
  * Telemetry detection endpoint for any previews requested of what data we are
@@ -385,7 +401,6 @@ export const TIMELINE_IMPORT_URL = `${TIMELINE_URL}/_import` as const;
 export const TIMELINE_PREPACKAGED_URL = `${TIMELINE_URL}/_prepackaged` as const;
 export const TIMELINE_COPY_URL = `${TIMELINE_URL}/_copy` as const;
 
-export const NOTE_URL = '/api/note' as const;
 export const PINNED_EVENT_URL = '/api/pinned_event' as const;
 
 /**
@@ -399,9 +414,6 @@ export const NOTES_PER_PAGE_HARD_LIMIT = 10000;
  */
 export const SIGNALS_INDEX_KEY = 'signalsIndex' as const;
 
-export const DETECTION_ENGINE_SIGNALS_URL = `${DETECTION_ENGINE_URL}/signals` as const;
-export const DETECTION_ENGINE_SIGNALS_STATUS_URL =
-  `${DETECTION_ENGINE_SIGNALS_URL}/status` as const;
 export const DETECTION_ENGINE_QUERY_SIGNALS_URL = `${DETECTION_ENGINE_SIGNALS_URL}/search` as const;
 export const DETECTION_ENGINE_SIGNALS_MIGRATION_URL =
   `${DETECTION_ENGINE_SIGNALS_URL}/migration` as const;
@@ -409,9 +421,6 @@ export const DETECTION_ENGINE_SIGNALS_MIGRATION_STATUS_URL =
   `${DETECTION_ENGINE_SIGNALS_URL}/migration_status` as const;
 export const DETECTION_ENGINE_SIGNALS_FINALIZE_MIGRATION_URL =
   `${DETECTION_ENGINE_SIGNALS_URL}/finalize_migration` as const;
-export const DETECTION_ENGINE_ALERT_TAGS_URL = `${DETECTION_ENGINE_SIGNALS_URL}/tags` as const;
-export const DETECTION_ENGINE_ALERT_ASSIGNEES_URL =
-  `${DETECTION_ENGINE_SIGNALS_URL}/assignees` as const;
 
 export const ALERTS_AS_DATA_URL = '/internal/rac/alerts' as const;
 export const ALERTS_AS_DATA_FIND_URL = `${ALERTS_AS_DATA_URL}/find` as const;

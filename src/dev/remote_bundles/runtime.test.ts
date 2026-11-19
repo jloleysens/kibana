@@ -167,6 +167,7 @@ it('keeps workflow runtime contracts free of authoring, schemas, catalogs, i18n 
       'parse_js_property_access',
       'execution_error',
       'kibana_api_call_error',
+      'kibana_http',
       'duration',
       'pick_workflow_document_version',
       'well_known_trigger_sources',

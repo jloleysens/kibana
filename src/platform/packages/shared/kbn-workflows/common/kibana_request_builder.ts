@@ -9,7 +9,23 @@
 
 import { getKibanaConnectors } from '../spec/kibana';
 import { KIBANA_TYPE_ALIASES } from '../spec/kibana/aliases';
-import type { RequestOptions } from '../types/latest';
+import type { InternalConnectorContract, RequestOptions } from '../types/latest';
+
+export type KibanaRequestDefinition = Pick<
+  InternalConnectorContract,
+  'methods' | 'patterns' | 'parameterTypes'
+>;
+
+/** Captures only the original request builder metadata, never authoring schemas. */
+export const getKibanaRequestDefinition = (
+  actionType: string
+): KibanaRequestDefinition | undefined => {
+  const resolved = KIBANA_TYPE_ALIASES[actionType] ?? actionType;
+  const connector = getKibanaConnectors().find(({ type }) => type === resolved);
+  if (!connector) return;
+  const { methods, patterns, parameterTypes } = connector;
+  return { methods, patterns, parameterTypes };
+};
 
 // Meta params that control step behavior but should never be forwarded as HTTP params
 const KIBANA_STEP_META_KEYS = new Set(['use_server_info', 'use_localhost', 'debug']);
@@ -22,7 +38,8 @@ const KIBANA_STEP_META_KEYS = new Set(['use_server_info', 'use_localhost', 'debu
 export function buildKibanaRequest(
   actionType: string,
   params: Record<string, unknown>,
-  spaceId?: string
+  spaceId?: string,
+  suppliedDefinition?: KibanaRequestDefinition | null
 ): RequestOptions {
   // Support raw API format first - this always works
   if (params.request) {
@@ -54,15 +71,8 @@ export function buildKibanaRequest(
     };
   }
 
-  // Lazy load the generated connectors to avoid main bundle bloat
-  const kibanaConnectors = getKibanaConnectors();
-
-  // Resolve alias if the action type uses an old name (backward compatibility)
-  const resolvedActionType = KIBANA_TYPE_ALIASES[actionType] ?? actionType;
-
-  // Find the connector definition for this action type
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const connector = kibanaConnectors.find((c: any) => c.type === resolvedActionType);
+  const connector =
+    suppliedDefinition === undefined ? getKibanaRequestDefinition(actionType) : suppliedDefinition;
 
   if (connector && connector.patterns && connector.methods) {
     // Use explicit parameter type metadata (no hardcoded keys!)

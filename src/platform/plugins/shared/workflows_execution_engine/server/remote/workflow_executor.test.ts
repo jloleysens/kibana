@@ -59,7 +59,30 @@ describe('WorkflowExecutor', () => {
         selfClient: { ...http.selfClient, close },
       })),
     };
-    const runner = { describe: jest.fn(async () => []), invoke: jest.fn(), cancel: jest.fn() };
+    const runner = {
+      describe: jest.fn(async () => [
+        {
+          type: 'kibana.createCase',
+          mode: 'node' as const,
+          configKeys: [],
+          hasStart: false,
+          hasOnCancel: false,
+          digest: 'test',
+          kibana: {
+            methods: ['POST' as const],
+            patterns: ['/api/cases'],
+            parameterTypes: {
+              bodyParams: ['title', 'owner'],
+              headerParams: [],
+              pathParams: [],
+              urlParams: [],
+            },
+          },
+        },
+      ]),
+      invoke: jest.fn(),
+      cancel: jest.fn(),
+    };
     const executor = new WorkflowExecutor(
       catalog([]),
       store.storage,

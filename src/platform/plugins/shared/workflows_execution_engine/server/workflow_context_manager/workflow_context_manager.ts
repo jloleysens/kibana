@@ -330,6 +330,7 @@ export class WorkflowContextManager {
   public async callKibanaApi<T = unknown>(
     params: CallKibanaApiParams
   ): Promise<CallKibanaApiResult<T>> {
+    if (this.dependencies.callKibanaApi) return this.dependencies.callKibanaApi<T>(params);
     const { callKibanaApi } = await import('../lib/call_kibana_api');
     return callKibanaApi<T>(
       {
