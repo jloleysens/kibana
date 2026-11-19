@@ -6,12 +6,12 @@
  */
 
 import type { KibanaRequest } from '@kbn/core/server';
-import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
+import { createServerStepDefinition } from '@kbn/workflows-extensions/server/step_registry/types';
 import {
   addTagsStepCommonDefinition,
   type AddTagsStepInput,
 } from '../../../common/workflows/steps/add_tags';
-import type { CasesClient } from '../../client';
+import type { WorkflowCasesClient as CasesClient } from '../types';
 import { createCasesStepHandler } from './utils';
 import { updateSingleCaseFromInput } from './update_case_helpers';
 

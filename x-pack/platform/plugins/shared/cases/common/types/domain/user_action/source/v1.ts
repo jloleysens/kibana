@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { isPlainObject } from 'lodash';
+import isPlainObject from 'lodash/isPlainObject';
 import { z } from '@kbn/zod/v4';
 import { MAX_ACTION_SOURCE_NAME_LENGTH } from '../../../../constants';
 

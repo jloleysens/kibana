@@ -6,16 +6,11 @@
  */
 
 import type { KibanaRequest } from '@kbn/core/server';
-import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
-import {
-  buildAddAttachmentsStepCommonDefinition,
-  type AddAttachmentsStepInput,
-} from '../../../common/workflows/steps/add_attachments';
-import type { UnifiedAttachmentPayload } from '../../../common/types/domain/attachment/v2';
-import { toLegacyCaseResponse } from '../../common/attachments';
+import { createServerStepDefinition } from '@kbn/workflows-extensions/server/step_registry/types';
+import { buildAddAttachmentsStepCommonDefinition } from '../../../common/workflows/steps/add_attachments';
 import type { UnifiedAttachmentTypeRegistry } from '../../attachment_framework/unified_attachment_registry';
-import type { CasesClient } from '../../client';
-import { createCasesStepHandler, safeParseCaseForWorkflowOutput, withCaseOwner } from './utils';
+import type { WorkflowCasesClient as CasesClient } from '../types';
+import { createAddAttachmentsHandler } from './add_attachments_handler';
 import { selectAuthorableAttachmentSchemas } from './unified_attachment_schemas';
 
 /**
@@ -41,27 +36,6 @@ export const addAttachmentsStepDefinition = (
 
   return createServerStepDefinition({
     ...definition,
-    handler: createCasesStepHandler(
-      getCasesClient,
-      async (client, input: AddAttachmentsStepInput) => {
-        return withCaseOwner(client, input.case_id, async (owner) => {
-          const attachments = input.attachments.map((attachment) => ({
-            ...(attachment as Record<string, unknown>),
-            owner,
-          })) as UnifiedAttachmentPayload[];
-
-          const updatedCase = await client.attachments.bulkCreate({
-            caseId: input.case_id,
-            attachments,
-          });
-          // The client returns unified comments; the output schema mirrors the
-          // public (legacy) wire shape, so convert back before validating.
-          return safeParseCaseForWorkflowOutput(
-            definition.outputSchema.shape.case,
-            toLegacyCaseResponse(updatedCase)
-          );
-        });
-      }
-    ),
+    handler: createAddAttachmentsHandler(getCasesClient, definition.outputSchema),
   });
 };

@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { isPlainObject } from 'lodash';
+import isPlainObject from 'lodash/isPlainObject';
 import {
   EXTERNAL_REFERENCE_TYPE_MAP,
   LEGACY_ATTACHMENT_TYPES,

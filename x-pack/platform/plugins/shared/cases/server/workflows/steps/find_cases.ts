@@ -6,10 +6,10 @@
  */
 
 import type { KibanaRequest } from '@kbn/core/server';
-import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
+import { createServerStepDefinition } from '@kbn/workflows-extensions/server/step_registry/types';
 import { findCasesStepCommonDefinition } from '../../../common/workflows/steps/find_cases';
 import type { CasesFindRequestWithCustomFields } from '../../../common/types/api';
-import type { CasesClient } from '../../client';
+import type { WorkflowCasesClient as CasesClient } from '../types';
 import { getCasesClientFromStepsContext, safeParseCaseForWorkflowOutput } from './utils';
 
 export const findCasesStepDefinition = (

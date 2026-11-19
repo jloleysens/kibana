@@ -42,8 +42,9 @@ import type {
   CloseReasonValidator,
 } from './types';
 import { CasesClientFactory } from './client/factory';
-import { CasesOperations } from './remote/cases_operations';
-import { CasesOperationsToken } from './remote/tokens';
+import { CasesClientOperationsToken } from './remote/client_operations_tokens';
+import { CasesClientOperations } from './remote/client_operations';
+import { selectAuthorableAttachmentSchemas } from './workflows/steps/unified_attachment_schemas';
 import type { CasesClientSource, GetCasesClientOptions } from './client/types';
 import { getCasesKibanaFeatures } from './features';
 import { registerRoutes } from './routes/api/register_routes';
@@ -323,8 +324,16 @@ export class CasePlugin
       () => core.getStartServices()
     );
     core.remote.bind(
-      CasesOperationsToken,
-      (scopes) => new CasesOperations(scopes, getCasesClient('workflow'))
+      CasesClientOperationsToken,
+      (scopes) =>
+        new CasesClientOperations(
+          scopes,
+          getCasesClient('workflow'),
+          this.caseConfig.templates?.enabled === true,
+          () =>
+            this.caseConfig.attachments?.enabled === true &&
+            selectAuthorableAttachmentSchemas(this.unifiedAttachmentTypeRegistry).length > 0
+        )
     );
     registerCaseWorkflowTriggers(plugins.workflowsExtensions);
 

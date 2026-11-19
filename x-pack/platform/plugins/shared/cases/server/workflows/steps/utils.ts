@@ -10,8 +10,10 @@ import type { StepHandlerContext } from '@kbn/workflows-extensions/server';
 import type { StepContext } from '@kbn/workflows';
 import type { ActionSource } from '../../../common/types/domain';
 import { ActionSourceTypes, isActionSource, toActionSource } from '../../../common/types/domain';
-import type { CasesClient } from '../../client';
-import type { GetCasesClientFn } from '../../client/types';
+import type {
+  WorkflowCasesClient as CasesClient,
+  GetWorkflowCasesClient as GetCasesClientFn,
+} from '../types';
 import { ACTION_SOURCE_STEP_CONFIG_KEY } from '../../common/constants';
 import type { CreateCaseStepOutput } from '../../../common/workflows/steps/create_case';
 import type { UpdateCaseStepInput } from '../../../common/workflows/steps/update_case';

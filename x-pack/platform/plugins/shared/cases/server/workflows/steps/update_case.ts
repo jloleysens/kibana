@@ -6,12 +6,12 @@
  */
 
 import type { KibanaRequest } from '@kbn/core/server';
-import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
+import { createServerStepDefinition } from '@kbn/workflows-extensions/server/step_registry/types';
 import {
   updateCaseStepCommonDefinition,
   type UpdateCaseStepInput,
 } from '../../../common/workflows/steps/update_case';
-import type { CasesClient } from '../../client';
+import type { WorkflowCasesClient as CasesClient } from '../types';
 import { createUpdateSingleCaseStepHandler } from './update_case_helpers';
 
 export const updateCaseStepDefinition = (

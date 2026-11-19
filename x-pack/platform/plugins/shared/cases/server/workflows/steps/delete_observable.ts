@@ -6,9 +6,9 @@
  */
 
 import type { KibanaRequest } from '@kbn/core/server';
-import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
+import { createServerStepDefinition } from '@kbn/workflows-extensions/server/step_registry/types';
 import { deleteObservableStepCommonDefinition } from '../../../common/workflows/steps/delete_observable';
-import type { CasesClient } from '../../client';
+import type { WorkflowCasesClient as CasesClient } from '../types';
 import { getCasesClientFromStepsContext } from './utils';
 
 export const deleteObservableStepDefinition = (

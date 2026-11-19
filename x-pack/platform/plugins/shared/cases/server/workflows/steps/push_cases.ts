@@ -8,11 +8,11 @@
 import pMap from 'p-map';
 import pRetry from 'p-retry';
 import type { KibanaRequest } from '@kbn/core/server';
-import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
+import { createServerStepDefinition } from '@kbn/workflows-extensions/server/step_registry/types';
 import { pushCasesStepCommonDefinition } from '../../../common/workflows/steps/push_cases';
 import { ConnectorTypes } from '../../../common/bundled-types.gen';
 import { toLegacyCaseResponse } from '../../common/attachments';
-import type { CasesClient } from '../../client';
+import type { WorkflowCasesClient as CasesClient } from '../types';
 import { getCasesClientFromStepsContext, safeParseCaseForWorkflowOutput } from './utils';
 
 const pushSingleCase = async (

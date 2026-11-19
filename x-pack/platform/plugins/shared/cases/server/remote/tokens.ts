@@ -6,29 +6,6 @@
  */
 
 import { createToken } from '@kbn/core-di';
-import type {
-  CreateCaseStepConfig,
-  CreateCaseStepInput,
-  CreateCaseStepOutput,
-} from '../../common/workflows/steps/create_case';
+import type { RemoteWorkflowStep } from '@kbn/workflows-extensions/server';
 
-/** Same stable id as the Workflows Extensions contribution kind. */
-export const WorkflowStepKind = createToken<unknown>('workflows.step');
-
-export interface CaseAttribution {
-  readonly type: string;
-  readonly id: string;
-  readonly name: string;
-  readonly runId: string;
-}
-
-export interface CasesOperationsApi {
-  create(
-    scopeId: string,
-    input: CreateCaseStepInput,
-    config: CreateCaseStepConfig,
-    attribution?: CaseAttribution
-  ): Promise<{ output: { case: CreateCaseStepOutput['case'] } }>;
-}
-
-export const CasesOperationsToken = createToken<CasesOperationsApi>('cases.operations');
+export const WorkflowStepKind = createToken<RemoteWorkflowStep>('workflows.step');
