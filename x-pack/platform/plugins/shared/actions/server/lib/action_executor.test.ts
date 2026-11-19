@@ -6,7 +6,8 @@
  */
 import type { KibanaRequest } from '@kbn/core/server';
 import { z } from '@kbn/zod/v4';
-import { ActionExecutor } from './action_executor';
+import { ActionExecutor, type ExecuteOptions } from './action_executor';
+import type { ActionRuntimeResult } from './execute_action';
 import { actionTypeRegistryMock } from '../action_type_registry.mock';
 import { encryptedSavedObjectsMock } from '@kbn/encrypted-saved-objects-plugin/server/mocks';
 import {
@@ -36,7 +37,7 @@ import { ConnectorAuthorizationError } from '@kbn/connector-specs';
 import { ACTION_TYPE_SOURCES } from '@kbn/actions-types';
 import { GEN_AI_TOKEN_COUNT_EVENT } from './event_based_telemetry';
 import { IN_MEMORY_CONNECTOR_REVISION } from './single_file_connectors/build_client_lease_key';
-import type { ConnectorRateLimiter } from './connector_rate_limiter';
+import { ConnectorRateLimiter } from './connector_rate_limiter';
 import {
   connectorAuthCounter,
   connectorExecuteCounter,
@@ -45,11 +46,15 @@ import {
 import { createMockInMemoryConnector } from '../application/connector/mocks';
 
 const mockRateLimiterLog = jest.fn();
+const mockRateLimiterReserve = jest.fn();
+const mockRateLimiterRefund = jest.fn();
 const mockRateLimiterIsRateLimited = jest.fn().mockReturnValue(false);
 
 const connectorRateLimiter = {
   logsByConnectors: new Map([]),
   log: mockRateLimiterLog,
+  reserve: mockRateLimiterReserve,
+  refund: mockRateLimiterRefund,
   isRateLimited: mockRateLimiterIsRateLimited,
 } as unknown as ConnectorRateLimiter;
 
@@ -2853,4 +2858,123 @@ describe('execute() - spaceId override', () => {
       { namespace: 'some-namespace' }
     );
   });
+});
+
+describe('worker Actions runtime handoff', () => {
+  test('retains per-execution policy/rate checks while caching only referenced secrets in one run', async () => {
+    encryptedSavedObjectsClient.getDecryptedAsInternalUser.mockResolvedValue(connectorSavedObject);
+    connectorTypeRegistry.get.mockReturnValue(connectorType);
+    const events: NonNullable<ExecuteOptions['runtime']>['events'] = [];
+    const execute = jest.fn(
+      async (
+        options: Parameters<NonNullable<ExecuteOptions['runtime']>['execute']>[0]
+      ): Promise<ActionRuntimeResult> => {
+        await options.authorize?.();
+        expect(options.config).toEqual({ bar: true });
+        expect(options.secrets).toEqual({ baz: true });
+        return {
+          validatedParams: options.params,
+          result: { actionId: CONNECTOR_ID, status: 'ok', data: 'worker' },
+          errorType: 'other',
+          executionStartedAt: 100,
+          executionCompletedAt: 110,
+          handlerStarted: true,
+        };
+      }
+    );
+    const runtime = { execute, events, actionInfo: new Map() };
+    await expect(actionExecutor.execute({ ...executeParams, runtime })).resolves.toMatchObject({
+      status: 'ok',
+      data: 'worker',
+    });
+    await actionExecutor.execute({ ...executeParams, runtime });
+    expect(connectorType.executor).not.toHaveBeenCalled();
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(encryptedSavedObjectsClient.getDecryptedAsInternalUser).toHaveBeenCalledTimes(1);
+    expect(mockRateLimiterIsRateLimited).toHaveBeenCalledTimes(2);
+    expect(mockRateLimiterReserve).toHaveBeenCalledTimes(2);
+    expect(mockRateLimiterRefund).not.toHaveBeenCalled();
+    expect(connectorTypeRegistry.isActionExecutable).toHaveBeenCalledTimes(2);
+    expect(eventLogger.logEvent).not.toHaveBeenCalled();
+    expect(events).toHaveLength(4);
+    await actionExecutor.finalizeExecutionEvents(events);
+    expect(eventLogger.logEvents).toHaveBeenCalledWith(events);
+    await actionExecutor.execute({
+      ...executeParams,
+      runtime: { ...runtime, actionInfo: new Map() },
+    });
+    expect(encryptedSavedObjectsClient.getDecryptedAsInternalUser).toHaveBeenCalledTimes(2);
+  });
+
+  test('rate-limited or disabled executions never enter the worker runtime', async () => {
+    encryptedSavedObjectsClient.getDecryptedAsInternalUser.mockResolvedValue(connectorSavedObject);
+    connectorTypeRegistry.get.mockReturnValue(connectorType);
+    const execute = jest.fn();
+    mockRateLimiterIsRateLimited.mockReturnValueOnce(true);
+    await expect(
+      actionExecutor.execute({ ...executeParams, runtime: { execute, events: [] } })
+    ).resolves.toMatchObject({ status: 'error', retry: true });
+    expect(execute).not.toHaveBeenCalled();
+    connectorTypeRegistry.ensureActionTypeEnabled.mockImplementation(() => {
+      throw new Error('disabled');
+    });
+    await expect(
+      actionExecutor.execute({ ...executeParams, runtime: { execute, events: [] } })
+    ).rejects.toThrow('disabled');
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  test('durable finalization failures propagate', async () => {
+    eventLogger.logEvents.mockRejectedValue(new Error('index unavailable'));
+    await expect(actionExecutor.finalizeExecutionEvents([])).rejects.toThrow('index unavailable');
+  });
+});
+
+it('refunds worker validation rejection but never refunds an invocation whose original handler started', async () => {
+  encryptedSavedObjectsClient.getDecryptedAsInternalUser.mockResolvedValue(connectorSavedObject);
+  connectorTypeRegistry.get.mockReturnValue(connectorType);
+  const limiter = new ConnectorRateLimiter({
+    config: { test: { limit: 1, lookbackWindow: '1m' } },
+  });
+  const executor = new ActionExecutor({ isESOCanEncrypt: true, connectorRateLimiter: limiter });
+  executor.initialize(actionExecutorInitializationParams);
+  const result: ActionRuntimeResult = {
+    validatedParams: ACTION_PARAMS,
+    result: { status: 'error', actionId: CONNECTOR_ID, message: 'invalid' },
+    errorType: 'invalid',
+    executionStartedAt: 1,
+    executionCompletedAt: 2,
+    validationError: { message: 'invalid' },
+    handlerStarted: false,
+  };
+  const runtime = { events: [], execute: jest.fn(async () => result) };
+  await executor.executeWithRuntime({
+    ...executeParams,
+    actionExecutionId: 'validation-failure',
+    runtime,
+  });
+  expect(limiter.getLogs('test')).toHaveLength(0);
+  runtime.execute.mockResolvedValue({
+    ...result,
+    validationError: undefined,
+    errorType: 'other',
+    handlerStarted: true,
+    result: { status: 'ok', actionId: CONNECTOR_ID },
+  });
+  await executor.executeWithRuntime({
+    ...executeParams,
+    actionExecutionId: 'performed-first',
+    runtime,
+  });
+  await executor.executeWithRuntime({
+    ...executeParams,
+    actionExecutionId: 'performed-second',
+    runtime,
+  });
+  expect(limiter.getLogs('test')).toHaveLength(2);
+  expect(limiter.isRateLimited('test')).toBe(true);
+  await expect(
+    executor.executeWithRuntime({ ...executeParams, actionExecutionId: 'over-limit', runtime })
+  ).resolves.toMatchObject({ status: 'error', retry: true });
+  expect(runtime.execute).toHaveBeenCalledTimes(3);
 });

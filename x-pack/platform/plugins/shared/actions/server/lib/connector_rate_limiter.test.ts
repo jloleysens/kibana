@@ -105,3 +105,53 @@ describe('ConnectorRateLimiter', () => {
     expect(connectorRateLimiter.isRateLimited('.email')).toBe(true);
   });
 });
+
+describe('ConnectorRateLimiter prepare reservations', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+  const create = () =>
+    new ConnectorRateLimiter({ config: { jenkins: { limit: 1, lookbackWindow: '10s' } } });
+
+  it('refunds a validation failure without releasing a different same-timestamp execution', () => {
+    const limiter = create();
+    limiter.reserve('.jenkins', 'invalid');
+    limiter.reserve('jenkins', 'performed');
+    expect(limiter.isRateLimited('.jenkins')).toBe(true);
+    limiter.refund('.jenkins', 'invalid');
+    expect(limiter.isRateLimited('.jenkins')).toBe(false);
+    expect(limiter.getLogs('jenkins')).toHaveLength(1);
+  });
+
+  it('makes duplicate refunds no-ops, rather than decrementing a connector-wide counter twice', () => {
+    const limiter = create();
+    limiter.reserve('jenkins', 'invalid');
+    limiter.reserve('jenkins', 'performed');
+    limiter.refund('jenkins', 'invalid');
+    limiter.refund('jenkins', 'invalid');
+    expect(limiter.getLogs('jenkins')).toHaveLength(1);
+  });
+
+  it('refuses duplicate active reservation ids', () => {
+    const limiter = create();
+    limiter.reserve('jenkins', 'execution');
+    expect(() => limiter.reserve('.jenkins', 'execution')).toThrow('already reserved');
+    expect(limiter.getLogs('jenkins')).toHaveLength(1);
+  });
+
+  it('retains crash-abandoned reservations until natural window expiry', () => {
+    const limiter = create();
+    limiter.reserve('jenkins', 'crashed-first');
+    limiter.reserve('jenkins', 'crashed-second');
+    expect(limiter.isRateLimited('jenkins')).toBe(true);
+    jest.advanceTimersByTime(10000);
+    expect(limiter.isRateLimited('jenkins')).toBe(true);
+    jest.advanceTimersByTime(1);
+    expect(limiter.isRateLimited('jenkins')).toBe(false);
+    expect(limiter.getLogs('jenkins')).toEqual([]);
+  });
+});

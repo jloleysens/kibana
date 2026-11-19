@@ -44,3 +44,74 @@ it.each([
     )
   ).toEqual([]);
 });
+
+it('keeps the approved eager spec-runtime shell tiny and defers every Actions implementation', async () => {
+  const directory = resolve(
+    __dirname,
+    '../../../x-pack/platform/plugins/shared/actions/server/remote'
+  );
+  const result = await build({
+    entryPoints: [resolve(directory, 'spec_runtime.ts')],
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    write: false,
+    metafile: true,
+    external: ['inversify', '@kbn/core-di'],
+    plugins: [
+      {
+        name: 'deferred-runtime-boundary',
+        setup(builder) {
+          builder.onResolve({ filter: /spec_runtime_impl$/ }, () => ({
+            path: './spec_runtime_impl',
+            external: true,
+          }));
+        },
+      },
+    ],
+  });
+  expect(Object.keys(result.metafile.inputs).sort()).toEqual(
+    [resolve(directory, 'spec_runtime.ts'), resolve(directory, 'tokens.ts')]
+      .map((path) => path.slice(resolve(__dirname, '../../..').length + 1))
+      .sort()
+  );
+  expect(
+    result.outputFiles.reduce((total, file) => total + file.contents.length, 0)
+  ).toBeLessThanOrEqual(4096);
+  expect(
+    Object.values(result.metafile.inputs)
+      .flatMap(({ imports }) => imports)
+      .filter(({ kind }) => kind === 'dynamic-import')
+  ).toEqual([
+    expect.objectContaining({
+      path: './spec_runtime_impl',
+      kind: 'dynamic-import',
+      external: true,
+    }),
+  ]);
+});
+
+it('bounds the shared native Actions capability without importing any connector implementation', async () => {
+  const result = await build({
+    entryPoints: [
+      resolve(
+        __dirname,
+        '../../../x-pack/platform/plugins/shared/actions/server/remote/spec_runtime_impl.ts'
+      ),
+    ],
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    write: false,
+    metafile: true,
+  });
+  // Measured 5,608,160B standalone; ~21% headroom, independent of per-type budgets.
+  expect(
+    result.outputFiles.reduce((total, file) => total + file.contents.length, 0)
+  ).toBeLessThanOrEqual(6.5 * 1024 * 1024);
+  expect(
+    Object.keys(result.metafile.inputs).filter((path) =>
+      /all_specs|kbn-connector-specs\/src\/specs\//.test(path)
+    )
+  ).toEqual([]);
+});

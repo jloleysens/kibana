@@ -85,8 +85,10 @@ import {
 import { WorkflowsMeteringService } from './metering/metering_service';
 import { CoreDataPlane } from './remote/core_data_plane';
 import { dispatchWorkflow } from './remote/dispatch_workflow';
+import { NativeActions } from './remote/native_actions_api';
 import { NativeChildApi } from './remote/native_child_api';
 import {
+  NativeActionsToken,
   WorkflowChildToken,
   WorkflowConnectorKind,
   WorkflowControlToken,
@@ -1444,6 +1446,13 @@ export class WorkflowsExecutionEnginePlugin
     };
 
     if (this.config.remoteExecution.enabled && this.coreSetup) {
+      this.coreSetup.remote.bind(
+        NativeActionsToken,
+        (scopes) =>
+          new NativeActions(scopes, (request) =>
+            plugins.actions.getActionsClientWithRequest(request)
+          )
+      );
       this.coreSetup.remote.bind(
         WorkflowChildToken,
         (scopes) =>

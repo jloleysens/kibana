@@ -272,3 +272,8 @@ export interface WorkflowChildApi {
 }
 
 export const WorkflowChildToken = createToken<WorkflowChildApi>('workflows.child');
+
+export const NativeActionsToken =
+  createToken<import('@kbn/actions-plugin/server').NativeActionsApi>('actions.native');
+export const SpecRuntimeToken =
+  createToken<import('@kbn/connector-specs').SpecRuntimeApi>('actions.specRuntime');

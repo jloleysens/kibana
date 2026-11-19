@@ -102,7 +102,7 @@ export class ConnectorExecutor {
     return new Error(`Action type "${actionTypeId}" with ID "${actionId}" execution was aborted`);
   }
 
-  private async resolveConnectorId(connectorNameOrId: string): Promise<string> {
+  public async resolveConnectorId(connectorNameOrId: string): Promise<string> {
     if (this.allConnectorsCache) {
       const connector = this.allConnectorsCache.get(connectorNameOrId);
       if (connector) {

@@ -11,7 +11,7 @@ import { rootCertificates } from 'node:tls';
 
 import { i18n } from '@kbn/i18n';
 import { tryCatch, map, mapNullable, getOrElse } from 'fp-ts/Option';
-import { curry } from 'lodash';
+import curry from 'lodash/curry';
 import { pipe } from 'fp-ts/pipeable';
 
 import {
@@ -23,7 +23,7 @@ import {
 import type { ActionsConfig } from './config';
 import { AllowedHosts, EnabledActionTypes, DEFAULT_QUEUED_MAX } from './config';
 import { getCanonicalCustomHostUrl } from './lib/custom_host_settings';
-import { ActionTypeDisabledError } from './lib';
+import { ActionTypeDisabledError } from './lib/errors/action_type_disabled';
 import { parseDuration } from './lib/parse_date';
 import type { AwsSesConfig, ResponseSettings } from './types';
 import type { ValidateEmailAddressesOptions } from '../common';
@@ -440,3 +440,36 @@ export function getActionsConfigurationUtilities(
     isConnectorSigningKeysEnabled: () => config.connectorSigningKeys.enabled,
   };
 }
+
+export type RuntimeActionsConfig = Pick<
+  ActionsConfig,
+  | 'allowedHosts'
+  | 'enabledActionTypes'
+  | 'ssl'
+  | 'proxyUrl'
+  | 'proxyBypassHosts'
+  | 'proxyOnlyHosts'
+  | 'proxyHeaders'
+  | 'customHostSettings'
+  | 'webhook'
+  | 'auth'
+> & {
+  readonly responseTimeout: number;
+  readonly maxResponseContentLength: string;
+};
+
+/** Copies network policy only, never the preconfigured connector or unrelated connector secrets. */
+export const serializeActionsConfiguration = (config: ActionsConfig): RuntimeActionsConfig => ({
+  allowedHosts: config.allowedHosts,
+  enabledActionTypes: config.enabledActionTypes,
+  ssl: config.ssl,
+  proxyUrl: config.proxyUrl,
+  proxyBypassHosts: config.proxyBypassHosts,
+  proxyOnlyHosts: config.proxyOnlyHosts,
+  proxyHeaders: config.proxyHeaders,
+  customHostSettings: config.customHostSettings,
+  webhook: config.webhook,
+  auth: config.auth,
+  responseTimeout: config.responseTimeout.asMilliseconds(),
+  maxResponseContentLength: `${config.maxResponseContentLength.getValueInBytes()}b`,
+});

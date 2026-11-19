@@ -6,7 +6,7 @@
  */
 
 import { readFileSync } from 'fs';
-import { cloneDeep } from 'lodash';
+import cloneDeep from 'lodash/cloneDeep';
 import type { Logger } from '@kbn/core/server';
 import type { CustomHostSettings } from '@kbn/actions-utils';
 import type { ActionsConfig } from '../config';

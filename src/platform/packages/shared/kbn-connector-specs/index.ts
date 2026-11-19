@@ -124,3 +124,5 @@ export type {
   ClientTypeId,
   ClientTypeSpecs,
 } from './src/lib/clients';
+
+export type { SpecRuntimeApi, SpecRuntimeServices } from './server/remote/tokens';

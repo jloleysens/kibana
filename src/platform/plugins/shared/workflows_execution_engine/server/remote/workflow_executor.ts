@@ -9,9 +9,11 @@
 
 import { inject } from 'inversify';
 import { isMainThread, threadId } from 'node:worker_threads';
+import type { SpecRuntimeApi } from '@kbn/connector-specs';
 import { recordRemoteHeap, recordRemoteTiming, remotable } from '@kbn/core-remote-common';
 import { ExecutionStatus, isTerminalStatus } from '@kbn/workflows-runtime';
 import {
+  SpecRuntimeToken,
   type WorkflowChildApi,
   WorkflowChildToken,
   type WorkflowDataPlaneApi,
@@ -76,7 +78,8 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
     private readonly log: WorkflowLogApi,
     @inject(WorkflowDataPlaneToken) private readonly data?: WorkflowDataPlaneApi,
     @inject(WorkflowStepRunnerToken) private readonly stepRunner?: WorkflowStepRunnerApi,
-    @inject(WorkflowChildToken) private readonly children?: WorkflowChildApi
+    @inject(WorkflowChildToken) private readonly children?: WorkflowChildApi,
+    @inject(SpecRuntimeToken) private readonly connectors?: SpecRuntimeApi
   ) {}
 
   async placement(): Promise<{
@@ -129,7 +132,11 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
       return result;
     } finally {
       this.active.delete(request.scopeId);
-      await this.data?.close(request.scopeId);
+      try {
+        await this.connectors?.close(request.scopeId);
+      } finally {
+        await this.data?.close(request.scopeId);
+      }
       recordRemoteHeap('REMOTE_WORKER_HEAP', outcome);
     }
   }
@@ -183,6 +190,7 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
         esClient: this.data?.user(request.scopeId),
         facts: request.facts,
         children: this.children,
+        finalize: () => this.connectors?.drain(request.scopeId) ?? Promise.resolve(),
         remoteSteps: this.stepRunner ? { runner: this.stepRunner, descriptions } : undefined,
       });
       return outcome;

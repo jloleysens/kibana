@@ -10,7 +10,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build, type Metafile } from 'esbuild';
 import { buildRemoteBundle } from './build';
@@ -76,6 +76,14 @@ it('reports bundle bytes and bounds the idle host without loading steps or autho
       ...bundle.spec.executorProviders,
       ...(bundle.spec.catalog ? [bundle.spec.catalog] : []),
     ].map(({ modulePath }) => modulePath);
+    expect(coreRoots.map((path) => basename(path)).sort()).toEqual([
+      'executor_data_plane.ts',
+      'executor_log.ts',
+      'executor_storage.ts',
+      'spec_runtime.ts',
+      'step_catalog.ts',
+      'workflow_executor.ts',
+    ]);
     for (const sample of clean.samples) {
       expect(sample.memory.gcAvailable).toBe(true);
       expect(sample.memory.usage.rss).toBeLessThanOrEqual(MAX_IDLE_RSS_BYTES);
@@ -97,6 +105,43 @@ it('reports bundle bytes and bounds the idle host without loading steps or autho
       for (const [path, input] of Object.entries(output?.inputs ?? {})) {
         if (input.bytesInOutput > 0) loadedInputs.add(path);
       }
+    }
+    const connectorProbe = join(directory, 'connector_probe.mjs');
+    await build({
+      entryPoints: [resolve(__dirname, '__fixtures__/connector_execution_probe.ts')],
+      bundle: true,
+      platform: 'node',
+      format: 'esm',
+      outfile: connectorProbe,
+    });
+    for (let index = 0; index < 3; index++) {
+      const execution = JSON.parse(
+        execFileSync(process.execPath, ['--expose-gc', connectorProbe, dirname(bundle.entry)], {
+          encoding: 'utf8',
+        })
+      ) as {
+        samples: Array<{ phase: string; heapUsed: number }>;
+        requests: number;
+        prepares: number;
+        finalizes: number[];
+      };
+      expect(execution.samples.map(({ phase }) => phase)).toEqual([
+        'engine_core',
+        'shell',
+        'shared_module_import',
+        'type_and_first_execution',
+        'warm_execution',
+        'drained',
+      ]);
+      const [core, shell, shared, firstType] = execution.samples;
+      expect(shell.heapUsed - core.heapUsed).toBeLessThanOrEqual(32 * 1024);
+      // Measured ~14.8MiB shared-module growth; 20MiB ceiling includes headroom, not a type allowance.
+      expect(shared.heapUsed - shell.heapUsed).toBeLessThanOrEqual(20 * 1024 * 1024);
+      // Includes first real HTTP/basic-auth execution and the local fake: conservative attribution.
+      expect(firstType.heapUsed - shared.heapUsed).toBeLessThanOrEqual(2 * 1024 * 1024);
+      expect(execution.requests).toBe(2);
+      expect(execution.prepares).toBe(2);
+      expect(execution.finalizes).toEqual([2]);
     }
     expect(loadedInputs.size).toBeGreaterThan(0);
     expect(

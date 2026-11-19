@@ -5,6 +5,7 @@
  * 2.0.
  */
 
+import { isConnectorAuthorizationError } from '@kbn/connector-specs';
 import type { PublicMethodsOf } from '@kbn/utility-types';
 import type { AnalyticsServiceStart, KibanaRequest, Logger } from '@kbn/core/server';
 import {
@@ -15,28 +16,23 @@ import {
 import { cloneDeep, startsWith } from 'lodash';
 import { set } from '@kbn/safer-lodash-set';
 import { addSpanLabels, withSpan } from '@kbn/apm-utils';
+import { recordRemoteTiming } from '@kbn/core-remote-common';
 import type { EncryptedSavedObjectsClient } from '@kbn/encrypted-saved-objects-plugin/server';
 import type { SpacesServiceStart } from '@kbn/spaces-plugin/server';
 import type { SpaceId } from '@kbn/core-spaces-common';
-import type { IEventLogger } from '@kbn/event-log-plugin/server';
+import type { IEvent, IEventLogger } from '@kbn/event-log-plugin/server';
 import { SAVED_OBJECT_REL_PRIMARY } from '@kbn/event-log-plugin/server';
 import { createTaskRunError, TaskErrorSource } from '@kbn/task-manager-plugin/server';
 import { getErrorSource as getTaskManagerErrorSource } from '@kbn/task-manager-plugin/server/task_running';
-import { isConnectorAuthorizationError } from '@kbn/connector-specs';
 import { IN_MEMORY_CONNECTOR_REVISION } from './single_file_connectors/build_client_lease_key';
 import { GEN_AI_TOKEN_COUNT_EVENT } from './event_based_telemetry';
 import { ConnectorUsageCollector } from '../usage/connector_usage_collector';
-import type { ConnectorExecuteErrorType } from './connector_metrics';
-import {
-  getConnectorAuthType,
-  recordConnectorAuth,
-  recordConnectorExecute,
-} from './connector_metrics';
+import { recordConnectorExecute } from './connector_metrics';
 import {
   getGenAiTokenTracking,
   shouldTrackGenAiToken,
 } from './token_tracking/gen_ai_token_tracking';
-import { validateAction } from './validate_action';
+import { executeAction, type ActionRuntime } from './execute_action';
 import type {
   ActionTypeConfig,
   ActionTypeExecutorRawResult,
@@ -64,6 +60,8 @@ import type { ConnectorRateLimiter } from './connector_rate_limiter';
 const Millis2Nanos = 1000 * 1000;
 
 export interface ActionExecutorContext {
+  runtimeUserAgent?: string;
+  runtimeConfig?: import('../actions_config').RuntimeActionsConfig;
   logger: Logger;
   spaces?: SpacesServiceStart;
   security: SecurityServiceStart;
@@ -99,6 +97,11 @@ export interface ExecuteOptions<Source = unknown> {
   taskInfo?: TaskInfo;
   connectorTokenClient?: ConnectorTokenClientContract;
   signal?: AbortSignal;
+  runtime?: {
+    readonly execute: ActionRuntime;
+    readonly events: IEvent[];
+    readonly actionInfo?: Map<string, Promise<ActionInfo>>;
+  };
 }
 
 type ExecuteHelperOptions<Source = unknown> = Omit<ExecuteOptions<Source>, 'request'> & {
@@ -147,7 +150,18 @@ export class ActionExecutor {
     this.actionExecutorContext = actionExecutorContext;
   }
 
-  public async execute({
+  public async execute(options: ExecuteOptions): Promise<ActionTypeExecutorResult<unknown>> {
+    recordRemoteTiming('action_executor_execute', { stepId: options.actionId });
+    return this.executeWithServices(options);
+  }
+
+  public async executeWithRuntime(
+    options: ExecuteOptions & { runtime: NonNullable<ExecuteOptions['runtime']> }
+  ): Promise<ActionTypeExecutorResult<unknown>> {
+    return this.executeWithServices(options);
+  }
+
+  private async executeWithServices({
     actionExecutionId,
     actionId,
     connectorTokenClient,
@@ -160,6 +174,7 @@ export class ActionExecutor {
     source,
     taskInfo,
     signal,
+    runtime,
   }: ExecuteOptions): Promise<ActionTypeExecutorResult<unknown>> {
     const {
       actionTypeRegistry,
@@ -207,7 +222,13 @@ export class ActionExecutor {
       spaceId,
       taskInfo,
       signal,
+      runtime,
     });
+  }
+
+  public async finalizeExecutionEvents(events: IEvent[]): Promise<void> {
+    if (!this.actionExecutorContext) throw new Error('ActionExecutor not initialized');
+    await this.actionExecutorContext.eventLogger.logEvents(events);
   }
 
   public async executeUnsecured({
@@ -404,6 +425,7 @@ export class ActionExecutor {
     spaceId,
     taskInfo,
     signal,
+    runtime,
   }: ExecuteHelperOptions): Promise<ActionTypeExecutorResult<unknown>> {
     if (!this.isInitialized) {
       throw new Error('ActionExecutor not initialized');
@@ -422,9 +444,35 @@ export class ActionExecutor {
         },
       },
       async (span) => {
-        const { actionTypeRegistry, analyticsService, eventLogger } = this.actionExecutorContext!;
+        const {
+          actionTypeRegistry,
+          analyticsService,
+          eventLogger: originalEventLogger,
+        } = this.actionExecutorContext!;
+        const eventLogger = runtime
+          ? {
+              startTiming: originalEventLogger.startTiming.bind(originalEventLogger),
+              stopTiming: (event: IEvent) => {
+                originalEventLogger.stopTiming(event);
+                if (executionCompletedAt !== undefined && event?.event?.start) {
+                  event.event.end = new Date(executionCompletedAt).toISOString();
+                  event.event.duration =
+                    Millis2Nanos * (executionCompletedAt - Date.parse(event.event.start));
+                }
+              },
+              logEvent: (event: IEvent) => {
+                runtime.events.push({ '@timestamp': new Date().toISOString(), ...event });
+              },
+            }
+          : originalEventLogger;
 
-        const actionInfo = await this.getActionInfoInternal(actionId, namespace.namespace);
+        let info = runtime?.actionInfo?.get(actionId);
+        if (!info) {
+          info = this.getActionInfoInternal(actionId, namespace.namespace);
+          runtime?.actionInfo?.set(actionId, info);
+          void info.catch(() => runtime?.actionInfo?.delete(actionId));
+        }
+        const actionInfo = await info;
 
         const { actionTypeId, name, config, secrets, rawAction, connectorVersion, isInMemory } =
           actionInfo;
@@ -438,7 +486,7 @@ export class ActionExecutor {
           connectorId: actionId,
         });
 
-        if (!this.actionInfo || this.actionInfo.actionId !== actionId) {
+        if (!runtime && (!this.actionInfo || this.actionInfo.actionId !== actionId)) {
           this.actionInfo = actionInfo;
         }
 
@@ -533,7 +581,7 @@ export class ActionExecutor {
           relatedSavedObjects,
           name,
           actionExecutionId,
-          isInMemory: this.actionInfo.isInMemory,
+          isInMemory,
           ...(source ? { source } : {}),
           actionTypeId,
         });
@@ -551,122 +599,90 @@ export class ActionExecutor {
 
         eventLogger.logEvent(startEvent);
 
-        let validatedParams: Record<string, unknown>;
-        let validatedConfig;
-        let validatedSecrets;
-        try {
-          const validationResult = validateAction(
+        if (runtime) this.connectorRateLimiter.reserve(actionTypeId, actionExecutionId);
+        const runLocally: ActionRuntime = (options) =>
+          executeAction(
             {
-              actionId,
-              actionType,
-              params,
-              config,
-              secrets,
-              taskInfo,
+              ...options,
+              executor: ({ validatedParams, validatedConfig, validatedSecrets }) => {
+                const executor = actionType.executor;
+                if (!executor) throw new Error('Connector executor unavailable');
+                const {
+                  actionType: ignoredType,
+                  name: ignoredName,
+                  authorize: ignoredAuthorize,
+                  runtimeConfig: ignoredConfig,
+                  runtimeUserAgent: ignoredUserAgent,
+                  ...executorOptions
+                } = options;
+                recordRemoteTiming('action_executor_handler', { stepType: actionTypeId });
+                return executor({
+                  ...executorOptions,
+                  params: validatedParams,
+                  config: validatedConfig,
+                  secrets: validatedSecrets,
+                });
+              },
             },
-            { configurationUtilities },
-            TaskErrorSource
+            { TaskErrorSource, getErrorSource, isConnectorAuthorizationError }
           );
-          validatedParams = validationResult.validatedParams;
-          validatedConfig = validationResult.validatedConfig;
-          validatedSecrets = validationResult.validatedSecrets;
-        } catch (err) {
+        const runtimeResult = await (runtime?.execute ?? runLocally)({
+          actionId,
+          actionType,
+          name,
+          services,
+          params,
+          config,
+          secrets,
+          taskInfo,
+          runtimeConfig: this.actionExecutorContext?.runtimeConfig,
+          runtimeUserAgent: this.actionExecutorContext?.runtimeUserAgent,
+          authorize: checkCanExecuteFn ? () => checkCanExecuteFn(actionTypeId) : undefined,
+          globalAuthHeaders: actionType.globalAuthHeaders,
+          configurationUtilities,
+          logger,
+          source,
+          ...(actionType.isSystemActionType ? { request } : {}),
+          connectorUsageCollector,
+          connectorTokenClient,
+          signal,
+          authMode,
+          profileUid,
+          connectorVersion: isInMemory ? IN_MEMORY_CONNECTOR_REVISION : connectorVersion,
+        });
+        const executionCompletedAt = runtimeResult.executionCompletedAt;
+        if (runtime && runtimeResult.handlerStarted === false)
+          this.connectorRateLimiter.refund(actionTypeId, actionExecutionId);
+        if (runtimeResult.validationError) {
           eventLogger.stopTiming(event);
           span?.setOutcome('failure');
           event.event!.outcome = 'failure';
           event.message = `action execution failure: ${actionLabel}`;
-          event.error = { message: err.message };
-          logger.warn(`action execution failure: ${actionLabel}: ${err.message}`, {
-            labels: {
-              actionTypeId,
-              actionLabel,
-              actionId,
-              spaceId,
-              name,
-            },
-          });
+          event.error = { message: runtimeResult.validationError.message };
+          logger.warn(
+            `action execution failure: ${actionLabel}: ${runtimeResult.validationError.message}`,
+            {
+              labels: {
+                actionTypeId,
+                actionLabel,
+                actionId,
+                spaceId,
+                name,
+              },
+            }
+          );
           eventLogger.logEvent(event);
           recordConnectorExecute({
             connectorType: actionTypeId,
             errorType: 'invalid',
-            errorSource: err.result?.errorSource === TaskErrorSource.USER ? 'user' : 'framework',
+            errorSource:
+              runtimeResult.result.errorSource === TaskErrorSource.USER ? 'user' : 'framework',
           });
-          return err.result;
+          return runtimeResult.result;
         }
+        const { validatedParams, result: rawResult, errorType, executionStartedAt } = runtimeResult;
 
-        let rawResult: ActionTypeExecutorRawResult<unknown>;
-        let errorType: ConnectorExecuteErrorType = 'other';
-        const executionStartedAt = Date.now();
-        try {
-          if (checkCanExecuteFn) {
-            await checkCanExecuteFn(actionTypeId);
-          }
-
-          rawResult = await actionType.executor({
-            actionId,
-            services,
-            params: validatedParams,
-            config: validatedConfig,
-            secrets: validatedSecrets,
-            taskInfo,
-            globalAuthHeaders: actionType.globalAuthHeaders,
-            configurationUtilities,
-            logger,
-            source,
-            ...(actionType.isSystemActionType ? { request } : {}),
-            connectorUsageCollector,
-            connectorTokenClient,
-            signal,
-            authMode,
-            profileUid,
-            connectorVersion: isInMemory ? IN_MEMORY_CONNECTOR_REVISION : connectorVersion,
-          });
-
-          if (rawResult && rawResult.status === 'error') {
-            rawResult.errorSource = TaskErrorSource.USER;
-          }
-        } catch (err) {
-          const errorSource = getErrorSource(err) || TaskErrorSource.FRAMEWORK;
-          if (err.reason === ActionExecutionErrorReason.Authorization) {
-            errorType = 'unauthorized';
-            rawResult = err.result;
-          } else if (isConnectorAuthorizationError(err)) {
-            errorType = 'auth_failed';
-            recordConnectorAuth({
-              phase: 'execute',
-              authType: getConnectorAuthType({ config, secrets }),
-              connectorType: actionTypeId,
-              errorType: 'authorization_failed',
-            });
-            rawResult = {
-              actionId,
-              status: 'error',
-              message: 'an error occurred while running the action',
-              serviceMessage: err.message,
-              errorName: 'ConnectorAuthorizationError',
-              errorMeta: {
-                connectorName: name,
-                authMethod: err.authMethod,
-                reason: err.reason,
-              },
-              error: err,
-              retry: false,
-              errorSource: TaskErrorSource.USER,
-            };
-          } else {
-            rawResult = {
-              actionId,
-              status: 'error',
-              message: 'an error occurred while running the action',
-              serviceMessage: err.message,
-              error: err,
-              retry: true,
-              errorSource,
-            };
-          }
-        }
-
-        this.connectorRateLimiter.log(actionTypeId);
+        if (!runtime) this.connectorRateLimiter.log(actionTypeId);
 
         // allow null-ish return to indicate success
         const result = rawResult || {
@@ -685,7 +701,7 @@ export class ActionExecutor {
                 errorType,
                 errorSource: result.errorSource === TaskErrorSource.USER ? 'user' : 'framework',
               }),
-          durationMs: Date.now() - executionStartedAt,
+          durationMs: executionCompletedAt - executionStartedAt,
         });
 
         event.event = event.event || {};

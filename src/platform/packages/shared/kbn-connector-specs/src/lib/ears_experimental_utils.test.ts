@@ -32,3 +32,9 @@ describe('isEarsExperimentalConnector', () => {
     expect(isEarsExperimentalConnector('.nonexistent')).toBe(false);
   });
 });
+
+it('keeps the original auth predicate identity across the catalog-free split', async () => {
+  const original = await import('./ears_experimental_utils');
+  const portable = await import('./is_ears_experimental_auth_type');
+  expect(original.isEarsExperimentalAuthType).toBe(portable.isEarsExperimentalAuthType);
+});

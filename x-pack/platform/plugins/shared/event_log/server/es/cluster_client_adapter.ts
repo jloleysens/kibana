@@ -238,11 +238,12 @@ export class ClusterClientAdapter<
     this.docBuffer$.next(doc);
   }
 
-  async indexDocuments(docs: TDoc[]): Promise<void> {
+  async indexDocuments(docs: TDoc[], requireAcknowledgement = false): Promise<void> {
     // If es initialization failed, don't try to index.
     // Also, don't log here, we log the failure case in plugin startup
     // instead, otherwise we'd be spamming the log (if done here)
     if (!(await this.wait())) {
+      if (requireAcknowledgement) throw new Error('Event log initialization failed');
       this.logger.debug(`Initialization failed, not indexing ${docs.length} documents`);
       return;
     }
@@ -273,12 +274,14 @@ export class ClusterClientAdapter<
       if (response.errors) {
         const error = new Error('Error writing some bulk events');
         error.stack += '\n' + util.inspect(response.items, { depth: null });
+        if (requireAcknowledgement) throw error;
         this.logger.error(error);
       }
     } catch (err) {
       this.logger.error(
         `error writing bulk events: "${err.message}"; docs: ${JSON.stringify(bulkBody)}`
       );
+      if (requireAcknowledgement) throw err;
     }
   }
 

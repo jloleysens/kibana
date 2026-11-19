@@ -87,3 +87,6 @@ export const config: PluginConfigDescriptor<ActionsConfig> = {
 
 export { urlAllowListValidator } from './sub_action_framework/helpers';
 export { ActionExecutionSourceType } from './lib/action_execution_source';
+
+export { PreparedExecution } from './remote/prepared_execution';
+export type { NativeActionsApi, ConnectorPreparation, ConnectorFinalization } from './remote/types';

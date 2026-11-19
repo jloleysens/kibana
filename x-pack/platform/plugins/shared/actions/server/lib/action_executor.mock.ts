@@ -10,6 +10,8 @@ import type { ActionExecutorContract } from './action_executor';
 const createActionExecutorMock = () => {
   const mocked: jest.Mocked<ActionExecutorContract> = {
     initialize: jest.fn(),
+    executeWithRuntime: jest.fn(),
+    finalizeExecutionEvents: jest.fn(),
     execute: jest.fn().mockResolvedValue({ status: 'ok', actionId: '' }),
     executeUnsecured: jest.fn().mockResolvedValue({ status: 'ok', actionId: '' }),
     logCancellation: jest.fn(),

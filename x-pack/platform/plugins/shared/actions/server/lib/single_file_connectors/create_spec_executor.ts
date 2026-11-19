@@ -172,8 +172,10 @@ export const createSpecExecutor = ({
   clientTypes,
   errors: { createTaskRunError, TaskErrorSource, getErrorSource, isUserError },
   getJwtSigner,
+  onHandler,
 }: {
   connectorTypeId?: string;
+  onHandler?: (subAction: string) => void;
   actions: ConnectorSpec['actions'];
   getJwtSigner?: (connectorId: string) => ActionContext['signJwt'];
   getAxiosInstanceWithAuth: GetAxiosInstanceWithAuthFn;
@@ -186,7 +188,20 @@ export const createSpecExecutor = ({
   errors: SpecExecutorErrorServices;
 }) =>
   async function (
-    execOptions: ConnectorTypeExecutorOptions<RecordUnknown, RecordUnknown, RecordUnknown>
+    execOptions: Pick<
+      ConnectorTypeExecutorOptions<RecordUnknown, RecordUnknown, RecordUnknown>,
+      | 'actionId'
+      | 'config'
+      | 'connectorTokenClient'
+      | 'globalAuthHeaders'
+      | 'params'
+      | 'secrets'
+      | 'logger'
+      | 'signal'
+      | 'authMode'
+      | 'profileUid'
+      | 'connectorVersion'
+    >
   ): Promise<ConnectorTypeExecutorResult<unknown>> {
     const {
       actionId: connectorId,
@@ -341,6 +356,7 @@ export const createSpecExecutor = ({
 
     try {
       let data = {};
+      onHandler?.(subAction);
       const res = await actions[subAction].handler(actionContext, subActionParams);
 
       if (res != null) {

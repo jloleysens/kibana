@@ -8,8 +8,8 @@
  */
 
 import { z } from '@kbn/zod/v4';
-import { isString } from 'lodash';
-import { authTypeSpecs } from '../..';
+import isString from 'lodash/isString';
+import * as authTypeSpecs from '../all_auth_types';
 import { getAuthModeForAuthTypeId, isKibanaManagedAuthTypeId } from '../auth_mode_by_auth_type_id';
 import type { AuthTypeDef, NormalizedAuthType } from '../connector_spec';
 

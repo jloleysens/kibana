@@ -47,6 +47,7 @@ export const buildUserAgent = (cloud?: CloudSetup): string => {
 };
 
 export interface AxiosTransportDependencies {
+  userAgent?: string;
   authTypeRegistry: Pick<AuthTypeRegistry, 'get'>;
   getAuthStrategy: (authTypeId: string) => AxiosAuthStrategy;
   cloud?: CloudSetup;
@@ -272,6 +273,7 @@ export const createCredentialAccessor = ({
 };
 
 export const createAxiosTransport = ({
+  userAgent,
   authTypeRegistry,
   getAuthStrategy,
   cloud,
@@ -312,7 +314,7 @@ export const createAxiosTransport = ({
       });
       const configuredMaxContentLength = maxContentLengthOverride ?? maxContentLength;
 
-      axiosInstance.defaults.headers.common['User-Agent'] = buildUserAgent(cloud);
+      axiosInstance.defaults.headers.common['User-Agent'] = userAgent ?? buildUserAgent(cloud);
 
       // add any additional headers that should be included in every request
       if (additionalHeaders) {
