@@ -14,12 +14,15 @@ import { getJsSourceSync } from '@kbn/peggy';
 import type { RemoteWorkerSpec } from '@kbn/core-remote-common';
 import { readRemoteManifest } from './manifest';
 import { measureStepChunks, type StepChunkSize } from './step_chunk_sizes';
+import { collectRemoteSourceDigests } from './source_digests';
 
 const MAX_STEP_EXCLUSIVE_BYTES = 256 * 1024;
 
 export interface RemoteBundle {
   readonly entry: string;
   readonly bytes: number;
+  readonly reportingCeilingBytes?: number;
+  readonly exceedsReportingCeiling?: boolean;
   readonly inputs: readonly string[];
   readonly spec: RemoteWorkerSpec;
   readonly stepChunks: readonly StepChunkSize[];
@@ -37,11 +40,21 @@ export const buildRemoteBundle = async ({
   manifests,
   graph,
   outdir,
+  sourceDigestKinds = [],
+  reportingCeilingBytes,
 }: {
   manifests: readonly string[];
   graph: BundleGraph;
   outdir: string;
+  sourceDigestKinds?: readonly string[];
+  reportingCeilingBytes?: number;
 }): Promise<RemoteBundle> => {
+  if (
+    reportingCeilingBytes !== undefined &&
+    (!Number.isSafeInteger(reportingCeilingBytes) || reportingCeilingBytes <= 0)
+  ) {
+    throw new Error('Remote bundle reporting ceiling must be a positive safe integer');
+  }
   const declarations = manifests.map(readRemoteManifest);
   const providers = declarations.flatMap((declaration) => declaration.providers);
   const relevant = declarations.filter(
@@ -181,11 +194,24 @@ export const buildRemoteBundle = async ({
         .join('\n')}`
     );
   }
+  const sourceDigests = collectRemoteSourceDigests(
+    result.metafile,
+    contributions.filter(({ kind }) => sourceDigestKinds.includes(kind))
+  );
+  writeFileSync(join(outdir, 'source_digests.json'), JSON.stringify(sourceDigests, null, 2));
+  const bytes = result.outputFiles.reduce((sum, output) => sum + output.contents.length, 0);
+  const sizeReport = {
+    bytes,
+    reportingCeilingBytes,
+    exceedsReportingCeiling:
+      reportingCeilingBytes === undefined ? undefined : bytes > reportingCeilingBytes,
+  };
+  writeFileSync(join(outdir, 'bundle_size.json'), JSON.stringify(sizeReport, null, 2));
   for (const output of result.outputFiles) writeFileSync(output.path, output.contents);
   writeFileSync(join(outdir, 'spec.json'), JSON.stringify(spec, null, 2));
   return {
     entry: join(outdir, 'graph.mjs'),
-    bytes: result.outputFiles.reduce((sum, output) => sum + output.contents.length, 0),
+    ...sizeReport,
     inputs: Object.keys(result.metafile.inputs).map((path) =>
       relative(process.cwd(), resolve(path))
     ),

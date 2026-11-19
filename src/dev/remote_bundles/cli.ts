@@ -23,6 +23,9 @@ const main = async (): Promise<void> => {
       contributions: ['workflows.step', 'workflows.connector'],
     },
     outdir: resolve(directory),
+    sourceDigestKinds: ['core.savedObjects.types'],
+    // Reporting only: measured SO/uiSettings union 12,687,273 bytes, plus ~10% headroom.
+    reportingCeilingBytes: 14_000_000,
   });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 };

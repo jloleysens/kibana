@@ -78,3 +78,26 @@ For memory containment, optional `remoteExecution.reuse.maxRssBytes` retires a
 child after a lease closes its scopes if its RSS exceeds the ceiling. Sampling
 uses actual RSS without forced GC. It does not stop an active run or cap its peak.
 Shared-process backends do not apply a whole-process RSS retirement policy.
+
+## Worker capability budgets
+
+Total emitted JavaScript is measured in `bundle_size.json`, not an admission gate:
+shared saved-object services are a worker data plane, not a reason to send extension
+work back through Kibana. The workflow CLI's reporting threshold is 14,000,000 bytes
+(measured original saved-objects/uiSettings union: 12,687,273, plus about 10% headroom).
+Exceeding it is reported, not silently discarded or treated as a build failure.
+
+Blocking guards remain: engine-only idle loaded set and idle RSS; no UI or aggregate
+lodash inputs; 256 KiB exclusive static closure per contributed step. The approved
+2 MiB incremental post-GC execution-heap guard and per-shared-capability first-use
+byte/heap/latency ceilings still require execution measurement and enforcement;
+module bytes alone do not establish them.
+
+`source_digests.json` records selected contribution kinds' original source closures
+(including deferred imports), with repository-relative paths and normalized line
+endings. The workflow CLI selects `core.savedObjects.types`. It never imports those
+factories to calculate a digest. This is build metadata, **not yet a per-lease parity
+check**: admission must additionally compare build identity, coordinator-completed
+migrations and live mappings/model-version metadata before a worker writes saved
+objects. Unverifiable non-builtin external dependencies are rejected for a digested
+closure; esbuild's synthetic helper runtime is covered by build identity instead.

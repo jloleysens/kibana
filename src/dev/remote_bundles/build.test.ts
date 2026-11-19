@@ -32,7 +32,24 @@ const graph = {
 it('bundles executor implementations only; importing its entry evaluates no implementations', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'runner-bundle-'));
   try {
-    const result = await buildRemoteBundle({ manifests: [manifest], graph, outdir: directory });
+    const result = await buildRemoteBundle({
+      manifests: [manifest],
+      graph,
+      outdir: directory,
+      sourceDigestKinds: ['demo.step'],
+      reportingCeilingBytes: 1,
+    });
+    expect(result.exceedsReportingCeiling).toBe(true);
+    expect(result.reportingCeilingBytes).toBe(1);
+    const sourceDigests = JSON.parse(readFileSync(join(directory, 'source_digests.json'), 'utf8'));
+    expect(sourceDigests).toEqual([
+      expect.objectContaining({
+        kindId: 'demo.step',
+        contributionId: 'demo.echoStep',
+        digest: expect.stringMatching(/^[a-f0-9]{64}$/),
+        sources: expect.arrayContaining([expect.stringMatching(/\/step.ts$/)]),
+      }),
+    ]);
     expect(result.inputs.some((path) => path.endsWith('/echo.ts'))).toBe(false);
     expect(result.inputs.some((path) => path.endsWith('/step.ts'))).toBe(true);
     expect(result.spec.coordinatorTokenIds).toEqual(['demo.echo']);
