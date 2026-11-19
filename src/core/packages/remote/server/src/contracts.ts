@@ -20,7 +20,12 @@ export interface ScopeLookup {
 
 export interface RemoteRegistration {
   readonly id: string;
-  readonly reuse?: { readonly maxAgeMs: number; readonly maxRuns: number };
+  readonly reuse?: {
+    readonly maxAgeMs: number;
+    readonly maxRuns: number;
+    /** Retire a child process after release above this RSS; shared-process backends do not sample. */
+    readonly maxRssBytes?: number;
+  };
   readonly root: ServiceToken<unknown>;
   readonly contributions: readonly ServiceToken<unknown>[];
   /** Executor providers this graph injects, such as its step catalogue. */

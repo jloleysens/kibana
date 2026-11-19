@@ -19,6 +19,10 @@ export function createBridge(): {
   } = { loaded: [] };
 
   class Bridge extends RpcTarget {
+    residentSetSize(): number {
+      return process.memoryUsage.rss();
+    }
+
     memoryUsage(): { pid: number; gcAvailable: boolean; usage: NodeJS.MemoryUsage } {
       global.gc?.();
       global.gc?.();

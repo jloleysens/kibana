@@ -218,3 +218,118 @@ it('awaits retirement already underway when stop begins', async () => {
   expect(stopped).toHaveBeenCalledTimes(1);
   expect(close).toHaveBeenCalledTimes(1);
 });
+
+it.each([99, 100, 101])('samples post-run RSS %s before allowing the next lease', async (rss) => {
+  const sample = Promise.withResolvers<number>();
+  const rssBytes = jest.fn(() => sample.promise);
+  const close = jest.fn(async () => undefined);
+  let id = 0;
+  const pool = new RemoteLeasePool(
+    async () => ({ value: ++id, close, alive: () => true, rssBytes }),
+    { maxAgeMs: 1000, maxRuns: 100, maxRssBytes: 100 }
+  );
+  try {
+    await pool.warm();
+    expect(rssBytes).not.toHaveBeenCalled();
+    const lease = await pool.acquire('a');
+    expect(rssBytes).not.toHaveBeenCalled();
+    const released = lease.release();
+    const granted = jest.fn();
+    const pending = pool.acquire('a').then((next) => {
+      granted();
+      return next;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(granted).not.toHaveBeenCalled();
+    sample.resolve(rss);
+    await released;
+    await lease.release();
+    expect(rssBytes).toHaveBeenCalledTimes(1);
+    expect(close).toHaveBeenCalledTimes(rss > 100 ? 1 : 0);
+    const next = await pending;
+    expect(next.value).toBe(rss > 100 ? 2 : 1);
+    await next.release(true);
+  } finally {
+    sample.resolve(rss);
+    await pool.stop();
+  }
+});
+
+it.each([NaN, 0, -1, Infinity, 1.5])('retires on invalid post-run RSS %s', async (rss) => {
+  const close = jest.fn(async () => undefined);
+  const pool = new RemoteLeasePool(
+    async () => ({ value: 1, close, alive: () => true, rssBytes: async () => rss }),
+    { maxAgeMs: 1000, maxRuns: 100, maxRssBytes: 100 }
+  );
+  try {
+    const lease = await pool.acquire('a');
+    await expect(lease.release()).rejects.toThrow('invalid RSS');
+    expect(close).toHaveBeenCalledTimes(1);
+    const next = await pool.acquire('a');
+    await next.release(true);
+  } finally {
+    await pool.stop();
+  }
+});
+
+it('retires on a failed RSS sample without stranding the lease queue', async () => {
+  const failure = new Error('disconnected during sample');
+  const close = jest.fn(async () => undefined);
+  let id = 0;
+  const pool = new RemoteLeasePool(
+    async () => ({
+      value: ++id,
+      close,
+      alive: () => true,
+      rssBytes: async () => {
+        throw failure;
+      },
+    }),
+    { maxAgeMs: 1000, maxRuns: 100, maxRssBytes: 100 }
+  );
+  try {
+    const lease = await pool.acquire('a');
+    await expect(lease.release()).rejects.toBe(failure);
+    expect(close).toHaveBeenCalledTimes(1);
+    const next = await pool.acquire('a');
+    expect(next.value).toBe(2);
+    await next.release(true);
+  } finally {
+    await pool.stop();
+  }
+});
+
+it('does not measure shared-process hosts or force a sample when the ceiling is absent', async () => {
+  const rssBytes = jest.fn(async () => 1000);
+  const close = jest.fn(async () => undefined);
+  const unbounded = new RemoteLeasePool(
+    async () => ({ value: 1, close, alive: () => true, rssBytes }),
+    { maxAgeMs: 1000, maxRuns: 100 }
+  );
+  const shared = new RemoteLeasePool(async () => ({ value: 1, close, alive: () => true }), {
+    maxAgeMs: 1000,
+    maxRuns: 100,
+    maxRssBytes: 100,
+  });
+  try {
+    for (const pool of [unbounded, shared]) {
+      const lease = await pool.acquire('a');
+      await lease.release();
+    }
+    expect(rssBytes).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+  } finally {
+    await unbounded.stop();
+    await shared.stop();
+  }
+});
+
+it.each([NaN, 0, -1, Infinity, 1.5])('rejects invalid RSS ceiling %s', (maxRssBytes) => {
+  expect(
+    () =>
+      new RemoteLeasePool(
+        async () => ({ value: 1, close: async () => undefined, alive: () => true }),
+        { maxAgeMs: 1000, maxRuns: 100, maxRssBytes }
+      )
+  ).toThrow('Invalid remote reuse policy');
+});

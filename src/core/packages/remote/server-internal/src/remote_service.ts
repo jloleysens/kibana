@@ -349,7 +349,8 @@ export class RemoteService implements RemoteSetup {
       on(event: string, listener: () => void): void;
       off(event: string, listener: () => void): void;
     },
-    transportSignal?: AbortSignal
+    transportSignal?: AbortSignal,
+    rssBytes?: () => Promise<number>
   ): LeaseHost<RemoteSession<unknown>> {
     const scopeIds = new Set<string>();
     let closed = false;
@@ -410,6 +411,7 @@ export class RemoteService implements RemoteSetup {
       value: session as RemoteSession<unknown>,
       alive: () => !closed && alive(),
       terminated: terminated.signal,
+      rssBytes,
       close: () => {
         disposing ??= Promise.resolve().then(async () => {
           endScopes(new Error('Remote host stopped'));
@@ -501,7 +503,10 @@ export class RemoteService implements RemoteSetup {
         ].flatMap((key) => (process.env[key] === undefined ? [] : [[key, process.env[key]]]))
       ),
     });
-    const session = openIpcSession<object>(child, new CoordinatorGateway(coordinator));
+    const session = openIpcSession<{ residentSetSize(): number }>(
+      child,
+      new CoordinatorGateway(coordinator)
+    );
     try {
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(
@@ -535,7 +540,8 @@ export class RemoteService implements RemoteSetup {
         () => closeChild(child, session),
         () => child.connected && child.exitCode === null && child.signalCode === null,
         child,
-        session.signal
+        session.signal,
+        async () => session.remote.residentSetSize()
       );
     } catch (error) {
       if (child.pid === undefined) session.close();

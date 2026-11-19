@@ -232,3 +232,56 @@ it.each(['error', 'peerClose'] as const)(
   },
   15000
 );
+
+it.each(['in_process', 'child_process'] as const)(
+  '%s: the RSS ceiling retires only a separate process, after a completed lease',
+  async (backend) => {
+    const directory = mkdtempSync(join(tmpdir(), 'runner-rss-'));
+    const service = new RemoteService(loggingSystemMock.createLogger(), {
+      maxOldGenerationSizeMb: 256,
+      bundleDirectory: directory,
+    });
+    try {
+      await buildRemoteBundle({
+        manifests: [join(plugin, 'server/remote/index.ts')],
+        graph: {
+          id: 'demo',
+          root: 'demo.root',
+          dependencies: ['demo.catalog'],
+          contributions: ['demo.step'],
+        },
+        outdir: join(directory, 'demo'),
+      });
+      service.discover([plugin]);
+      service.register({
+        id: 'demo',
+        reuse: { maxAgeMs: 60_000, maxRuns: 100, maxRssBytes: 1 },
+        root: createToken('demo.root'),
+        dependencies: [createToken('demo.catalog')],
+        contributions: [createToken('demo.step')],
+      });
+      service.bind(createToken('demo.echo'), () => new CoordinatorEcho());
+      await service.start(backend);
+      const first = await service.lease<DemoApi>('demo');
+      const firstPid = await first.stub.pid();
+      const firstScope = first.openScope({});
+      expect((await first.stub.run({ scopeId: firstScope, steps: [] })).outputs).toEqual([]);
+      // An intentionally tiny test ceiling must not interrupt the active run.
+      expect(await first.stub.pid()).toBe(firstPid);
+      await first.release();
+      if (backend === 'child_process') {
+        expect(() => process.kill(firstPid, 0)).toThrow();
+      }
+      const second = await service.lease<DemoApi>('demo');
+      const secondPid = await second.stub.pid();
+      expect(secondPid === firstPid).toBe(backend === 'in_process');
+      const scopeId = second.openScope({});
+      expect((await second.stub.run({ scopeId, steps: [] })).outputs).toEqual([]);
+      await second.release();
+    } finally {
+      await service.stop();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+  30_000
+);

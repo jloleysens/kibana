@@ -88,6 +88,13 @@ const configSchema = schema.object({
     reuse: schema.maybe(
       schema.object({
         maxAgeMs: schema.number({ min: 1, max: 3_600_000 }),
+        maxRssBytes: schema.maybe(
+          schema.number({
+            min: 1,
+            max: Number.MAX_SAFE_INTEGER,
+            validate: (value) => (Number.isInteger(value) ? undefined : 'must be an integer'),
+          })
+        ),
         maxRuns: schema.number({
           min: 1,
           max: 10_000,

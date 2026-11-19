@@ -12,6 +12,8 @@ export interface LeaseHost<T> {
   readonly close: () => Promise<void>;
   readonly alive: () => boolean;
   readonly terminated?: AbortSignal;
+  /** Present only for a separate process, whose RSS can be reclaimed by retirement. */
+  readonly rssBytes?: () => Promise<number>;
 }
 
 interface ManagedHost<T> {
@@ -42,7 +44,7 @@ export class RemoteLeasePool<T> {
 
   constructor(
     private readonly create: () => Promise<LeaseHost<T>>,
-    private readonly policy: { maxAgeMs: number; maxRuns: number },
+    private readonly policy: { maxAgeMs: number; maxRuns: number; maxRssBytes?: number },
     private readonly now: () => number = Date.now,
     private readonly name: string = 'remote host'
   ) {
@@ -50,7 +52,9 @@ export class RemoteLeasePool<T> {
       !Number.isFinite(policy.maxAgeMs) ||
       policy.maxAgeMs <= 0 ||
       !Number.isInteger(policy.maxRuns) ||
-      policy.maxRuns <= 0
+      policy.maxRuns <= 0 ||
+      (policy.maxRssBytes !== undefined &&
+        (!Number.isSafeInteger(policy.maxRssBytes) || policy.maxRssBytes <= 0))
     ) {
       throw new Error('Invalid remote reuse policy');
     }
@@ -112,7 +116,21 @@ export class RemoteLeasePool<T> {
           if (released) return;
           released = true;
           try {
-            if (discard) await this.retire(managed);
+            if (discard || !managed.host.alive()) {
+              await this.retire(managed);
+            } else if (this.policy.maxRssBytes !== undefined && managed.host.rssBytes) {
+              let rssBytes: number;
+              try {
+                rssBytes = await managed.host.rssBytes();
+                if (!Number.isSafeInteger(rssBytes) || rssBytes <= 0) {
+                  throw new Error(`Remote host "${this.name}" returned invalid RSS`);
+                }
+              } catch (error) {
+                await this.retire(managed);
+                throw error;
+              }
+              if (rssBytes > this.policy.maxRssBytes) await this.retire(managed);
+            }
           } finally {
             this.giveSlot();
           }
