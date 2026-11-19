@@ -43,6 +43,10 @@ export type ActionTypeConfig = Record<string, unknown>;
 export type ActionTypeSecrets = Record<string, unknown>;
 export type ActionTypeParams = Record<string, unknown>;
 export type ConnectorTokenClientContract = PublicMethodsOf<ConnectorTokenClient>;
+export type ConnectorTokenStore = Pick<
+  ConnectorTokenClientContract,
+  'get' | 'updateOrReplace' | 'deleteConnectorTokens' | 'updateWithRefreshToken'
+>;
 
 import type { Connector, ConnectorWithExtraFindData } from './application/connector/types';
 import type { ActionExecutionSource, ActionExecutionSourceType } from './lib';

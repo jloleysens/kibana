@@ -6,7 +6,7 @@
  */
 import type { Logger } from '@kbn/core/server';
 import type { ActionsConfigurationUtilities } from '../actions_config';
-import type { ConnectorToken, ConnectorTokenClientContract } from '../types';
+import type { ConnectorToken, ConnectorTokenStore } from '../types';
 import { requestOAuthPasswordToken } from './request_oauth_password_token';
 import type { PasswordOAuthRequestParams } from './request_oauth_password_token';
 
@@ -15,7 +15,7 @@ interface GetOAuthPasswordAccessTokenOpts extends PasswordOAuthRequestParams {
   tokenUrl: string;
   logger: Logger;
   configurationUtilities: ActionsConfigurationUtilities;
-  connectorTokenClient?: ConnectorTokenClientContract;
+  connectorTokenClient?: ConnectorTokenStore;
 }
 
 export const getOAuthPasswordAccessToken = async ({

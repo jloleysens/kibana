@@ -38,3 +38,12 @@ export {
   IS_KIBANA_MANAGED_BY_AUTH_TYPE_ID,
   isKibanaManagedAuthTypeId,
 } from './auth_mode_by_auth_type_id';
+export { ConnectorAuthorizationError } from './connector_authorization_error';
+export type { ConnectorAuthorizationReason } from './connector_authorization_error';
+export { normalizeAuthorizationHeaderValue } from './normalize_authorization_header_value';
+export {
+  OAUTH_AUTHORIZATION_CODE_AUTH_ID,
+  EARS_AUTH_ID,
+  EARS_PROVIDERS,
+  CLIENT_ASSERTION_TYPE,
+} from './auth_constants';

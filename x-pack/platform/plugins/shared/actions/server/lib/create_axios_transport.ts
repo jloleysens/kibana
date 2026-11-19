@@ -25,7 +25,7 @@ import type { ActionInfo } from './action_executor';
 import type { AuthTypeRegistry } from '../auth_types';
 import { getCustomAgents } from './get_custom_agents';
 import type { ActionsConfigurationUtilities } from '../actions_config';
-import type { ConnectorTokenClientContract } from '../types';
+import type { ConnectorTokenStore } from '../types';
 import { getBeforeRedirectFn } from './before_redirect';
 import { recordConnectorAuth } from './connector_metrics';
 import type { AuthStrategyDeps, AxiosAuthStrategy } from './axios_auth_strategies';
@@ -66,7 +66,7 @@ type ConnectorAuthDeps = Pick<
 interface ConnectorAuthOpts {
   connectorId: string;
   connectorTypeId?: string;
-  connectorTokenClient?: ConnectorTokenClientContract;
+  connectorTokenClient?: ConnectorTokenStore;
   secrets: ValidatedSecrets;
   authMode?: AuthMode;
   profileUid?: string;
@@ -210,7 +210,7 @@ export interface GetAxiosInstanceWithAuthFnOpts {
   connectorId: string;
   /** Only used to label auth metrics. */
   connectorTypeId?: string;
-  connectorTokenClient?: ConnectorTokenClientContract;
+  connectorTokenClient?: ConnectorTokenStore;
   secrets: ValidatedSecrets;
   signal?: AbortSignal;
   authMode?: AuthMode;
@@ -234,7 +234,7 @@ export interface GetCredentialFnOpts {
   connectorId: string;
   /** Only used to label auth metrics. */
   connectorTypeId?: string;
-  connectorTokenClient?: ConnectorTokenClientContract;
+  connectorTokenClient?: ConnectorTokenStore;
   secrets: ValidatedSecrets;
   authMode?: AuthMode;
   profileUid?: string;

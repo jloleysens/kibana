@@ -5,12 +5,12 @@
  * 2.0.
  */
 
-import { get } from 'lodash';
+import get from 'lodash/get';
 import pLimit from 'p-limit';
 import type { Logger } from '@kbn/core/server';
-import { ConnectorAuthorizationError } from '@kbn/connector-specs';
+import { ConnectorAuthorizationError } from '@kbn/connector-specs-runtime';
 import type { OAuthTokenResponse } from './request_oauth_token';
-import type { ConnectorToken, ConnectorTokenClientContract, UserConnectorToken } from '../types';
+import type { ConnectorToken, ConnectorTokenStore, UserConnectorToken } from '../types';
 
 // Per-connector (or per-connector-per-user) locks to prevent concurrent token refreshes
 const tokenRefreshLocks = new Map<string, ReturnType<typeof pLimit>>();
@@ -25,7 +25,7 @@ function getOrCreateLock(lockKey: string): ReturnType<typeof pLimit> {
 export interface GetStoredTokenWithRefreshOpts {
   connectorId: string;
   logger: Logger;
-  connectorTokenClient: ConnectorTokenClientContract;
+  connectorTokenClient: ConnectorTokenStore;
   /**
    * Identifies the auth type that initiated the refresh (e.g. 'oauth_authorization_code',
    * 'ears'). Propagated onto any `ConnectorAuthorizationError` thrown from this function

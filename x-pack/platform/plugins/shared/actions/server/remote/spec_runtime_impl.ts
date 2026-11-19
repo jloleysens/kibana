@@ -25,7 +25,8 @@ import type { ConnectorFinalization, NativeActionsApi } from './types';
 import { configSchema } from '../config';
 import { getActionsConfigurationUtilities } from '../actions_config';
 import { createAxiosTransport, createCredentialAccessor } from '../lib/create_axios_transport';
-import { OAuthClientCredentialsStrategy } from '../lib/axios_auth_strategies/oauth_client_credentials_strategy';
+import { getAxiosAuthStrategy } from '../lib/axios_auth_strategies/get_axios_auth_strategy';
+import { createConnectorTokenStore } from './connector_token_store';
 import { executeAction, getActionRuntimeError } from '../lib/execute_action';
 import { createSpecExecutor } from '../lib/single_file_connectors/create_spec_executor';
 import { generateConfigSchema } from '../lib/single_file_connectors/generate_config_schema';
@@ -128,7 +129,7 @@ export class SpecRuntime implements SpecRuntimeApi {
             return authType;
           },
         },
-        getAuthStrategy: () => new OAuthClientCredentialsStrategy(),
+        getAuthStrategy: getAxiosAuthStrategy,
         configurationUtilities,
         logger,
       };
@@ -182,6 +183,7 @@ export class SpecRuntime implements SpecRuntimeApi {
           executor: ({ validatedParams, validatedConfig, validatedSecrets }) =>
             executor({
               ...prepared,
+              connectorTokenClient: createConnectorTokenStore(this.actions, scopeId, invocationId),
               params: validatedParams,
               config: validatedConfig,
               secrets: validatedSecrets,

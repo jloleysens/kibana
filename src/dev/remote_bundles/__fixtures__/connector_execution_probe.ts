@@ -87,6 +87,7 @@ const main = async (): Promise<void> => {
   const prepares: string[] = [];
   const finalizes: number[] = [];
   const actions: NativeActionsApi = {
+    token: async () => ({ hasErrors: false, connectorToken: null }),
     prepare: async (_scopeId, invocationId, request) => {
       prepares.push(invocationId);
       return {

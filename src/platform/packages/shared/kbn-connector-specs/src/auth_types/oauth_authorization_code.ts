@@ -15,7 +15,7 @@ import { normalizeAuthorizationHeaderValue } from './oauth_authz_code_and_ears_h
 import { isConnectorAuthorizationError } from '../errors';
 import * as i18n from './translations';
 
-export const OAUTH_AUTHORIZATION_CODE_AUTH_ID = 'oauth_authorization_code';
+export { OAUTH_AUTHORIZATION_CODE_AUTH_ID } from '@kbn/connector-specs-runtime';
 
 const authSchema = lazySchema(() =>
   z

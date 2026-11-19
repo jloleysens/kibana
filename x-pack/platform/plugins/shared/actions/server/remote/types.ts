@@ -8,7 +8,7 @@
 import type { AuthMode } from '@kbn/connector-specs-runtime';
 import type { RuntimeActionsConfig } from '../actions_config';
 import type { ActionRuntimeResult } from '../lib/execute_action';
-import type { ActionTypeExecutorResult } from '../types';
+import type { ActionTypeExecutorResult, ConnectorTokenStore } from '../types';
 
 export interface PreparedConnector {
   readonly kibanaVersion: string;
@@ -41,5 +41,35 @@ export interface NativeActionsApi {
       readonly input: Record<string, unknown>;
     }
   ): Promise<ConnectorPreparation>;
+  token(
+    scopeId: string,
+    invocationId: string,
+    request: ConnectorTokenRequest
+  ): Promise<ConnectorTokenResponse>;
   finalize(scopeId: string, results: ConnectorFinalization[]): Promise<void>;
+}
+
+export type ConnectorTokenRequest =
+  | {
+      readonly operation: 'get';
+      readonly options: Pick<
+        Parameters<ConnectorTokenStore['get']>[0],
+        'tokenType' | 'credentialType'
+      >;
+    }
+  | {
+      readonly operation: 'replace';
+      readonly options: Pick<
+        Parameters<ConnectorTokenStore['updateOrReplace']>[0],
+        'token' | 'newToken' | 'expiresInSec' | 'tokenRequestDate' | 'deleteExisting'
+      >;
+    }
+  | { readonly operation: 'delete' }
+  | {
+      readonly operation: 'refresh';
+      readonly options: Parameters<ConnectorTokenStore['updateWithRefreshToken']>[0];
+    };
+export interface ConnectorTokenResponse {
+  readonly hasErrors: boolean;
+  readonly connectorToken: Awaited<ReturnType<ConnectorTokenStore['get']>>['connectorToken'];
 }

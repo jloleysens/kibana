@@ -7,9 +7,9 @@
 
 import type { Logger } from '@kbn/core/server';
 import type { AuthMode } from '@kbn/connector-specs';
-import { EARS_AUTH_ID } from '@kbn/connector-specs';
+import { EARS_AUTH_ID } from '@kbn/connector-specs-runtime';
 import type { ActionsConfigurationUtilities } from '../../actions_config';
-import type { ConnectorTokenClientContract } from '../../types';
+import type { ConnectorTokenStore } from '../../types';
 import { requestEarsRefreshToken } from './request_ears_refresh_token';
 import { getStoredTokenWithRefresh } from '../get_stored_oauth_token_with_refresh';
 
@@ -18,7 +18,7 @@ interface GetEarsAccessTokenOpts {
   logger: Logger;
   configurationUtilities: ActionsConfigurationUtilities;
   provider: string;
-  connectorTokenClient: ConnectorTokenClientContract;
+  connectorTokenClient: ConnectorTokenStore;
   authMode?: AuthMode;
   profileUid?: string;
   /**

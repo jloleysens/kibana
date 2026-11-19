@@ -11,6 +11,24 @@ export const remoteModule: RemoteModule = {
   contributions: [
     {
       kind: WorkflowConnectorKind,
+      stepType: '1password',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/one_password'),
+      exportName: 'OnePasswordConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'threatq',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/threatq'),
+      exportName: 'ThreatqConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'okta',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/okta'),
+      exportName: 'OktaConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
       stepType: 'tavily_mcp',
       modulePath: require.resolve('@kbn/connector-specs/server/remote/tavily'),
       exportName: 'TavilyConnector',

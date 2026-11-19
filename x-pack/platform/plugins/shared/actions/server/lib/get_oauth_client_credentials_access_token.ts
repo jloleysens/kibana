@@ -6,7 +6,7 @@
  */
 import type { Logger } from '@kbn/core/server';
 import type { ActionsConfigurationUtilities } from '../actions_config';
-import type { ConnectorToken, ConnectorTokenClientContract } from '../types';
+import type { ConnectorToken, ConnectorTokenStore } from '../types';
 import { requestOAuthClientCredentialsToken } from './request_oauth_client_credentials_token';
 
 /**
@@ -42,7 +42,7 @@ interface GetOAuthClientCredentialsAccessTokenOpts {
   logger: Logger;
   configurationUtilities: ActionsConfigurationUtilities;
   credentials: GetOAuthClientCredentials;
-  connectorTokenClient?: ConnectorTokenClientContract;
+  connectorTokenClient?: ConnectorTokenStore;
   tokenEndpointAuthMethod?: 'client_secret_post' | 'client_secret_basic';
   tokenType?: string;
 }

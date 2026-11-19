@@ -15,7 +15,7 @@ import * as i18n from './translations';
 
 export const OAUTH_CLIENT_CREDENTIALS_PRIVATE_KEY_JWT_ID =
   'oauth_client_credentials_private_key_jwt';
-export const CLIENT_ASSERTION_TYPE = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer';
+export { CLIENT_ASSERTION_TYPE } from '@kbn/connector-specs-runtime';
 
 export const JWT_ALGORITHMS = ['PS256', 'RS256', 'ES256'] as const;
 export type JwtAlgorithm = (typeof JWT_ALGORITHMS)[number];

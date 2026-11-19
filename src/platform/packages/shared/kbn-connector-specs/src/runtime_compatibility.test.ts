@@ -35,6 +35,12 @@ const historicalNames = [
   'getResponseContentLengthBytes',
   'ESTIMATED_JSON_OUTPUT_OVERHEAD_BYTES',
   'TEST_CONNECTOR_SUB_ACTION',
+  'ConnectorAuthorizationError',
+  'normalizeAuthorizationHeaderValue',
+  'OAUTH_AUTHORIZATION_CODE_AUTH_ID',
+  'EARS_AUTH_ID',
+  'EARS_PROVIDERS',
+  'CLIENT_ASSERTION_TYPE',
 ] as const;
 
 it.each(historicalNames)('preserves the original public %s export identity', (name) => {

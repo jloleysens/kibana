@@ -15,6 +15,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { createPublicKey, verify } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
 import { connect } from 'node:net';
@@ -90,6 +91,7 @@ const main = async (): Promise<void> => {
   await sample('shared_mcp_module');
   const temp = mkdtempSync(join(tmpdir(), 'connector-type-fake-'));
   const domains = [
+    'api.1password.com',
     'api.rootly.com',
     'api.datadoghq.com',
     'api.newrelic.com',
@@ -135,6 +137,36 @@ const main = async (): Promise<void> => {
     let text = '';
     for await (const c of req) text += c;
     requests++;
+    if (req.url?.includes('/token')) {
+      const fields = req.headers['content-type']?.includes('application/json')
+        ? JSON.parse(text)
+        : Object.fromEntries(new URLSearchParams(text));
+      if (fields.client_assertion) {
+        const parts = fields.client_assertion.split('.');
+        assert.equal(JSON.parse(Buffer.from(parts[0], 'base64url').toString()).kid, 'fake-key');
+        assert(
+          verify(
+            'RSA-SHA256',
+            Buffer.from(parts.slice(0, 2).join('.')),
+            createPublicKey(readFileSync(join(temp, 'key.pem'))),
+            Buffer.from(parts[2], 'base64url')
+          )
+        );
+      } else if (fields.grant_type === 'password') {
+        assert.equal(fields.email, 'fake@example.com');
+        assert.equal(fields.password, 'fake-password');
+      } else {
+        assert.equal(
+          req.headers.authorization,
+          'Basic ' + Buffer.from('fake-client:fake-secret').toString('base64')
+        );
+      }
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(
+        JSON.stringify({ access_token: 'fake-oauth-token', token_type: 'Bearer', expires_in: 3600 })
+      );
+      return;
+    }
     seen.push({ host: req.headers.host, path: req.url });
     if (req.headers.host === 's3.us-east-1.amazonaws.com' || req.url?.startsWith('/azure')) {
       res.writeHead(200, { 'content-type': 'application/xml' });
@@ -543,11 +575,53 @@ const main = async (): Promise<void> => {
         accountKey: 'ZmFrZS1rZXk=',
       },
     },
+    {
+      type: '1password',
+      op: 'listUsers',
+      config: { accountUuid: 'fake' },
+      secrets: {
+        authType: 'oauth_client_credentials',
+        tokenUrl: 'https://api.1password.com/v1beta1/users/oauth2/token',
+        clientId: 'fake-client',
+        clientSecret: 'fake-secret',
+        tokenEndpointAuthMethod: 'client_secret_basic',
+      },
+    },
+    {
+      type: 'threatq',
+      op: 'listIndicatorTypes',
+      config: { url: tlsUrl },
+      secrets: {
+        authType: 'oauth_password',
+        tokenUrl: tlsUrl + '/api/token',
+        username: 'fake@example.com',
+        password: 'fake-password',
+        clientId: 'fake-client',
+        usernameField: 'email',
+        requestBodyFormat: 'json',
+        tokenType: 'Bearer',
+      },
+    },
+    {
+      type: 'okta',
+      op: 'listUsers',
+      config: { orgUrl: tlsUrl },
+      secrets: {
+        authType: 'oauth_client_credentials_private_key_jwt',
+        tokenUrl: tlsUrl + '/oauth2/v1/token',
+        clientId: 'fake-client',
+        algorithm: 'RS256',
+        certificateBinding: 'kid',
+        keyId: 'fake-key',
+        privateKey: readFileSync(join(temp, 'key.pem'), 'utf8'),
+      },
+    },
   ];
   let current = cases[0];
   let prepares = 0;
   const finalizes: number[] = [];
   const actions: NativeActionsApi = {
+    token: async () => ({ hasErrors: false, connectorToken: null }),
     prepare: async (_s, invocationId, request) => {
       prepares++;
       return {
@@ -565,13 +639,22 @@ const main = async (): Promise<void> => {
             ssl: { verificationMode: 'full', proxyVerificationMode: 'full' },
             proxyUrl: `http://127.0.0.1:${port(proxy)}`,
             proxyBypassHosts: ['127.0.0.1'],
-            customHostSettings: domains.map((d) => ({
-              url: 'https://' + d + ':443',
-              ssl: {
-                verificationMode: 'full',
-                certificateAuthoritiesData: readFileSync(join(temp, 'cert.pem'), 'utf8'),
+            customHostSettings: [
+              {
+                url: tlsUrl,
+                ssl: {
+                  verificationMode: 'full' as const,
+                  certificateAuthoritiesData: readFileSync(join(temp, 'cert.pem'), 'utf8'),
+                },
               },
-            })),
+              ...domains.map((d) => ({
+                url: 'https://' + d + ':443',
+                ssl: {
+                  verificationMode: 'full' as const,
+                  certificateAuthoritiesData: readFileSync(join(temp, 'cert.pem'), 'utf8'),
+                },
+              })),
+            ],
             webhook: { ssl: { pfx: { enabled: true } } },
             auth: {
               oauth_authorization_code: {

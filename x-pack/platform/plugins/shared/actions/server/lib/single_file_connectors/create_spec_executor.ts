@@ -24,6 +24,7 @@ import type {
 } from '@kbn/connector-specs';
 import type { ExecutorParams } from '../../sub_action_framework/types';
 import type {
+  ConnectorTokenStore,
   ActionTypeExecutorOptions as ConnectorTypeExecutorOptions,
   ActionTypeExecutorResult as ConnectorTypeExecutorResult,
 } from '../../types';
@@ -194,7 +195,6 @@ export const createSpecExecutor = ({
       ConnectorTypeExecutorOptions<RecordUnknown, RecordUnknown, RecordUnknown>,
       | 'actionId'
       | 'config'
-      | 'connectorTokenClient'
       | 'globalAuthHeaders'
       | 'params'
       | 'secrets'
@@ -203,7 +203,7 @@ export const createSpecExecutor = ({
       | 'authMode'
       | 'profileUid'
       | 'connectorVersion'
-    >
+    > & { readonly connectorTokenClient?: ConnectorTokenStore }
   ): Promise<ConnectorTypeExecutorResult<unknown>> {
     const {
       actionId: connectorId,

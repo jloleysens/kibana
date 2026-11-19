@@ -15,7 +15,7 @@ import { build, type Metafile } from 'esbuild';
 import { buildRemoteBundle } from './build';
 import { discoverRemoteManifests } from './discover';
 
-it('bounds first business execution of each simple-auth spec and the shared MCP capability', async () => {
+it('bounds first business execution of each registered spec and the shared MCP capability', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'connector-types-'));
   try {
     const bundle = await buildRemoteBundle({
@@ -103,13 +103,16 @@ it('bounds first business execution of each simple-auth spec and the shared MCP 
         'aws_lambda',
         'amazon_s3',
         'azure-blob',
+        '1password',
+        'threatq',
+        'okta',
       ]);
       for (const event of result.events) {
         expect(event.heapIncrement).toBeLessThanOrEqual(2 * 1024 * 1024);
         expect(event.requests).toBeGreaterThan(0);
       }
-      expect(result.prepares).toBe(34);
-      expect(result.finalizes).toEqual([34]);
+      expect(result.prepares).toBe(37);
+      expect(result.finalizes).toEqual([37]);
       process.stdout.write(`${JSON.stringify({ connectorTypeCurve: result })}\n`);
     }
   } finally {

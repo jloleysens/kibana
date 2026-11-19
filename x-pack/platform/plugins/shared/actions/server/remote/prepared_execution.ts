@@ -11,7 +11,8 @@ import type { ActionsClient } from '../actions_client';
 import type { ActionRuntimeResult } from '../lib/execute_action';
 import { ActionExecutionError } from '../lib/errors/action_execution_error';
 import type { ExecuteOptions } from '../lib/action_executor';
-import type { ConnectorPreparation } from './types';
+import type { ConnectorPreparation, ConnectorTokenRequest, ConnectorTokenResponse } from './types';
+import { ConnectorTokenState } from './connector_token_state';
 
 /** Keeps live authorization and final event production on the coordinator without executing a handler. */
 export class PreparedExecution {
@@ -21,6 +22,7 @@ export class PreparedExecution {
   private resolveRuntime?: (result: ActionRuntimeResult) => void;
   private rejectRuntime?: (error: Error) => void;
   private completed = false;
+  private tokenState?: ConnectorTokenState;
   private readonly onAbort: () => void;
 
   constructor(
@@ -41,7 +43,10 @@ export class PreparedExecution {
     });
     // A preparation failure may occur before the runtime is entered.
     void runtime.catch(() => {});
-    this.onAbort = () => this.rejectRuntime?.(new Error('Connector scope closed'));
+    this.onAbort = () => {
+      this.tokenState?.close();
+      this.rejectRuntime?.(new Error('Connector scope closed'));
+    };
     signal.addEventListener('abort', this.onAbort, { once: true });
     if (signal.aborted) this.onAbort();
     const execution = client.executeWithRuntime(
@@ -67,6 +72,13 @@ export class PreparedExecution {
           }
           signal.throwIfAborted();
           if (!options.runtimeConfig) throw new Error('Missing connector network policy');
+          if (options.connectorTokenClient) {
+            this.tokenState = new ConnectorTokenState(
+              options.connectorTokenClient,
+              options,
+              signal
+            );
+          }
           ready({
             prepared: {
               kibanaVersion: kibanaPackageJson.version,
@@ -95,6 +107,12 @@ export class PreparedExecution {
     void this.completion.catch(() => {});
   }
 
+  async token(request: ConnectorTokenRequest): Promise<ConnectorTokenResponse> {
+    if (this.completed || !this.tokenState)
+      throw new Error('Connector token state is not available');
+    return this.tokenState.execute(request);
+  }
+
   async refusalEvents(): Promise<IEvent[]> {
     await this.completion;
     return this.events;
@@ -103,6 +121,7 @@ export class PreparedExecution {
   async finalize(result: ActionRuntimeResult): Promise<IEvent[]> {
     if (this.completed) throw new Error('Connector invocation already finalized');
     this.completed = true;
+    this.tokenState?.close();
     this.resolveRuntime?.(result);
     await this.completion;
     return this.events;

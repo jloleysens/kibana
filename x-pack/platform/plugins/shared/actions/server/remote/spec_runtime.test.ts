@@ -25,7 +25,7 @@ jest.mock('./spec_runtime_impl', () => ({
   },
 }));
 
-const actions: NativeActionsApi = { prepare: jest.fn(), finalize: jest.fn() };
+const actions: NativeActionsApi = { token: jest.fn(), prepare: jest.fn(), finalize: jest.fn() };
 const services = { authTypes: [], isConnectorAuthorizationError };
 
 beforeEach(() => {

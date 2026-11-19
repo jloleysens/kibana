@@ -22,6 +22,7 @@ import { NativeActions } from './native_actions_api';
 const mockPrepare = jest.fn();
 const mockFinalize = jest.fn();
 const mockConstruct = jest.fn();
+const mockToken = jest.fn();
 
 jest.mock('@kbn/actions-plugin/server', () => ({
   ...jest.requireActual('@kbn/actions-plugin/server'),
@@ -31,6 +32,7 @@ jest.mock('@kbn/actions-plugin/server', () => ({
     }
     preparation = mockPrepare();
     finalize = mockFinalize;
+    token = mockToken;
   },
 }));
 
@@ -129,4 +131,21 @@ it('clears referenced-secret caches on scope closure and never shares them betwe
   controller.abort();
   expect(cache.size).toBe(0);
   await expect(api.prepare('first-scope', 'third', input)).rejects.toThrow();
+});
+
+it('binds token calls to an active prepared invocation and refuses scope closure/finalized ids', async () => {
+  const { api, input, controller } = setup();
+  const request = { operation: 'get', options: {} } as const;
+  await expect(api.token('scope', 'missing', request)).rejects.toThrow('Unknown');
+  await api.prepare('scope', 'first', input);
+  mockToken.mockResolvedValue({ hasErrors: false, connectorToken: null });
+  await expect(api.token('scope', 'first', request)).resolves.toEqual({
+    hasErrors: false,
+    connectorToken: null,
+  });
+  expect(mockToken).toHaveBeenCalledWith(request);
+  await api.finalize('scope', [{ invocationId: 'first', runtime: completion }]);
+  await expect(api.token('scope', 'first', request)).rejects.toThrow('Unknown');
+  controller.abort();
+  await expect(api.token('scope', 'first', request)).rejects.toThrow();
 });
