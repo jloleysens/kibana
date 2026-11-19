@@ -47,7 +47,9 @@ The full matrix intentionally runs serially and restarts Kibana many times.
   Note create/read; Cases create/update/comment/find/get; inference prompt,
   summarize and classify via a local OpenAI-compatible fake ES inference endpoint;
   conversation create/metadata patch/registered event/read through the original
-  native ES/OCC/ACL client; attachment add/update/read/list/delete plus historical
+  native ES/OCC/ACL client, plus original add-user-message via a narrow
+  authenticated never-trigger execution-service append; no agent/LLM executes
+  for that append; attachment add/update/read/list/delete plus historical
   read and a real by-reference workflow YAML origin resolution; original rerank
   over a local Hugging Face-compatible fake through a real ES inference endpoint,
   retaining the original rank-window tail. Every run persists an ES outcome;
@@ -113,7 +115,7 @@ to the worker's conditional write; notify verifies per-document `_version + 1`
 (not index-global `_seq_no + 1`). Attachment event IDs must resolve to new visible
 persisted events; duplicate notifications and foreign targets are rejected.
 The conversation workload adds3prepare RPCs and6coordinator ES authorization
-reads/run; attachment workload adds5prepare RPCs and10reads/run. Each read's
+reads/run plus1original never-trigger message-append business-service RPC; attachment workload adds5prepare RPCs and10reads/run. Each read's
 wall time and process-wide CPU are retained in `runs.jsonl` and `timing.jsonl`. Safe typed error DTOs preserve
 original AgentBuilder error prototypes without private request/header metadata.
 Attachment handlers reuse the original state manager, version hashing, reconciliation
@@ -126,6 +128,10 @@ SO resolver. Attachment exclusive first-business increments0.10–0.43MB remain
 inside the existing2MiB guard; shared conversation guard unchanged. Original rerank
 first business response adds~0.22MB after the native ES shared service; no new
 coordinator capability, only the usual step-describe control RPC.
+`add_user_message` handler and normalization execute in the worker, but its
+original message persistence/execution-business-service operation deliberately
+stays coordinator-side (the approved heavy execution-service exception); this
+is not claimed to be native conversation storage for that one step.
 
 ### Known remote notification race divergence
 

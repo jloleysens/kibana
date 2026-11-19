@@ -210,6 +210,15 @@ export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: s
         },
       },
       {
+        name: 'message',
+        type: 'ai.conversation.add_user_message',
+        with: {
+          conversation_id: '{{ steps.create.output.conversation_id }}',
+          message: id,
+          author_name: 'Lane B workflow',
+        },
+      },
+      {
         name: 'read',
         type: 'ai.conversation.metadata.read',
         with: { conversation_id: '{{ steps.create.output.conversation_id }}' },

@@ -7,7 +7,11 @@
 
 import type { KibanaRequest } from '@kbn/core/server';
 import type { ServerStepDefinition } from '@kbn/workflows-extensions/server';
-import type { AgentExecutionService } from '@kbn/agent-builder-server/execution';
+import type {
+  AgentExecutionService,
+  MaybeExecuteAgentResult,
+} from '@kbn/agent-builder-server/execution';
+import type { AgentExecutionMode, ChatTriggerMode } from '@kbn/agent-builder-common';
 import type { ConversationClient } from '../services/conversation';
 import type { ConversationAgentRegistry } from '../services/conversation/client/client';
 import { getConversationMetadataStepDefinition } from './steps/get_conversation_metadata';
@@ -29,6 +33,22 @@ export type ConversationAgentStepDeps = Pick<
   'getConversationClient' | 'getAgentRegistry'
 > &
   Partial<Pick<ConversationStepDeps, 'getExecutionService'>>;
+
+export interface ConversationMessageStepDeps
+  extends Partial<Pick<ConversationStepDeps, 'getConversationClient' | 'getAgentRegistry'>> {
+  getExecutionService: () => {
+    maybeExecuteAgent(args: {
+      mode: AgentExecutionMode.conversation;
+      request: KibanaRequest;
+      params: {
+        conversationId: string;
+        nextInput: { message: string };
+        triggerMode: ChatTriggerMode.Never;
+        author?: { full_name: string };
+      };
+    }): Promise<MaybeExecuteAgentResult | void>;
+  };
+}
 
 type ConversationStepFactory = (deps: ConversationStepDeps) => ServerStepDefinition;
 

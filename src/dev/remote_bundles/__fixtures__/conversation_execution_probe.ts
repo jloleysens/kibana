@@ -208,6 +208,11 @@ const main = async (): Promise<void> => {
       }),
       assertAgentUse: async () => {},
       accessibleAgentIds: async () => ['elastic-ai-agent'],
+      appendUserMessage: async (scope: string, id: string, message: string) => {
+        assert.equal(scope, 'scope');
+        assert.equal(id, 'conversation');
+        assert.equal(message, 'Native message');
+      },
       validateEvents: async (_scope: string, _clientLease: string, events: object[]) => events,
       prepareWrite: async (
         _scope: string,
@@ -274,6 +279,10 @@ const main = async (): Promise<void> => {
         { conversation_id: 'conversation', type: 'text_note', data: { text: 'Native' } },
       ],
       ['ai.conversation.metadata.read', { conversation_id: 'conversation' }],
+      [
+        'ai.conversation.add_user_message',
+        { conversation_id: 'conversation', message: 'Native message' },
+      ],
       [
         'ai.attachment.add',
         {

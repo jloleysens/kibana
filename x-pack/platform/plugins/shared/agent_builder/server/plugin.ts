@@ -60,6 +60,8 @@ import { ConversationRegistryToken } from './remote/conversation_tokens';
 import { AttachmentRegistry } from './remote/attachment_registry';
 import { AttachmentRegistryToken } from './remote/attachment_tokens';
 import { ConversationRegistry } from './remote/conversation_registry';
+import { AgentExecution } from './remote/agent_execution';
+import { AgentExecutionToken } from './remote/agent_execution_tokens';
 
 export class AgentBuilderPlugin
   implements
@@ -181,6 +183,16 @@ export class AgentBuilderPlugin
       getRunAgentStepDefinition(this.serviceManager)
     );
     setupDeps.workflowsExtensions.registerStepDefinition(rerankStepDefinition);
+
+    coreSetup.remote.bind(
+      AgentExecutionToken,
+      (scopes) =>
+        new AgentExecution(scopes, () => {
+          const services = this.serviceManager.internalStart;
+          if (!services) throw new Error('Agent execution service is not started');
+          return services.execution;
+        })
+    );
 
     coreSetup.remote.bind(
       ConversationRegistryToken,

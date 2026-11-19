@@ -8,8 +8,15 @@
 import type { RemoteModule } from '@kbn/core-remote-common';
 import { ConversationRegistryToken, WorkflowStepKind } from './conversation_tokens';
 import { AttachmentRegistryToken } from './attachment_tokens';
+import { AgentExecutionToken } from './agent_execution_tokens';
 export const remoteModule: RemoteModule = {
   providers: [
+    {
+      token: AgentExecutionToken,
+      placement: 'coordinator',
+      modulePath: require.resolve('./agent_execution'),
+      exportName: 'AgentExecution',
+    },
     {
       token: AttachmentRegistryToken,
       placement: 'coordinator',
@@ -24,6 +31,12 @@ export const remoteModule: RemoteModule = {
     },
   ],
   contributions: [
+    {
+      kind: WorkflowStepKind,
+      stepType: 'ai.conversation.add_user_message',
+      modulePath: require.resolve('./add_user_message_step'),
+      exportName: 'AddUserMessageStep',
+    },
     {
       kind: WorkflowStepKind,
       stepType: 'search.rerank',

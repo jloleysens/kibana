@@ -66,6 +66,7 @@ it('bounds original native conversation client first business execution and conv
         'ai.conversation.metadata.patch',
         'ai.conversation.add_event',
         'ai.conversation.metadata.read',
+        'ai.conversation.add_user_message',
         'ai.attachment.add',
         'ai.attachment.update',
         'ai.attachment.read',

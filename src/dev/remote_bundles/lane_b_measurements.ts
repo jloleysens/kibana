@@ -305,10 +305,15 @@ const execute = async (
     assert.equal(persisted._source.summary, id);
     await api(`/api/agent_builder/conversations/${conversationId}`);
     const stored = await api<{
-      _source: { events: Array<{ type: string; data: { text?: string } }> };
+      _source: { events: Array<{ type: string; data: { text?: string; message?: string } }> };
     }>(`${es}/.chat-conversations/_doc/${conversationId}`);
     assert(
       stored._source.events.some((event) => event.type === 'text_note' && event.data.text === id)
+    );
+    assert(
+      stored._source.events.some(
+        (event) => event.type === 'user_message' && event.data.message === id
+      )
     );
     save(join(directory, `${workflowExecutionId}-conversation.json`), stored);
   } else if (family === 'extensions') {
