@@ -12,21 +12,14 @@ import { isBuiltin } from 'node:module';
 import { relative, resolve, sep } from 'node:path';
 import type { Metafile } from 'esbuild';
 import { digestRemoteSources } from '@kbn/core-remote-common';
+import type { RemoteContributionSourceDigest } from '@kbn/core-remote-common';
+export type { RemoteContributionSourceDigest } from '@kbn/core-remote-common';
 
 interface ContributionSource {
   readonly kind: string;
   readonly stepType: string;
   readonly modulePath: string;
   readonly exportName: string;
-}
-
-export interface RemoteContributionSourceDigest {
-  readonly kindId: string;
-  readonly contributionId: string;
-  readonly modulePath: string;
-  readonly exportName: string;
-  readonly digest: string;
-  readonly sources: readonly string[];
 }
 
 /** Describes original static and deferred source closures without importing any contributed implementation. */

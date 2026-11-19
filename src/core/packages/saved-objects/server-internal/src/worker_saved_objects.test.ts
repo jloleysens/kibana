@@ -11,6 +11,7 @@ import { setImmediate } from 'node:timers/promises';
 import { setFlagsFromString } from 'node:v8';
 import { runInNewContext } from 'node:vm';
 import { loggerMock } from '@kbn/logging-mocks';
+import { digestRemoteSources } from '@kbn/core-remote-common';
 import { docLinksServiceMock } from '@kbn/core-doc-links-server-mocks';
 import { nodeServiceMock } from '@kbn/core-node-server-mocks';
 import { elasticsearchServiceMock } from '@kbn/core-elasticsearch-server-mocks';
@@ -25,6 +26,8 @@ import { SavedObjectsClient } from '@kbn/core-saved-objects-api-server-internal'
 import type { ISavedObjectTypeRegistry } from '@kbn/core-saved-objects-server';
 import { registerCoreObjectTypes } from './object_types';
 import { SavedObjectsService } from './saved_objects_service';
+import { WorkerSavedObjectsAdmissionProducer } from './worker_saved_objects_admission';
+import { verifyWorkerSavedObjectsTypeSources } from './worker_saved_objects_type_sources';
 import { savedObjectsTypeParity } from './saved_objects_type_parity';
 import {
   WorkerSavedObjects,
@@ -110,6 +113,75 @@ describe('WorkerSavedObjects', () => {
     await second.release();
     expect(stop).toHaveBeenCalledTimes(2);
     expect(migrations).not.toHaveBeenCalled();
+  });
+
+  it('acquires cumulative generations from independently verified coordinator source and live admission', async () => {
+    const coordinator = new SavedObjectTypeRegistry();
+    registerCoreObjectTypes(coordinator);
+    const firstType = createType('business-a').type;
+    const secondType = createType('business-b').type;
+    coordinator.registerType(firstType);
+    coordinator.registerType(secondType);
+    const source = 'original test type factory closure';
+    const digest = digestRemoteSources([{ path: 'types.ts', source }]);
+    const local = verifyWorkerSavedObjectsTypeSources(
+      [
+        {
+          metadata: {
+            kindId: 'core.savedObjects.types',
+            contributionId: 'test-types',
+            modulePath: 'types.ts',
+            exportName: 'createTypes',
+            sources: ['types.ts'],
+            digest,
+          },
+          types: coordinator.getAllTypes(),
+        },
+      ],
+      () => source
+    );
+    const sources = new Map(
+      local.map(({ type, sourceDigest: generatedDigest }) => [type.name, generatedDigest])
+    );
+    const ready = jest.fn(async () => undefined);
+    const producer = new WorkerSavedObjectsAdmissionProducer({
+      typeRegistry: coordinator,
+      buildIdentity: 'test-build',
+      getSourceDigest: (name) => sources.get(name) ?? '',
+      assertMigrationsReady: ready,
+    });
+    const worker = new WorkerSavedObjects({
+      ...createOptions(),
+      coreSourceDigest: digest,
+      verifyMigrations: (admission) => producer.verify(admission),
+    });
+    const coreTypes = local.filter(
+      ({ type }) => type.name !== firstType.name && type.name !== secondType.name
+    );
+    const firstTypes = [...coreTypes, ...local.filter(({ type }) => type.name === firstType.name)];
+    const firstAdmission = await producer.create(firstTypes.map(({ type }) => type.name));
+    const first = await worker.acquire(
+      firstTypes.filter(({ type }) => type.name === firstType.name),
+      firstAdmission
+    );
+    const secondAdmission = await producer.create(local.map(({ type }) => type.name));
+    const second = await worker.acquire(
+      local.filter(({ type }) => type.name === secondType.name),
+      secondAdmission
+    );
+    const request = httpServerMock.createKibanaRequest();
+    expect(() => first.getClient(request, { includedHiddenTypes: [secondType.name] })).toThrow(
+      'Missing mappings'
+    );
+    expect(() =>
+      second.getClient(request, { includedHiddenTypes: [firstType.name, secondType.name] })
+    ).not.toThrow();
+    ready.mockRejectedValue(new Error('Coordinator migration no longer ready'));
+    await expect(worker.acquire([], secondAdmission)).rejects.toThrow('no longer ready');
+    expect(() => first.getClient(request)).not.toThrow();
+    await first.release();
+    await second.release();
+    await worker.stop();
   });
 
   it('constructs security and spaces extensions for each request, never caching run identity', async () => {

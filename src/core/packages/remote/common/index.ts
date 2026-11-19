@@ -7,8 +7,8 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-export { digestRemoteSources } from './src/source_digest';
-export type { RemoteSourceFile } from './src/source_digest';
+export { digestRemoteSources, verifyRemoteSourceDigest } from './src/source_digest';
+export type { RemoteSourceFile, RemoteContributionSourceDigest } from './src/source_digest';
 export { expose, wrapRpcResult } from './src/expose';
 export { recordRemoteHeap } from './src/remote_measurement';
 export { recordSeam } from './src/seam_log';

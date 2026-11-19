@@ -34,3 +34,5 @@ export { SAVED_OBJECT_TYPES_COUNT } from './object_types';
 
 export { WorkerSavedObjectsAdmissionProducer } from './worker_saved_objects_admission';
 export type { WorkerSavedObjectsAdmissionDependencies } from './worker_saved_objects_admission';
+export { verifyWorkerSavedObjectsTypeSources } from './worker_saved_objects_type_sources';
+export type { WorkerSavedObjectsTypeContribution } from './worker_saved_objects_type_sources';

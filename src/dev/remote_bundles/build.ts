@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import { join, relative, resolve } from 'node:path';
 import { build } from 'esbuild';
 import { getJsSourceSync } from '@kbn/peggy';
-import type { RemoteWorkerSpec } from '@kbn/core-remote-common';
+import type { RemoteContributionSourceDigest, RemoteWorkerSpec } from '@kbn/core-remote-common';
 import { readRemoteManifest } from './manifest';
 import { measureStepChunks, type StepChunkSize } from './step_chunk_sizes';
 import { collectRemoteSourceDigests } from './source_digests';
@@ -26,6 +26,7 @@ export interface RemoteBundle {
   readonly inputs: readonly string[];
   readonly spec: RemoteWorkerSpec;
   readonly stepChunks: readonly StepChunkSize[];
+  readonly sourceDigests: readonly RemoteContributionSourceDigest[];
 }
 
 export interface BundleGraph {
@@ -222,5 +223,6 @@ export const buildRemoteBundle = async ({
     ),
     spec,
     stepChunks,
+    sourceDigests,
   };
 };

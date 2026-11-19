@@ -14,6 +14,7 @@ import { join, resolve } from 'node:path';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
 import { build } from 'esbuild';
+import { verifyRemoteSourceDigest } from '@kbn/core-remote-common';
 import { graphSignature } from '@kbn/core-remote-server-internal/src/graph_signature';
 import { openIpcSession } from '@kbn/core-remote-server-internal/src/ipc_session';
 import { buildRemoteBundle } from './build';
@@ -50,6 +51,12 @@ it('bundles executor implementations only; importing its entry evaluates no impl
         sources: expect.arrayContaining([expect.stringMatching(/\/step.ts$/)]),
       }),
     ]);
+    expect(sourceDigests).toEqual(result.sourceDigests);
+    for (const metadata of result.sourceDigests) {
+      expect(
+        verifyRemoteSourceDigest(metadata, (path) => readFileSync(resolve(path), 'utf8'))
+      ).toBe(metadata.digest);
+    }
     expect(result.inputs.some((path) => path.endsWith('/echo.ts'))).toBe(false);
     expect(result.inputs.some((path) => path.endsWith('/step.ts'))).toBe(true);
     expect(result.spec.coordinatorTokenIds).toEqual(['demo.echo']);

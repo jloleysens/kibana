@@ -86,6 +86,7 @@ export interface InternalSavedObjectsServiceSetup extends SavedObjectsServiceSet
  * @internal
  */
 export interface InternalSavedObjectsServiceStart extends SavedObjectsServiceStart {
+  createWorkerAdmissionProducer: SavedObjectsService['createWorkerAdmissionProducer'];
   metrics: {
     /**
      * The number of milliseconds it took to run the SO migrator.
@@ -455,6 +456,7 @@ export class SavedObjectsService
     this.started = true;
 
     return {
+      createWorkerAdmissionProducer: (options) => this.createWorkerAdmissionProducer(options),
       getScopedClient: clientProvider.getClient.bind(clientProvider),
       getUnsafeInternalClient: ({ includedHiddenTypes, excludedExtensions = [] } = {}) => {
         const safeExcludedExtensions = Array.isArray(excludedExtensions) ? excludedExtensions : [];

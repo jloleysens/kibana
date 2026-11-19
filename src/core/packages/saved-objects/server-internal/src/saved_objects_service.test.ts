@@ -148,7 +148,14 @@ describe('SavedObjectsService', () => {
       await service.setup(createSetupDeps());
       const producer = createProducer(service);
       await expect(producer.create(['test-type'])).rejects.toThrow('have not completed');
-      await service.start(createStartDeps());
+      const start = await service.start(createStartDeps());
+      const startedProducer = start.createWorkerAdmissionProducer({
+        buildIdentity: 'coordinator-build',
+        getSourceDigest: () => sourceDigest,
+      });
+      await expect(startedProducer.create(['test-type'])).resolves.toMatchObject({
+        buildIdentity: 'coordinator-build',
+      });
       await expect(producer.create(['test-type'])).resolves.toMatchObject({
         buildIdentity: 'coordinator-build',
       });

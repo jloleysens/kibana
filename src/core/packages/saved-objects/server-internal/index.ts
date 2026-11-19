@@ -16,6 +16,7 @@ export {
   WorkerSavedObjectsAdmissionProducer,
   resolveSavedObjectsType,
   savedObjectsTypeParity,
+  verifyWorkerSavedObjectsTypeSources,
 } from './src';
 export type {
   InternalSavedObjectsServiceStart,
@@ -31,6 +32,7 @@ export type {
   WorkerSavedObjectsOptions,
   WorkerSavedObjectsType,
   SavedObjectsTypeParity,
+  WorkerSavedObjectsTypeContribution,
 } from './src';
 
 // only used by integration tests
