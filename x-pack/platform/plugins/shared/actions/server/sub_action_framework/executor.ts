@@ -7,7 +7,10 @@
 
 import { z } from '@kbn/zod/v4';
 import type { Logger } from '@kbn/core/server';
-import { createTaskRunError, TaskErrorSource } from '@kbn/task-manager-plugin/server';
+import {
+  createTaskRunError,
+  TaskErrorSource,
+} from '@kbn/task-manager-plugin/server/task_running/errors';
 import type { ActionsConfigurationUtilities } from '../actions_config';
 import type { ExecutorType } from '../types';
 import type { ExecutorParams, SubActionConnectorType } from './types';

@@ -9,7 +9,10 @@ import { last, lastValueFrom, map, merge, Observable, scan, share } from 'rxjs';
 import type { Readable } from 'node:stream';
 import { createParser } from 'eventsource-parser';
 import type { UnifiedChatCompleteResponse } from '@kbn/connector-schemas/inference';
-import { createTaskRunError, TaskErrorSource } from '@kbn/task-manager-plugin/server';
+import {
+  createTaskRunError,
+  TaskErrorSource,
+} from '@kbn/task-manager-plugin/server/task_running/errors';
 import { MAX_STREAM_DURATION_MS } from '@kbn/inference-common';
 
 // TODO: Extract to the common package with appex-ai

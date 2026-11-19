@@ -5,7 +5,8 @@
  * 2.0.
  */
 
-import { isEmpty, isPlainObject } from 'lodash';
+import isEmpty from 'lodash/isEmpty';
+import isPlainObject from 'lodash/isPlainObject';
 import type { Logger } from '@kbn/logging';
 import type {
   AxiosBasicCredentials,

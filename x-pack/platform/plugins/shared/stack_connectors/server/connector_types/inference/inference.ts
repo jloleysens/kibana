@@ -7,7 +7,7 @@
 
 import { text as streamToString } from 'node:stream/consumers';
 import type { ServiceParams } from '@kbn/actions-plugin/server';
-import { SubActionConnector } from '@kbn/actions-plugin/server';
+import { SubActionConnector } from '@kbn/actions-plugin/server/sub_action_framework/sub_action_connector';
 import { errors } from '@elastic/elasticsearch';
 import type {
   ElasticsearchClient,
@@ -25,8 +25,11 @@ import type {
   InferenceInferenceResponse,
 } from '@elastic/elasticsearch/lib/api/types';
 import type { ConnectorUsageCollector } from '@kbn/actions-plugin/server/usage';
-import { createTaskRunError, TaskErrorSource } from '@kbn/task-manager-plugin/server';
-import { isUserError } from '@kbn/task-manager-plugin/server/task_running';
+import {
+  createTaskRunError,
+  TaskErrorSource,
+  isUserError,
+} from '@kbn/task-manager-plugin/server/task_running/errors';
 import { trace } from '@opentelemetry/api';
 import type { Observable } from 'rxjs';
 import { filter, from, identity, map, mergeMap, tap } from 'rxjs';

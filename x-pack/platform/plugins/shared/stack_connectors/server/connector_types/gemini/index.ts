@@ -12,9 +12,11 @@ import {
   GenerativeAIForSecurityConnectorFeatureId,
   WorkflowsConnectorFeatureId,
 } from '@kbn/actions-plugin/common';
-import { urlAllowListValidator } from '@kbn/actions-plugin/server';
 import type { ValidatorServices } from '@kbn/actions-plugin/server/types';
-import { assertURL } from '@kbn/actions-plugin/server/sub_action_framework/helpers/validators';
+import {
+  assertURL,
+  urlAllowListValidator,
+} from '@kbn/actions-plugin/server/sub_action_framework/helpers/validators';
 import { GenerativeAIForObservabilityConnectorFeatureId } from '@kbn/actions-plugin/common';
 import {
   CONNECTOR_ID,

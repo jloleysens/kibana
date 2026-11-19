@@ -7,7 +7,7 @@
 
 import type { SSLSettings } from '@kbn/actions-utils';
 import type { ServiceParams } from '@kbn/actions-plugin/server';
-import { SubActionConnector } from '@kbn/actions-plugin/server';
+import { SubActionConnector } from '@kbn/actions-plugin/server/sub_action_framework/sub_action_connector';
 import type { AxiosError } from 'axios';
 import OpenAI from 'openai';
 import { PassThrough } from 'stream';
@@ -21,7 +21,10 @@ import type {
 import type { Stream } from 'openai/streaming';
 import { trace } from '@opentelemetry/api';
 import type { ConnectorUsageCollector } from '@kbn/actions-plugin/server/types';
-import { TaskErrorSource, createTaskRunError } from '@kbn/task-manager-plugin/server';
+import {
+  TaskErrorSource,
+  createTaskRunError,
+} from '@kbn/task-manager-plugin/server/task_running/errors';
 import { getCustomAgents } from '@kbn/actions-plugin/server/lib/get_custom_agents';
 import {
   DEFAULT_MODEL,

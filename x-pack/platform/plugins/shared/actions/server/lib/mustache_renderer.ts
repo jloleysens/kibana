@@ -6,7 +6,9 @@
  */
 
 import Mustache from 'mustache';
-import { isString, isPlainObject, cloneDeepWith } from 'lodash';
+import isString from 'lodash/isString';
+import isPlainObject from 'lodash/isPlainObject';
+import cloneDeepWith from 'lodash/cloneDeepWith';
 import { setWith } from '@kbn/safer-lodash-set';
 import type { Logger } from '@kbn/core/server';
 import { getMustacheLambdas } from './mustache_lambdas';
