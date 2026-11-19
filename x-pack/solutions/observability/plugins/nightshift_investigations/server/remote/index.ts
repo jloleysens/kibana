@@ -49,6 +49,13 @@ export const remoteModule: RemoteModule = {
   contributions: [
     {
       kind: createToken('workflows.step'),
+      stepType: 'nightshift.cortexHydrate',
+      needs: [SandboxWorkspacesToken],
+      modulePath: require.resolve('./cortex_hydrate_step'),
+      exportName: 'CortexHydrateStep',
+    },
+    {
+      kind: createToken('workflows.step'),
       stepType: 'nightshift.decisionTreeHydrate',
       needs: [SandboxWorkspacesToken, DecisionTreePolicyToken],
       modulePath: require.resolve('./decision_tree_hydrate_step'),

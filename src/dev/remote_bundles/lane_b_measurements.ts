@@ -67,6 +67,7 @@ interface Output {
   attachments?: Array<{ id: string; active: boolean }>;
   version?: number;
   success?: boolean;
+  failed?: boolean;
 }
 interface Step {
   stepId: string;
@@ -236,12 +237,26 @@ const execute = async (
     };
   }>(`${es}/lane-b-quiet-outcomes/_doc/${step('persist')._id}`);
   save(join(directory, `${workflowExecutionId}-business.json`), persisted);
-  if (family === 'nightshift_sandbox' || family === 'nightshift_tree_hydrate') {
+  if (
+    family === 'nightshift_sandbox' ||
+    family === 'nightshift_tree_hydrate' ||
+    family === 'nightshift_cortex_hydrate'
+  ) {
     assert.equal(persisted._source.sandboxId, 'default__' + workflowExecutionId);
     assert.equal(persisted._source.conversationId, workflowExecutionId);
+    if (family === 'nightshift_cortex_hydrate') {
+      assert.equal(step('hydrate').failed, undefined);
+      const page = await api<{ _source: { content: string } }>(
+        `${es}/ai-index-idx-nightshift-cortex/_doc/default:cortex_service_${id}`
+      );
+      assert.equal(page._source.content, 'Verified Cortex ' + id);
+      save(join(directory, `${workflowExecutionId}-cortex-page.json`), page);
+    }
     if (family === 'nightshift_tree_hydrate') {
       assert.equal(persisted._source.treeCount, '1');
-      const tree = await api<{ _source: { attributes: { tree_id: string; version: number } } }>(`${es}/ai-index-idx-nightshift-decision-trees/_doc/default:dtree_${id}`);
+      const tree = await api<{ _source: { attributes: { tree_id: string; version: number } } }>(
+        `${es}/ai-index-idx-nightshift-decision-trees/_doc/default:dtree_${id}`
+      );
       assert.equal(tree._source.attributes.tree_id, 'symptom:' + id);
       assert.equal(tree._source.attributes.version, 2);
       save(join(directory, `${workflowExecutionId}-tree.json`), tree);
@@ -720,6 +735,7 @@ export const runLaneBMeasurements = async (): Promise<void> => {
               'nightshift_render',
               'nightshift_sandbox',
               'nightshift_tree_hydrate',
+              'nightshift_cortex_hydrate',
             ]
           : ['extensions', 'cases'];
       const selectedFamilies = args.includes('--families')
@@ -851,6 +867,25 @@ export const runLaneBMeasurements = async (): Promise<void> => {
           );
           for (const family of group) {
             const id = `lane-b-quiet-${family.replaceAll('_', '-')}-${Date.now()}`;
+            if (family === 'nightshift_cortex_hydrate') {
+              await api(
+                `${es}/ai-index-idx-nightshift-cortex/_doc/default:cortex_service_${id}?refresh=true`,
+                {
+                  '@timestamp': new Date().toISOString(),
+                  type: 'service',
+                  title: 'Verified Cortex ' + id,
+                  content: 'Verified Cortex ' + id,
+                  tags: ['cortex', 'service'],
+                  attributes: {
+                    space_id: 'default',
+                    status: 'established',
+                    corroborations: 2,
+                    slug: id,
+                  },
+                },
+                'PUT'
+              );
+            }
             if (family === 'nightshift_trees' || family === 'nightshift_tree_hydrate') {
               const index = es + '/ai-index-idx-nightshift-decision-trees/_doc/';
               await api(
@@ -903,7 +938,11 @@ export const runLaneBMeasurements = async (): Promise<void> => {
               const before = lines<Seam>(join(directory, 'seams.jsonl')).length;
               const timingBefore = lines<AuthorizationRead>(join(directory, 'timing.jsonl')).length;
               const result = await execute(family, id, directory);
-              if (family === 'nightshift_sandbox' || family === 'nightshift_tree_hydrate') {
+              if (
+                family === 'nightshift_sandbox' ||
+                family === 'nightshift_tree_hydrate' ||
+                family === 'nightshift_cortex_hydrate'
+              ) {
                 assert(sandbox, 'Allocation proof requires --sandbox-stat-fixture');
                 const requests = lines<{
                   operation: string;
@@ -933,6 +972,28 @@ export const runLaneBMeasurements = async (): Promise<void> => {
                 assert.equal(written.length, 1);
                 assert(
                   written[0].files?.some(({ content }) => content.includes('# Verified tree'))
+                );
+              }
+              if (family === 'nightshift_cortex_hydrate') {
+                const requests = lines<{
+                  operation: string;
+                  conversationId: string;
+                  files?: Array<{ path: string; content: string }>;
+                }>(join(output, 'sandbox-stat-requests.jsonl'));
+                const written = requests.filter(
+                  ({ operation, conversationId }) =>
+                    operation === 'write' &&
+                    conversationId === 'default__' + result.workflowExecutionId
+                );
+                assert.equal(written.length, 2);
+                assert(
+                  written
+                    .flatMap(({ files }) => files ?? [])
+                    .some(
+                      ({ path, content }) =>
+                        path === '/workspace/cortex/services/' + id + '.md' &&
+                        content.includes('Verified Cortex ' + id)
+                    )
                 );
               }
               const authorizationReads = lines<AuthorizationRead>(join(directory, 'timing.jsonl'))

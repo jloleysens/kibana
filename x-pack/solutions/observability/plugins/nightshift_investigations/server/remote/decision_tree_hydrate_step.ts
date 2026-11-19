@@ -11,7 +11,7 @@ import { recordRemoteTiming } from '@kbn/core-remote-common';
 import { SandboxWorkspacesToken, type SandboxWorkspacesApi } from './sandbox_workspaces_tokens';
 import { DecisionTreePolicyToken, type DecisionTreePolicyApi } from './decision_tree_policy_tokens';
 import { createDecisionTreeHydrateHandler } from './decision_tree_hydrate';
-import { restoreInvestigationError } from './investigation_errors';
+import { restoreSandboxError } from './sandbox_errors';
 
 export class DecisionTreeHydrateStep implements RemoteWorkflowStep {
   constructor(
@@ -27,17 +27,16 @@ export class DecisionTreeHydrateStep implements RemoteWorkflowStep {
     handlerContext.abortSignal.throwIfAborted();
     const handler = createDecisionTreeHydrateHandler({
       logger: handlerContext.logger,
-      isEnabled: async () => (await restoreInvestigationError(this.policy.read(scopeId))).enabled,
+      isEnabled: async () => (await restoreSandboxError(this.policy.read(scopeId))).enabled,
       getSession: async (_, conversationId) => {
-        const reference = await restoreInvestigationError(
+        const reference = await restoreSandboxError(
           this.workspaces.openDecisionTreeWorkspace(scopeId, conversationId)
         );
         if (!reference) return undefined;
         return {
-          mkdirs: (paths) =>
-            restoreInvestigationError(this.workspaces.mkdirs(scopeId, reference, paths)),
+          mkdirs: (paths) => restoreSandboxError(this.workspaces.mkdirs(scopeId, reference, paths)),
           writeFiles: (files) =>
-            restoreInvestigationError(
+            restoreSandboxError(
               this.workspaces.writeFiles(
                 scopeId,
                 reference,

@@ -8,11 +8,11 @@
 import { loggerMock } from '@kbn/logging-mocks';
 import { coreMock } from '@kbn/core/server/mocks';
 import type { SandboxPluginStart, SandboxSession } from '@kbn/sandbox-plugin/server';
-import { hydrateCortexWorkspace } from '../cortex/register_cortex';
+import { hydrateCortexWorkspaceWithTelemetry } from '../cortex/hydrate_workspace';
 import { cortexHydrateStepDefinition } from './cortex_hydrate';
 
-jest.mock('../cortex/register_cortex', () => ({
-  hydrateCortexWorkspace: jest
+jest.mock('../cortex/hydrate_workspace', () => ({
+  hydrateCortexWorkspaceWithTelemetry: jest
     .fn()
     .mockResolvedValue(
       'Cortex pages materialized this turn:\n- `/workspace/cortex/services/checkout.md`'
@@ -71,14 +71,21 @@ describe('cortexHydrateStepDefinition', () => {
     const result = await definition.handler(createContext('default__conv-1'));
 
     expect(sandboxStart.getSessionForSpace).toHaveBeenCalledWith('default', 'conv-1');
-    expect(hydrateCortexWorkspace).toHaveBeenCalledWith({
+    expect(hydrateCortexWorkspaceWithTelemetry).toHaveBeenCalledWith({
       session: mockSession,
       esClient,
       spaceId: 'default',
       signal: expect.any(AbortSignal),
-      analytics,
-      conversationId: 'conv-1',
+      telemetry: expect.objectContaining({ reportHydrated: expect.any(Function) }),
       logger: expect.anything(),
+    });
+    await jest
+      .mocked(hydrateCortexWorkspaceWithTelemetry)
+      .mock.calls.at(-1)?.[0]
+      .telemetry.reportHydrated([]);
+    expect(analytics.reportEvent).toHaveBeenCalledWith('nightshift_cortex_hydrated', {
+      conversation_id: 'conv-1',
+      page_count: 0,
     });
     expect(result).toEqual({
       output: {
@@ -100,9 +107,20 @@ describe('cortexHydrateStepDefinition', () => {
     const result = await definition.handler(createContext('marketing__conv-1', 'marketing'));
 
     expect(sandboxStart.getSessionForSpace).toHaveBeenCalledWith('marketing', 'conv-1');
-    expect(hydrateCortexWorkspace).toHaveBeenCalledWith(
-      expect.objectContaining({ spaceId: 'marketing', conversationId: 'conv-1' })
+    expect(hydrateCortexWorkspaceWithTelemetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        spaceId: 'marketing',
+        telemetry: expect.objectContaining({ reportHydrated: expect.any(Function) }),
+      })
     );
+    await jest
+      .mocked(hydrateCortexWorkspaceWithTelemetry)
+      .mock.calls.at(-1)?.[0]
+      .telemetry.reportHydrated([]);
+    expect(analytics.reportEvent).toHaveBeenCalledWith('nightshift_cortex_hydrated', {
+      conversation_id: 'conv-1',
+      page_count: 0,
+    });
     expect(result).toEqual({
       output: {
         sandbox_id: 'marketing__conv-1',
@@ -123,9 +141,20 @@ describe('cortexHydrateStepDefinition', () => {
     const result = await definition.handler(createContext(undefined, 'marketing', 'conv-1'));
 
     expect(sandboxStart.getSessionForSpace).toHaveBeenCalledWith('marketing', 'conv-1');
-    expect(hydrateCortexWorkspace).toHaveBeenCalledWith(
-      expect.objectContaining({ spaceId: 'marketing', conversationId: 'conv-1' })
+    expect(hydrateCortexWorkspaceWithTelemetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        spaceId: 'marketing',
+        telemetry: expect.objectContaining({ reportHydrated: expect.any(Function) }),
+      })
     );
+    await jest
+      .mocked(hydrateCortexWorkspaceWithTelemetry)
+      .mock.calls.at(-1)?.[0]
+      .telemetry.reportHydrated([]);
+    expect(analytics.reportEvent).toHaveBeenCalledWith('nightshift_cortex_hydrated', {
+      conversation_id: 'conv-1',
+      page_count: 0,
+    });
     expect(result).toEqual({
       output: {
         sandbox_id: 'marketing__conv-1',
@@ -146,7 +175,7 @@ describe('cortexHydrateStepDefinition', () => {
     await expect(definition.handler(createContext(undefined))).rejects.toThrow(
       'Either sandbox_id or conversation_id is required.'
     );
-    expect(hydrateCortexWorkspace).not.toHaveBeenCalled();
+    expect(hydrateCortexWorkspaceWithTelemetry).not.toHaveBeenCalled();
   });
 
   it('throws when the sandbox is not configured', async () => {
@@ -159,7 +188,7 @@ describe('cortexHydrateStepDefinition', () => {
     await expect(definition.handler(createContext('default__conv-1'))).rejects.toThrow(
       /sandbox is not configured/
     );
-    expect(hydrateCortexWorkspace).not.toHaveBeenCalled();
+    expect(hydrateCortexWorkspaceWithTelemetry).not.toHaveBeenCalled();
   });
 
   it('skips materialize when the cortex flag is off', async () => {
@@ -172,7 +201,7 @@ describe('cortexHydrateStepDefinition', () => {
 
     const result = await definition.handler(createContext('default__conv-1'));
 
-    expect(hydrateCortexWorkspace).not.toHaveBeenCalled();
+    expect(hydrateCortexWorkspaceWithTelemetry).not.toHaveBeenCalled();
     expect(result).toEqual({
       output: {
         sandbox_id: 'default__conv-1',
@@ -186,7 +215,9 @@ describe('cortexHydrateStepDefinition', () => {
   // This is a before-agent hook, so throwing aborted the whole investigator round over
   // one writer. It now degrades to a system_update line naming its own directory.
   it('degrades to an incomplete-materialization notice when the write throws', async () => {
-    jest.mocked(hydrateCortexWorkspace).mockRejectedValueOnce(new Error('sandbox write refused'));
+    jest
+      .mocked(hydrateCortexWorkspaceWithTelemetry)
+      .mockRejectedValueOnce(new Error('sandbox write refused'));
     const definition = cortexHydrateStepDefinition({
       getSandboxStart: () => makeSandboxStart(),
       analytics,

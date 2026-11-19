@@ -251,7 +251,7 @@ export const createCortexPageStore = ({
   destValue = CORTEX_AI_INDEX_DEST,
 }: {
   esClient: ElasticsearchClient;
-  logger: Logger;
+  logger: Pick<Logger, 'debug' | 'info'>;
   spaceId: string;
   /** Aborts in-flight Elasticsearch requests when the calling step times out. */
   signal?: AbortSignal;

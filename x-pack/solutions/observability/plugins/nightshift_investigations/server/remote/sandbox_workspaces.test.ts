@@ -5,6 +5,11 @@
  * 2.0.
  */
 
+import { MessageChannel } from 'node:worker_threads';
+import { expose, openPortSession } from '@kbn/core-remote-common';
+import { restoreSandboxError } from './sandbox_errors';
+import type { SandboxWorkspacesApi } from './sandbox_workspaces_tokens';
+import { CortexHydrateStep } from './cortex_hydrate_step';
 import type { SandboxPluginStart, SandboxSession } from '@kbn/sandbox-plugin/server';
 import { DecisionTreeHydrateStep } from './decision_tree_hydrate_step';
 import type { ScopeLookup } from '@kbn/core-remote-server';
@@ -25,7 +30,10 @@ const setup = (getSandboxStart: () => SandboxPluginStart | undefined = () => und
     },
   };
   const allocate = jest.fn(async () => ({}));
-  const workspaces = new SandboxWorkspaces(scopes, allocate, getSandboxStart);
+  const workspaces = new SandboxWorkspaces(scopes, allocate, getSandboxStart, {
+    isEnabled: () => true,
+    reportHydrated: jest.fn(),
+  });
   return { workspaces, scopes, allocate, controller };
 };
 
@@ -129,4 +137,110 @@ it('retains the original unavailable-plugin branch and refuses missing local hyd
     'context'
   );
   expect(policy.read).not.toHaveBeenCalled();
+});
+
+it('preserves only the original UNAVAILABLE retry fact over real RPC, never private metadata', async () => {
+  const { workspaces, allocate } = setup();
+  const original = Object.assign(new Error('Sandbox unavailable'), {
+    code: 14,
+    authorization: 'private',
+  });
+  allocate.mockRejectedValueOnce(original);
+  const { port1, port2 } = new MessageChannel();
+  try {
+    const remote = openPortSession<SandboxWorkspacesApi>(port1);
+    openPortSession(port2, expose(workspaces));
+    try {
+      await restoreSandboxError(remote.allocate('run', 'conversation', true));
+      throw new Error('Expected rejection');
+    } catch (error) {
+      expect(error).toMatchObject({ message: 'Sandbox unavailable', code: 14 });
+      expect(error).not.toHaveProperty('authorization');
+    }
+    const nonRetryable = Object.assign(new Error('Other failure'), {
+      code: 13,
+      authorization: 'private',
+    });
+    allocate.mockRejectedValueOnce(nonRetryable);
+    await expect(
+      restoreSandboxError(remote.allocate('run', 'conversation', true))
+    ).rejects.not.toHaveProperty('code');
+  } finally {
+    port1.close();
+    port2.close();
+  }
+});
+
+it('fences Cortex paths and telemetry by the original run-owned workspace reference', async () => {
+  const session: SandboxSession = {
+    isReset: false,
+    runCommand: jest.fn(),
+    readFiles: jest.fn(),
+    statFiles: jest.fn(),
+    mkdirs: jest.fn(),
+    writeFiles: jest.fn(),
+  };
+  const { scopes, allocate } = setup();
+  const reportHydrated = jest.fn();
+  const workspaces = new SandboxWorkspaces(
+    scopes,
+    allocate,
+    () => ({ getSession: jest.fn(), getSessionForSpace: () => session }),
+    { isEnabled: () => true, reportHydrated }
+  );
+  const reference = await workspaces.openCortexWorkspace(
+    'run',
+    'conversation',
+    'telemetry-conversation'
+  );
+  if (!reference) throw new Error('Expected reference');
+  await expect(workspaces.isCortexEnabled('run')).resolves.toBe(true);
+  await workspaces.reportCortexHydrated('run', reference, [
+    { entity_type: 'service', workflow_execution_id: 'forged' } as { entity_type: 'service' },
+  ]);
+  expect(reportHydrated).toHaveBeenCalledWith('telemetry-conversation', [
+    { entity_type: 'service' },
+  ]);
+  await expect(workspaces.reportCortexHydrated('run2', reference, [])).rejects.toThrow(
+    'Unknown sandbox workspace'
+  );
+  const treeReference = await workspaces.openDecisionTreeWorkspace('run', 'conversation');
+  if (!treeReference) throw new Error('Expected tree reference');
+  await expect(workspaces.reportCortexHydrated('run', treeReference, [])).rejects.toThrow(
+    'Not a Cortex'
+  );
+  await expect(workspaces.mkdirs('run', reference, ['/workspace/decision-trees'])).rejects.toThrow(
+    'Path outside'
+  );
+  await expect(workspaces.mkdirs('run', treeReference, ['/workspace/cortex'])).rejects.toThrow(
+    'Path outside'
+  );
+  expect(session.mkdirs).not.toHaveBeenCalled();
+  await expect(new CortexHydrateStep(workspaces).run('run', {}, {})).rejects.toThrow('context');
+});
+
+it('exports only the narrow capability surface, not TypeScript-private implementation helpers', () => {
+  const { workspaces } = setup();
+  const adapter = expose(workspaces);
+  expect(Object.getOwnPropertyNames(Object.getPrototypeOf(adapter)).sort()).toEqual([
+    'allocate',
+    'constructor',
+    'isCortexEnabled',
+    'mkdirs',
+    'openCortexWorkspace',
+    'openDecisionTreeWorkspace',
+    'reportCortexHydrated',
+    'writeFiles',
+  ]);
+  for (const name of [
+    'perform',
+    'openWorkspace',
+    'getWorkspace',
+    'getSession',
+    'assertTreePath',
+    'assertWorkspacePath',
+    'runCommand',
+  ]) {
+    expect(name in adapter).toBe(false);
+  }
 });

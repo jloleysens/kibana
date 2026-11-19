@@ -66,6 +66,7 @@ import { DecisionTreePolicyToken } from './remote/decision_tree_policy_tokens';
 import { DecisionTreePolicy } from './remote/decision_tree_policy';
 import { AgentInstallationToken } from './remote/agent_installation_tokens';
 import { AgentInstallation, createAgentInstaller } from './remote/agent_installation';
+import { createCortexTelemetry } from './telemetry/cortex_telemetry';
 import { SandboxWorkspacesToken } from './remote/sandbox_workspaces_tokens';
 import { SandboxWorkspaces } from './remote/sandbox_workspaces';
 import { createWorkspaceAllocator } from './remote/allocate_workspace';
@@ -243,7 +244,16 @@ export class NightshiftInvestigationsPlugin
             getSandboxStart: getGatedSandboxStart,
             logger: this.logger.get('obtain_sandbox'),
           }),
-          getGatedSandboxStart
+          getGatedSandboxStart,
+          {
+            isEnabled: () => this.cortexEnabled,
+            reportHydrated: (conversationId, pages) =>
+              createCortexTelemetry({
+                analytics: core.analytics,
+                conversationId,
+                logger: this.logger.get('cortex'),
+              }).reportHydrated(pages),
+          }
         )
     );
     const telemetry = setupNightshiftTelemetry({

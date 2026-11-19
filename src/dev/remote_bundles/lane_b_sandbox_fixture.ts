@@ -93,15 +93,24 @@ export const startLaneBSandboxFixture = async (logFile: string) => {
       }),
       mkdirs: handle('mkdirs', (request) => {
         const paths = fields(request).map(({ content }) => content.toString('utf8'));
-        assert.deepEqual(paths, ['/workspace/decision-trees']);
-        return { record: { paths }, response: Buffer.from([8, 1]) };
+        assert(
+          paths.every(
+            (path) =>
+              path === '/workspace/decision-trees' ||
+              path === '/workspace/cortex' ||
+              path.startsWith('/workspace/cortex/')
+          )
+        );
+        return { record: { paths }, response: Buffer.concat(paths.map(() => Buffer.from([8, 1]))) };
       }),
       writeFiles: handle('write', (request) => {
         const files = fields(request).map(({ content }) => {
           const entries = fields(content);
           const path = entries.find(({ field }) => field === 1)?.content.toString('utf8');
           const text = entries.find(({ field }) => field === 2)?.content.toString('utf8');
-          assert(path?.startsWith('/workspace/decision-trees/'));
+          assert(
+            path?.startsWith('/workspace/decision-trees/') || path?.startsWith('/workspace/cortex/')
+          );
           assert.equal(typeof text, 'string');
           return { path, content: text };
         });

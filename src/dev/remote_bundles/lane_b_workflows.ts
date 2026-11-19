@@ -22,11 +22,24 @@ export type LaneBFamily =
   | 'nightshift_agents'
   | 'nightshift_render'
   | 'nightshift_sandbox'
-  | 'nightshift_tree_hydrate';
+  | 'nightshift_tree_hydrate'
+  | 'nightshift_cortex_hydrate';
 
 /** Uses the same original business steps for ordinary Kibana and each worker backend. */
 export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: string) => {
   const steps = {
+    nightshift_cortex_hydrate: [
+      {
+        name: 'obtain',
+        type: 'nightshift.obtainSandbox',
+        with: { conversation_id: '{{ execution.id }}' },
+      },
+      {
+        name: 'hydrate',
+        type: 'nightshift.cortexHydrate',
+        with: { sandbox_id: '{{ steps.obtain.output.sandbox_id }}' },
+      },
+    ],
     nightshift_tree_hydrate: [
       {
         name: 'obtain',
@@ -372,6 +385,11 @@ export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: s
     ],
   }[family];
   const document = {
+    nightshift_cortex_hydrate: {
+      sandboxId: '{{ steps.hydrate.output.sandbox_id }}',
+      conversationId: '{{ steps.hydrate.output.conversation_id }}',
+      notification: '{{ steps.hydrate.output.notification }}',
+    },
     nightshift_tree_hydrate: {
       sandboxId: '{{ steps.hydrate.output.sandbox_id }}',
       treeCount: '{{ steps.hydrate.output.tree_count }}',

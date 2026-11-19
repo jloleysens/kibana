@@ -66,6 +66,29 @@ const main = async (): Promise<void> => {
     response.setHeader('content-type', 'application/json');
     response.setHeader('x-elastic-product', 'Elasticsearch');
     const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+    if (path.includes('ai-index-idx-nightshift-cortex')) {
+      const source = {
+        '@timestamp': new Date().toISOString(),
+        type: 'service',
+        title: 'Fixture Cortex service',
+        content: '# Populated Cortex page',
+        tags: ['cortex', 'service'],
+        attributes: {
+          slug: 'fixture',
+          status: 'established',
+          corroborations: 2,
+          space_id: 'default',
+        },
+      };
+      response.end(
+        JSON.stringify(
+          path.endsWith('/_search')
+            ? { hits: { hits: [{ _id: 'default:cortex_service_fixture', _source: source }] } }
+            : { _id: 'default:cortex_service_fixture', found: true, _source: source }
+        )
+      );
+      return;
+    }
     if (path.includes('ai-index-idx-nightshift-decision-trees') && path.endsWith('/_search')) {
       const query = JSON.parse(body);
       const tree = query.query.bool.filter.some(
@@ -406,6 +429,7 @@ const main = async (): Promise<void> => {
         'nightshift.decisionTreeHydrate',
         { sandbox_id: 'default__fixture-conversation', agent_id: 'nightshift.investigation' },
       ],
+      ['nightshift.cortexHydrate', { sandbox_id: 'default__fixture-conversation' }],
       ['nightshift.obtainSandbox', { conversation_id: 'fixture-conversation' }],
       ['nightshift.ensureInvestigationAgent', {}],
       ['nightshift.renderSlackMessage', { investigation_id: 'investigation', phase: 'completed' }],
@@ -465,26 +489,33 @@ const main = async (): Promise<void> => {
           }),
         },
       };
-      const operations =
-        type === 'nightshift.decisionTreeHydrate'
-          ? {
-              openDecisionTreeWorkspace: async () => 'workspace-ref',
-              mkdirs: async () => [true],
-              writeFiles: async (
-                scope: string,
-                reference: string,
-                files: Array<{ path: string; content: string }>
-              ) =>
-                files.map(({ content }) => ({
-                  bytes_written: Buffer.byteLength(content),
-                  success: true,
-                })),
-            }
-          : type === 'nightshift.obtainSandbox'
-          ? { allocate: async () => ({}) }
-          : type === 'nightshift.decisionTreePrepare'
-          ? { read: registry.readTreePolicy }
-          : registry;
+      const sandboxWorkspaces = {
+        allocate: async () => ({}),
+        isCortexEnabled: async () => true,
+        openCortexWorkspace: async () => 'cortex-ref',
+        openDecisionTreeWorkspace: async () => 'tree-ref',
+        mkdirs: async (_scope: string, _reference: string, paths: string[]) =>
+          paths.map(() => true),
+        writeFiles: async (
+          _scope: string,
+          _reference: string,
+          files: Array<{ path: string; content: string }>
+        ) =>
+          files.map(({ content }) => ({
+            bytes_written: Buffer.byteLength(content),
+            success: true,
+          })),
+        reportCortexHydrated: async () => {},
+      };
+      const operations = [
+        'nightshift.obtainSandbox',
+        'nightshift.cortexHydrate',
+        'nightshift.decisionTreeHydrate',
+      ].includes(type)
+        ? sandboxWorkspaces
+        : type === 'nightshift.decisionTreePrepare'
+        ? { read: registry.readTreePolicy }
+        : registry;
       const result = (await new Ctor(
         operations,
         type === 'nightshift.decisionTreeHydrate'
@@ -516,6 +547,12 @@ const main = async (): Promise<void> => {
       }
       if (type === 'nightshift.decisionTreeHydrate')
         assert.equal((result.output as { tree_count: number }).tree_count, 1);
+      if (type === 'nightshift.cortexHydrate')
+        assert.deepEqual(result.output, {
+          sandbox_id: 'default__fixture-conversation',
+          conversation_id: 'fixture-conversation',
+          notification: '',
+        });
       if (type === 'nightshift.obtainSandbox')
         assert.deepEqual(result.output, {
           sandbox_id: 'default__fixture-conversation',

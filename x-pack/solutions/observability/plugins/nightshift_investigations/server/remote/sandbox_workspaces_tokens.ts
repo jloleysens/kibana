@@ -7,8 +7,20 @@
 
 import type { SandboxSession } from '@kbn/sandbox-plugin/server';
 import { createToken } from '@kbn/core-di';
+import type { CortexEntityType } from '../../common/cortex';
 
 export interface SandboxWorkspacesApi {
+  isCortexEnabled(scopeId: string): Promise<boolean>;
+  openCortexWorkspace(
+    scopeId: string,
+    conversationId: string,
+    telemetryConversationId: string
+  ): Promise<string | undefined>;
+  reportCortexHydrated(
+    scopeId: string,
+    reference: string,
+    pages: Array<{ entity_type: CortexEntityType }>
+  ): Promise<void>;
   openDecisionTreeWorkspace(scopeId: string, conversationId: string): Promise<string | undefined>;
   mkdirs(scopeId: string, reference: string, paths: string[]): Promise<boolean[]>;
   writeFiles(

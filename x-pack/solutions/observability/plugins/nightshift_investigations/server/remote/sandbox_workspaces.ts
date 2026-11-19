@@ -10,25 +10,84 @@ import { posix } from 'node:path';
 import type { SandboxPluginStart, SandboxSession } from '@kbn/sandbox-plugin/server';
 import type { ScopeLookup } from '@kbn/core-remote-server';
 import { recordRemoteTiming, remotable } from '@kbn/core-remote-common';
+import type { CortexEntityType } from '../../common/cortex';
 import type { SandboxWorkspacesApi } from './sandbox_workspaces_tokens';
 import type { createWorkspaceAllocator } from './allocate_workspace';
-import { createInvestigationTransportError } from './investigation_errors';
+import { createSandboxTransportError } from './sandbox_errors';
 
 /** Sandbox credentials, TLS, sessions, allocation and isolation stay in their original owner. */
 @remotable()
 export class SandboxWorkspaces implements SandboxWorkspacesApi {
-  private readonly sessions = new Map<string, Map<string, SandboxSession>>();
+  private readonly sessions = new Map<
+    string,
+    Map<
+      string,
+      {
+        session: SandboxSession;
+        root: '/workspace/decision-trees' | '/workspace/cortex';
+        telemetryConversationId?: string;
+      }
+    >
+  >();
   constructor(
     private readonly scopes: ScopeLookup,
     private readonly allocateWorkspace: ReturnType<typeof createWorkspaceAllocator>,
-    private readonly getSandboxStart: () => SandboxPluginStart | undefined
+    private readonly getSandboxStart: () => SandboxPluginStart | undefined,
+    private readonly cortex: {
+      isEnabled: () => boolean;
+      reportHydrated: (
+        conversationId: string | undefined,
+        pages: Array<{ entity_type: CortexEntityType }>
+      ) => void | Promise<void>;
+    }
   ) {}
+
+  async isCortexEnabled(scopeId: string): Promise<boolean> {
+    return this.#perform(scopeId, 'cortex_policy', {}, async () => this.cortex.isEnabled());
+  }
+
+  async openCortexWorkspace(
+    scopeId: string,
+    conversationId: string,
+    telemetryConversationId: string
+  ): Promise<string | undefined> {
+    return this.#openWorkspace(
+      scopeId,
+      conversationId,
+      '/workspace/cortex',
+      telemetryConversationId
+    );
+  }
+
+  async reportCortexHydrated(
+    scopeId: string,
+    reference: string,
+    pages: Array<{ entity_type: CortexEntityType }>
+  ): Promise<void> {
+    return this.#perform(scopeId, 'cortex_telemetry', { reference, pages }, async () => {
+      const { root, telemetryConversationId } = this.#getWorkspace(scopeId, reference);
+      if (root !== '/workspace/cortex') throw new Error('Not a Cortex workspace reference');
+      await this.cortex.reportHydrated(
+        telemetryConversationId,
+        pages.map(({ entity_type }) => ({ entity_type }))
+      );
+    });
+  }
 
   async openDecisionTreeWorkspace(
     scopeId: string,
     conversationId: string
   ): Promise<string | undefined> {
-    return this.perform(scopeId, 'open', { conversationId }, async () => {
+    return this.#openWorkspace(scopeId, conversationId, '/workspace/decision-trees');
+  }
+
+  async #openWorkspace(
+    scopeId: string,
+    conversationId: string,
+    root: '/workspace/decision-trees' | '/workspace/cortex',
+    telemetryConversationId?: string
+  ): Promise<string | undefined> {
+    return this.#perform(scopeId, 'open', { conversationId }, async () => {
       const { spaceId } = this.scopes.getRunState(scopeId);
       const session = this.getSandboxStart()?.getSessionForSpace(spaceId, conversationId);
       if (!session) return undefined;
@@ -41,15 +100,15 @@ export class SandboxWorkspaces implements SandboxWorkspacesApi {
           .addEventListener('abort', () => this.sessions.delete(scopeId), { once: true });
       }
       const reference = randomUUID();
-      references.set(reference, session);
+      references.set(reference, { session, root, telemetryConversationId });
       return reference;
     });
   }
 
   async mkdirs(scopeId: string, reference: string, paths: string[]): Promise<boolean[]> {
-    return this.perform(scopeId, 'mkdirs', { reference, paths }, async () => {
-      const session = this.getSession(scopeId, reference);
-      paths.forEach((path) => this.assertTreePath(path));
+    return this.#perform(scopeId, 'mkdirs', { reference, paths }, async () => {
+      const { session, root } = this.#getWorkspace(scopeId, reference);
+      paths.forEach((path) => this.#assertWorkspacePath(root, path));
       return session.mkdirs(paths);
     });
   }
@@ -59,28 +118,27 @@ export class SandboxWorkspaces implements SandboxWorkspacesApi {
     reference: string,
     files: Array<{ path: string; content: string }>
   ): ReturnType<SandboxSession['writeFiles']> {
-    return this.perform(scopeId, 'write_files', { reference, files }, async () => {
-      const session = this.getSession(scopeId, reference);
-      files.forEach(({ path }) => this.assertTreePath(path));
+    return this.#perform(scopeId, 'write_files', { reference, files }, async () => {
+      const { session, root } = this.#getWorkspace(scopeId, reference);
+      files.forEach(({ path }) => this.#assertWorkspacePath(root, path));
       return session.writeFiles(
         files.map(({ path, content }) => ({ path, content: Buffer.from(content, 'utf8') }))
       );
     });
   }
 
-  private getSession(scopeId: string, reference: string): SandboxSession {
-    const session = this.sessions.get(scopeId)?.get(reference);
-    if (!session) throw new Error('Unknown sandbox workspace reference');
-    return session;
+  #getWorkspace(scopeId: string, reference: string) {
+    const workspace = this.sessions.get(scopeId)?.get(reference);
+    if (!workspace) throw new Error('Unknown sandbox workspace reference');
+    return workspace;
   }
 
-  private assertTreePath(path: string): void {
-    const root = '/workspace/decision-trees';
+  #assertWorkspacePath(root: string, path: string): void {
     if (posix.normalize(path) !== path || (path !== root && !path.startsWith(root + '/')))
-      throw new Error('Path outside decision tree workspace');
+      throw new Error('Path outside sandbox workspace');
   }
 
-  private async perform<T>(
+  async #perform<T>(
     scopeId: string,
     operation: string,
     input: object,
@@ -96,7 +154,7 @@ export class SandboxWorkspaces implements SandboxWorkspacesApi {
       signal.throwIfAborted();
       return result;
     } catch (error) {
-      throw createInvestigationTransportError(error);
+      throw createSandboxTransportError(error);
     } finally {
       const elapsed = process.cpuUsage(cpu);
       recordRemoteTiming('nightshift_sandbox_' + operation, {
@@ -123,7 +181,7 @@ export class SandboxWorkspaces implements SandboxWorkspacesApi {
       signal.throwIfAborted();
       return skipped ? { skipped } : {};
     } catch (error) {
-      throw createInvestigationTransportError(error);
+      throw createSandboxTransportError(error);
     } finally {
       const elapsed = process.cpuUsage(cpu);
       recordRemoteTiming('nightshift_sandbox_allocate', {

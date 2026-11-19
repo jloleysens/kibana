@@ -86,10 +86,10 @@ export const materializeCortex = async ({
   telemetry,
   logger,
 }: {
-  session: SandboxSession;
+  session: Pick<SandboxSession, 'mkdirs' | 'writeFiles'>;
   store: CortexPageStore;
-  telemetry: CortexTelemetry;
-  logger: Logger;
+  telemetry: Pick<CortexTelemetry, 'reportHydrated'>;
+  logger: Pick<Logger, 'info'>;
 }): Promise<void> => {
   await store.pruneDuplicates();
   const { pages: allPages } = await store.list();
@@ -121,7 +121,7 @@ export const materializeCortex = async ({
     { path: `${CORTEX_WORKSPACE_ROOT}/INDEX.md`, content: Buffer.from(renderIndex(pages), 'utf8') },
   ]);
 
-  telemetry.reportHydrated(fullPages);
+  await telemetry.reportHydrated(fullPages);
   logger.info(
     fullPages.length > 0
       ? `Materialized ${fullPages.length} Cortex page(s) into sandbox`
