@@ -36,14 +36,8 @@ import {
   getGenAiTokenTracking,
   shouldTrackGenAiToken,
 } from './token_tracking/gen_ai_token_tracking';
-import {
-  validateConfig,
-  validateConnector,
-  validateParams,
-  validateSecrets,
-} from './validate_with_schema';
+import { validateAction } from './validate_action';
 import type {
-  ActionType,
   ActionTypeConfig,
   ActionTypeExecutorRawResult,
   ActionTypeExecutorResult,
@@ -56,7 +50,6 @@ import type {
   RawAction,
   Services,
   UnsecuredServices,
-  ValidatorServices,
 } from '../types';
 import { UNALLOWED_FOR_UNSECURE_EXECUTION_CONNECTOR_TYPE_IDS } from '../types';
 import { EVENT_LOG_ACTIONS } from '../constants/event_log';
@@ -571,7 +564,8 @@ export class ActionExecutor {
               secrets,
               taskInfo,
             },
-            { configurationUtilities }
+            { configurationUtilities },
+            TaskErrorSource
           );
           validatedParams = validationResult.validatedParams;
           validatedConfig = validationResult.validatedConfig;
@@ -889,58 +883,6 @@ function actionErrorToMessage(result: ActionTypeExecutorRawResult<unknown>): str
   }
 
   return message;
-}
-
-interface ValidateActionOpts {
-  actionId: string;
-  actionType: ActionType;
-  params: Record<string, unknown>;
-  config: Record<string, unknown>;
-  secrets: Record<string, unknown>;
-  taskInfo?: TaskInfo;
-}
-
-function validateAction(
-  { actionId, actionType, params, config, secrets, taskInfo }: ValidateActionOpts,
-  validatorServices: ValidatorServices
-) {
-  let validatedParams: Record<string, unknown>;
-  let validatedConfig: Record<string, unknown>;
-  let validatedSecrets: Record<string, unknown>;
-
-  try {
-    // Params validator is guaranteed to exist at this point (validated in execute method)
-    validatedParams = validateParams(actionType, params, validatorServices);
-  } catch (err) {
-    throw new ActionExecutionError(err.message, ActionExecutionErrorReason.Validation, {
-      actionId,
-      status: 'error',
-      message: err.message,
-      retry: !!taskInfo,
-      errorSource: TaskErrorSource.USER,
-    });
-  }
-
-  try {
-    validatedConfig = validateConfig(actionType, config, validatorServices);
-    validatedSecrets = validateSecrets(actionType, secrets, validatorServices);
-    if (actionType.validate?.connector) {
-      validateConnector(actionType, {
-        config,
-        secrets,
-      });
-    }
-
-    return { validatedParams, validatedConfig, validatedSecrets };
-  } catch (err) {
-    throw new ActionExecutionError(err.message, ActionExecutionErrorReason.Validation, {
-      actionId,
-      status: 'error',
-      message: err.message,
-      retry: !!taskInfo,
-      errorSource: TaskErrorSource.FRAMEWORK,
-    });
-  }
 }
 
 interface EnsureAuthorizedToExecuteOpts {
