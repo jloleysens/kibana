@@ -6,48 +6,13 @@
  */
 
 import type { SubActionConnectorType } from '@kbn/actions-plugin/server/sub_action_framework/types';
-import { ValidatorType } from '@kbn/actions-plugin/server/sub_action_framework/types';
-import {
-  AlertingConnectorFeatureId,
-  SecurityConnectorFeatureId,
-  UptimeConnectorFeatureId,
-  CasesConnectorFeatureId,
-  WorkflowsConnectorFeatureId,
-  AgentBuilderConnectorFeatureId,
-} from '@kbn/actions-plugin/common';
-import { urlAllowListValidator } from '@kbn/actions-plugin/server';
-import {
-  CONNECTOR_ID,
-  CONNECTOR_NAME,
-  PushToServiceIncidentSchema,
-  TheHiveConfigSchema,
-  TheHiveSecretsSchema,
-} from '@kbn/connector-schemas/thehive';
 import type { TheHiveConfig, TheHiveSecrets } from '@kbn/connector-schemas/thehive';
-import { TheHiveConnector } from './thehive';
+import { getConnectorType as getExecutionConnectorType } from './get_connector_type';
 import { renderParameterTemplates } from './render';
 
-export type TheHiveConnectorType = SubActionConnectorType<TheHiveConfig, TheHiveSecrets>;
+export const getConnectorType = (): SubActionConnectorType<TheHiveConfig, TheHiveSecrets> => ({
+  ...getExecutionConnectorType(),
+  renderParameterTemplates,
+});
 
-export function getConnectorType(): TheHiveConnectorType {
-  return {
-    id: CONNECTOR_ID,
-    minimumLicenseRequired: 'platinum',
-    name: CONNECTOR_NAME,
-    getService: (params) => new TheHiveConnector(params, PushToServiceIncidentSchema),
-    supportedFeatureIds: [
-      AlertingConnectorFeatureId,
-      SecurityConnectorFeatureId,
-      UptimeConnectorFeatureId,
-      CasesConnectorFeatureId,
-      WorkflowsConnectorFeatureId,
-      AgentBuilderConnectorFeatureId,
-    ],
-    schema: {
-      config: TheHiveConfigSchema,
-      secrets: TheHiveSecretsSchema,
-    },
-    renderParameterTemplates,
-    validators: [{ type: ValidatorType.CONFIG, validator: urlAllowListValidator('url') }],
-  };
-}
+export type { TheHiveConnectorType } from './get_connector_type';

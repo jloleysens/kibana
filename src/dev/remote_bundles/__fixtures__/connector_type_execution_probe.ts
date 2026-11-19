@@ -30,6 +30,8 @@ import type { Metafile } from 'esbuild';
 import type { SpecRuntimeApi } from '@kbn/connector-specs';
 import type { NativeActionsApi } from '@kbn/actions-plugin/server';
 import type { RemoteWorkerSpec } from '@kbn/core-remote-common';
+import { legacyConnectorCases, legacyConnectorResponse } from './legacy_connector_cases';
+
 interface Graph {
   spec: RemoteWorkerSpec;
   implementations: Record<string, () => Promise<Record<string, new (...args: never[]) => object>>>;
@@ -283,6 +285,12 @@ const main = async (): Promise<void> => {
           ? '<EnumerationResults><Containers><Container><Name>local-business</Name></Container></Containers></EnumerationResults>'
           : '<ListAllMyBucketsResult><Buckets><Bucket><Name>local-business</Name></Bucket></Buckets></ListAllMyBucketsResult>'
       );
+      return;
+    }
+    const legacyBody = legacyConnectorResponse(req, text);
+    if (legacyBody) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(legacyBody));
       return;
     }
     let body: object = {
@@ -1043,6 +1051,7 @@ const main = async (): Promise<void> => {
       });
       assert('prepared' in result);
       const measurementCases = [
+        ...legacyConnectorCases(url),
         ...cases.map((entry) =>
           entry.secrets.authType === 'ears'
             ? {

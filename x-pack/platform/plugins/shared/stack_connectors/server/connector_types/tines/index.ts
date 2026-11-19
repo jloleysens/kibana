@@ -6,37 +6,11 @@
  */
 
 import type { SubActionConnectorType } from '@kbn/actions-plugin/server/sub_action_framework/types';
-import { ValidatorType } from '@kbn/actions-plugin/server/sub_action_framework/types';
-import {
-  SecurityConnectorFeatureId,
-  WorkflowsConnectorFeatureId,
-  AgentBuilderConnectorFeatureId,
-} from '@kbn/actions-plugin/common';
-import { urlAllowListValidator } from '@kbn/actions-plugin/server';
-import {
-  CONNECTOR_ID,
-  CONNECTOR_NAME,
-  TinesConfigSchema,
-  TinesSecretsSchema,
-} from '@kbn/connector-schemas/tines';
 import type { TinesConfig, TinesSecrets } from '@kbn/connector-schemas/tines';
-import { TinesConnector } from './tines';
+import { getTinesConnectorType as getExecutionConnectorType } from './get_connector_type';
 import { renderParameterTemplates } from './render';
 
 export const getTinesConnectorType = (): SubActionConnectorType<TinesConfig, TinesSecrets> => ({
-  id: CONNECTOR_ID,
-  name: CONNECTOR_NAME,
-  getService: (params) => new TinesConnector(params),
-  schema: {
-    config: TinesConfigSchema,
-    secrets: TinesSecretsSchema,
-  },
-  validators: [{ type: ValidatorType.CONFIG, validator: urlAllowListValidator('url') }],
-  supportedFeatureIds: [
-    SecurityConnectorFeatureId,
-    WorkflowsConnectorFeatureId,
-    AgentBuilderConnectorFeatureId,
-  ],
-  minimumLicenseRequired: 'gold' as const,
+  ...getExecutionConnectorType(),
   renderParameterTemplates,
 });

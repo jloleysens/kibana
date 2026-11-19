@@ -6,8 +6,12 @@
  */
 
 import { i18n } from '@kbn/i18n';
-import type { ServiceParams } from '@kbn/actions-plugin/server';
-import { CaseConnector } from '@kbn/actions-plugin/server';
+import type { Services } from '@kbn/actions-plugin/server/types';
+import type {
+  ServiceParams,
+  SubActionServices,
+} from '@kbn/actions-plugin/server/sub_action_framework/types';
+import { CaseConnector } from '@kbn/actions-plugin/server/sub_action_framework/case';
 import type { AxiosError } from 'axios';
 import type { z } from '@kbn/zod/v4';
 import type { ConnectorUsageCollector } from '@kbn/actions-plugin/server/types';
@@ -31,11 +35,14 @@ import type {
 
 export const API_VERSION = 'v1';
 
-export class TheHiveConnector extends CaseConnector<
+export class TheHiveConnector<
+  ExecutionServices extends SubActionServices = Services
+> extends CaseConnector<
   TheHiveConfig,
   TheHiveSecrets,
   Incident,
-  GetIncidentResponse
+  GetIncidentResponse,
+  ExecutionServices
 > {
   private url: string;
   private apiKey: string;
@@ -43,7 +50,7 @@ export class TheHiveConnector extends CaseConnector<
   private urlWithoutTrailingSlash: string;
 
   constructor(
-    params: ServiceParams<TheHiveConfig, TheHiveSecrets>,
+    params: ServiceParams<TheHiveConfig, TheHiveSecrets, ExecutionServices>,
     pushToServiceParamsExtendedSchema: Record<string, z.ZodType<unknown>>
   ) {
     super(params, pushToServiceParamsExtendedSchema);
