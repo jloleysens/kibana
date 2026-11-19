@@ -7,7 +7,7 @@
 
 import type { RegexAnonymizationRule } from '@kbn/ai-anonymization-common';
 import type { DetectedMatch } from './types';
-import type { RegexWorkerService } from './regex_worker_service';
+import type { RegexWorker } from './regex_worker_service';
 
 /**
  * Executes multiple regex anonymization rules, detecting all matches in the original text
@@ -20,7 +20,7 @@ export async function executeRegexRules({
 }: {
   records: Array<Record<string, string>>;
   rules: RegexAnonymizationRule[];
-  regexWorker: RegexWorkerService;
+  regexWorker: RegexWorker;
 }): Promise<DetectedMatch[]> {
   return await regexWorker.run({
     rules,

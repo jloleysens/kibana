@@ -18,6 +18,8 @@ function runTaskSync(payload: AnonymizationRegexWorkerTaskPayload): DetectedMatc
   return executeRegexRulesTask(payload);
 }
 
+export type RegexWorker = Pick<RegexWorkerService, 'run' | 'isEnabled'>;
+
 export class RegexWorkerService {
   private readonly enabled: boolean;
   private worker?: Piscina;

@@ -6,17 +6,16 @@
  */
 
 import type { KibanaRequest } from '@kbn/core/server';
-import type { InferenceServerStart } from '@kbn/inference-plugin/server';
-import type { SearchInferenceEndpointsPluginStart } from '@kbn/search-inference-endpoints/server';
+import type { InferenceWorkflowServices, WorkflowInference } from '../inference_workflow_services';
 
 export interface ResolveConnectorIdOptions {
   featureId?: string;
-  searchInferenceEndpoints?: SearchInferenceEndpointsPluginStart;
+  searchInferenceEndpoints?: InferenceWorkflowServices['searchInferenceEndpoints'];
 }
 
 export async function resolveConnectorId(
   nameOrId: string | undefined,
-  inferencePlugin: InferenceServerStart,
+  inferencePlugin: WorkflowInference,
   kibanaRequest: KibanaRequest,
   options?: ResolveConnectorIdOptions
 ): Promise<string> {

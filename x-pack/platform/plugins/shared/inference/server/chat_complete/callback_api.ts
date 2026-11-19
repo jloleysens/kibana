@@ -25,12 +25,9 @@ import type { Observable } from 'rxjs';
 import { defer, forkJoin, from, identity, share, switchMap, catchError, throwError } from 'rxjs';
 import { withChatCompleteSpan } from '@kbn/inference-tracing';
 import type { ElasticsearchClient } from '@kbn/core/server';
-import { omit } from 'lodash';
+import omit from 'lodash/omit';
 import { addAnonymizationInstruction, deanonymizeMessage } from '@kbn/ai-anonymization-server';
-import type {
-  InferenceAnonymizationOptions,
-  RegexWorkerService,
-} from '@kbn/ai-anonymization-server';
+import type { InferenceAnonymizationOptions, RegexWorker } from '@kbn/ai-anonymization-server';
 import type { ActionsClientProvider, ScopedFeatureEndpointResolver } from '../types';
 import type {
   InferenceAdapterChatCompleteOptions,
@@ -62,7 +59,7 @@ interface CreateChatCompleteApiOptions {
   actions: ActionsClientProvider;
   logger: Logger;
   anonymizationRulesPromise: Promise<AnonymizationRule[]>;
-  regexWorker: RegexWorkerService;
+  regexWorker: RegexWorker;
   esClient: ElasticsearchClient;
   anonymization?: InferenceAnonymizationOptions;
   endpointIdCache: InferenceEndpointIdCache;
@@ -253,7 +250,7 @@ function createChatCompletePipeline({
   esClient: ElasticsearchClient;
   logger: Logger;
   anonymizationRulesPromise: Promise<AnonymizationRule[]>;
-  regexWorker: RegexWorkerService;
+  regexWorker: RegexWorker;
   callback: ChatCompleteApiWithCallbackCallback;
   abortSignal?: AbortSignal;
   stream?: boolean;
@@ -460,7 +457,7 @@ function resolveAndCreatePipeline({
   esClient: ElasticsearchClient;
   logger: Logger;
   anonymizationRulesPromise: Promise<AnonymizationRule[]>;
-  regexWorker: RegexWorkerService;
+  regexWorker: RegexWorker;
   callback: ChatCompleteApiWithCallbackCallback;
   abortSignal?: AbortSignal;
   stream?: boolean;
@@ -512,7 +509,7 @@ function resolveAndCreatePipeline({
             }
 
             const connectorType = connector.type;
-            const inferenceAdapter = getInferenceAdapter(connectorType);
+            const inferenceAdapter = await getInferenceAdapter(connectorType);
 
             if (!inferenceAdapter) {
               throw createInferenceRequestError(

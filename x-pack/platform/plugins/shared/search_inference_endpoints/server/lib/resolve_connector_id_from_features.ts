@@ -48,7 +48,10 @@ export const resolveConnectorIdFromFeatures = async ({
 }: {
   featureIds: readonly string[];
   request: KibanaRequest;
-  searchInferenceEndpoints: SearchInferenceEndpointsPluginStart;
+  searchInferenceEndpoints: {
+    features: Pick<SearchInferenceEndpointsPluginStart['features'], 'get'>;
+    endpoints: Pick<SearchInferenceEndpointsPluginStart['endpoints'], 'getForFeature'>;
+  };
   hasExplicitConnector: boolean;
   conflictMessage: string;
 }): Promise<string | undefined> => {

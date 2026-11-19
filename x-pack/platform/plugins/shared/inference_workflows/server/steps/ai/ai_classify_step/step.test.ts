@@ -30,6 +30,9 @@ jest.mock('../../../../common/steps/ai', () => ({
     outputSchema: {},
     configSchema: {},
   },
+}));
+
+jest.mock('../../../../common/steps/ai/classification_output_schema', () => ({
   buildStructuredOutputSchema: jest.fn(),
 }));
 
@@ -50,7 +53,7 @@ import {
 import { convertOutputToModelResponseSchema } from './schemas';
 import { aiClassifyStepDefinition } from './step';
 import { validateModelResponse } from './validate_model_response';
-import { buildStructuredOutputSchema } from '../../../../common/steps/ai';
+import { buildStructuredOutputSchema } from '../../../../common/steps/ai/classification_output_schema';
 import type { StepHandlerContext } from '@kbn/workflows-extensions/server';
 
 type ContextManager = StepHandlerContext<any>['contextManager'];

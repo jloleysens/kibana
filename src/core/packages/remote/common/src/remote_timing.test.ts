@@ -21,6 +21,8 @@ it('records only scalar measurement fields, never excess credential/payload prop
     const context = {
       executionId: 'run',
       durationMs: 1.25,
+      payloadBytes: 204,
+      cpuMicros: 200,
       atEpochMs: 123,
       authorization: 'must-never-appear',
       payload: { secret: 'must-never-appear' },
@@ -35,6 +37,8 @@ it('records only scalar measurement fields, never excess credential/payload prop
       isMainThread: true,
       executionId: 'run',
       durationMs: 1.25,
+      payloadBytes: 204,
+      cpuMicros: 200,
     });
     expect(line).not.toContain('must-never-appear');
   } finally {

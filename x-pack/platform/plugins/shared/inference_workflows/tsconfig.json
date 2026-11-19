@@ -6,6 +6,9 @@
   "include": ["../../../../../typings/**/*", "common/**/*", "public/**/*", "server/**/*"],
   "exclude": ["target/**/*"],
   "kbn_references": [
+    "@kbn/core-di",
+    "@kbn/core-remote-common",
+    "@kbn/core-remote-server",
     "@kbn/core",
     "@kbn/i18n",
     "@kbn/zod",

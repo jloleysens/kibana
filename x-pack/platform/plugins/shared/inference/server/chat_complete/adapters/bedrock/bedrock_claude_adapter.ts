@@ -15,7 +15,7 @@ import type {
   ToolResultContentBlock,
 } from '@aws-sdk/client-bedrock-runtime';
 import { isPopulatedObject } from '@kbn/ml-is-populated-object';
-import { isPlainObject } from 'lodash';
+import isPlainObject from 'lodash/isPlainObject';
 import type { Readable } from 'stream';
 import type { InferenceConnectorAdapter } from '../../types';
 import { handleConnectorDataResponse, handleConnectorStreamResponse } from '../../utils';

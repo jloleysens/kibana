@@ -5,10 +5,13 @@
  * 2.0.
  */
 
-import { ExecutionError } from '@kbn/workflows/server';
+import { ExecutionError } from '@kbn/workflows-runtime';
 import type { z } from '@kbn/zod/v4';
 import { type ModelResponseSchema } from './schemas';
-import { type Category, getCategoryName } from '../../../../common/steps/ai/ai_classify_step';
+import {
+  type Category,
+  getCategoryName,
+} from '../../../../common/steps/ai/classification_output_schema';
 
 export function validateModelResponse({
   modelResponse,

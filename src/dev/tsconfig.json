@@ -7,6 +7,9 @@
   "exclude": ["target/**/*", "packages/**/*", "type_check_validation_loader.js"],
   "kbn_references": [
     "@kbn/actions-plugin",
+    "@kbn/inference-plugin",
+    "@kbn/workflows-execution-engine",
+    "@kbn/workflows-extensions",
     "@kbn/connector-specs",
     "@kbn/workflows-runtime",
     "@kbn/scout",

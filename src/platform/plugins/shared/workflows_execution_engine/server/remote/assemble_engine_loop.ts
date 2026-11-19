@@ -459,7 +459,11 @@ function contextDependencies({
                       stepType,
                       scopeId,
                       { with: context.input, config: context.config },
-                      { attribution, handlerContext: context }
+                      {
+                        attribution,
+                        handlerContext: context,
+                        runUncarvedHandler: () => definition.handler(context),
+                      }
                     )
                   ),
               };

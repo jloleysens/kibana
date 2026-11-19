@@ -101,3 +101,21 @@ check**: admission must additionally compare build identity, coordinator-complet
 migrations and live mappings/model-version metadata before a worker writes saved
 objects. Unverifiable non-builtin external dependencies are rejected for a digested
 closure; esbuild's synthetic helper runtime is covered by build identity instead.
+
+### Inference endpoint subset
+
+`inference_budgets.test.ts` executes original prompt (plain/structured), summarize
+and classify handlers against an OS-assigned loopback fake. Shared inference first
+use includes the original client, LangChain, byte-size parsing, and one real model
+response: measured 34,526,328–34,539,272 heap bytes / 142–242 ms in three samples.
+Ceilings: 36 MiB heap, 300 ms, 11,500,000 loaded JS bytes (measured 10,426,074).
+Each handler still has the original 2 MiB exclusive post-GC and 256 KiB static
+closure limits. SDK adapters load only when selected. Idle guards are unchanged.
+
+These three types are **partially native**, not fully carved out: ES inference
+endpoints run locally; legacy stack connector backings retain their existing
+placement pending native legacy executors. Persistent-replacement anonymization
+is not admitted: no encryption keys cross. Ordinary regex masking temporarily
+calls the coordinator's original isolated Piscina helper. Scalar timing records
+include payload byte counts and process CPU during each wait (not exclusive CPU).
+Follow-up: bundle worker-thread/sidecar assets so the executor can own that pool.

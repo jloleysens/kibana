@@ -45,6 +45,7 @@ export interface WorkflowStepCatalogApi {
     context: {
       /** Executor-local only; never forwarded to coordinator capabilities. */
       readonly handlerContext?: StepHandlerContext;
+      readonly runUncarvedHandler?: () => Promise<unknown>;
       readonly signal?: AbortSignal;
       readonly attribution?: {
         readonly type: string;

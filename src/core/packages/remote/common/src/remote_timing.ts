@@ -18,6 +18,8 @@ export interface RemoteTimingContext {
   readonly stepId?: string;
   readonly stepType?: string;
   readonly durationMs?: number;
+  readonly payloadBytes?: number;
+  readonly cpuMicros?: number;
   readonly cached?: boolean;
   readonly dispatch?: 'direct' | 'task_manager';
   readonly atEpochMs?: number;
@@ -43,6 +45,8 @@ export const recordRemoteTiming = (event: string, context: RemoteTimingContext):
       stepId: context.stepId,
       stepType: context.stepType,
       durationMs: context.durationMs,
+      payloadBytes: context.payloadBytes,
+      cpuMicros: context.cpuMicros,
       cached: context.cached,
       dispatch: context.dispatch,
     }) + '\n'

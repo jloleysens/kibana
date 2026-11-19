@@ -21,7 +21,9 @@ import type { PublicMethodsOf } from '@kbn/utility-types';
  * so consumers don't have to depend on the full {@link ActionsPluginStart}.
  */
 export interface ActionsClientProvider {
-  getActionsClientWithRequest(request: KibanaRequest): Promise<PublicMethodsOf<ActionsClient>>;
+  getActionsClientWithRequest(
+    request: KibanaRequest
+  ): Promise<Pick<PublicMethodsOf<ActionsClient>, 'getAll' | 'execute'>>;
 }
 import type {
   BoundInferenceClient,

@@ -7,7 +7,7 @@
 
 import type { Message, Deanonymization, Anonymization } from '@kbn/inference-common';
 import { MessageRole } from '@kbn/inference-common';
-import { isEmpty } from 'lodash';
+import isEmpty from 'lodash/isEmpty';
 import { getAnonymizableMessageParts } from './get_anonymizable_message_parts';
 
 interface DeanonymizeMaskMatch {

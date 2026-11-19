@@ -6,7 +6,7 @@
  */
 
 import type { MessageFieldWithRole } from '@langchain/core/messages';
-import { type Category } from '../../../../common/steps/ai/ai_classify_step';
+import { type Category } from '../../../../common/steps/ai/classification_output_schema';
 
 function formatCategoryForPrompt(category: Category): string {
   const consolidatedCategory =

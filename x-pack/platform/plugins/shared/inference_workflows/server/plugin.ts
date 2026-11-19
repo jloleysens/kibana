@@ -10,6 +10,8 @@ import type { InferenceWorkflowsSetupDeps, InferenceWorkflowsStartDeps } from '.
 import { aiPromptStepDefinition } from './steps/ai/ai_prompt_step/step';
 import { aiSummarizeStepDefinition } from './steps/ai/ai_summarize_step/step';
 import { aiClassifyStepDefinition } from './steps/ai/ai_classify_step/step';
+import { InferenceFeaturesToken } from './remote/tokens';
+import { InferenceFeatures } from './remote/inference_features';
 import { registerInferenceFeatures } from './steps/ai/register_inference_features';
 
 export class InferenceWorkflowsPlugin
@@ -21,6 +23,14 @@ export class InferenceWorkflowsPlugin
     deps.workflowsExtensions.registerStepDefinition(aiClassifyStepDefinition(core));
 
     registerInferenceFeatures(deps.searchInferenceEndpoints);
+    core.remote.bind(
+      InferenceFeaturesToken,
+      (scopes) =>
+        new InferenceFeatures(scopes, async () => {
+          const [, services] = await core.getStartServices();
+          return services.searchInferenceEndpoints;
+        })
+    );
 
     return {};
   }

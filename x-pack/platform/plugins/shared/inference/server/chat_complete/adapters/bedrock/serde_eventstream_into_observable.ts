@@ -7,7 +7,7 @@
 
 import { EventStreamMarshaller } from '@smithy/eventstream-serde-node';
 import { fromUtf8, toUtf8 } from '@smithy/util-utf8';
-import { identity } from 'lodash';
+import identity from 'lodash/identity';
 import { Observable } from 'rxjs';
 import type { Readable } from 'stream';
 import {

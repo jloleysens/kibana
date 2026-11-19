@@ -17,10 +17,7 @@ import type {
 import type { AnonymizationRule } from '@kbn/ai-anonymization-common';
 import type { ElasticsearchClient } from '@kbn/core/server';
 import type { PublicMethodsOf } from '@kbn/utility-types';
-import type {
-  InferenceAnonymizationOptions,
-  RegexWorkerService,
-} from '@kbn/ai-anonymization-server';
+import type { InferenceAnonymizationOptions, RegexWorker } from '@kbn/ai-anonymization-server';
 import type {
   ActionsClientProvider,
   InferenceServerClient,
@@ -37,7 +34,7 @@ interface CreateClientOptions {
   actions: ActionsClientProvider;
   logger: Logger;
   anonymizationRulesPromise: Promise<AnonymizationRule[]>;
-  regexWorker: RegexWorkerService;
+  regexWorker: RegexWorker;
   esClient: ElasticsearchClient;
   replacementsEsClient?: ElasticsearchClient;
   endpointIdCache: InferenceEndpointIdCache;
@@ -111,7 +108,7 @@ export function createClient(
 interface CreateClientWithoutRequestOptions {
   actionsClient: PublicMethodsOf<ActionsClient>;
   logger: Logger;
-  regexWorker: RegexWorkerService;
+  regexWorker: RegexWorker;
   esClient: ElasticsearchClient;
   endpointIdCache: InferenceEndpointIdCache;
 }

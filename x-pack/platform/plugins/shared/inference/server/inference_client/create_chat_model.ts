@@ -11,10 +11,7 @@ import { InferenceChatModel, type InferenceChatModelParams } from '@kbn/inferenc
 import type { ElasticsearchClient } from '@kbn/core/server';
 import type { InferenceCallbacks } from '@kbn/inference-common';
 import type { AnonymizationRule } from '@kbn/ai-anonymization-common';
-import type {
-  InferenceAnonymizationOptions,
-  RegexWorkerService,
-} from '@kbn/ai-anonymization-server';
+import type { InferenceAnonymizationOptions, RegexWorker } from '@kbn/ai-anonymization-server';
 import type { ActionsClientProvider } from '../types';
 import { getConnectorById } from '../util/get_connector_by_id';
 import { createClient } from './create_client';
@@ -28,7 +25,7 @@ export interface CreateChatModelOptions {
   logger: Logger;
   chatModelOptions: Omit<InferenceChatModelParams, 'connector' | 'chatComplete' | 'logger'>;
   anonymizationRulesPromise: Promise<AnonymizationRule[]>;
-  regexWorker: RegexWorkerService;
+  regexWorker: RegexWorker;
   esClient: ElasticsearchClient;
   replacementsEsClient?: ElasticsearchClient;
   endpointIdCache: InferenceEndpointIdCache;

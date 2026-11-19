@@ -22,7 +22,7 @@ import type { AnonymizationRule } from '@kbn/ai-anonymization-common';
 import type { KibanaRequest } from '@kbn/core/server';
 import type { PluginStartContract as ActionsPluginsStart } from '@kbn/actions-plugin/server';
 import type { ElasticsearchClient } from '@kbn/core/server';
-import type { RegexWorkerService } from '@kbn/ai-anonymization-server';
+import type { RegexWorker } from '@kbn/ai-anonymization-server';
 import type { InferenceExecutor } from './utils';
 
 /**
@@ -83,6 +83,6 @@ export interface CreateChatCompleteApiOptions {
   actions: ActionsPluginsStart;
   logger: Logger;
   anonymizationRulesPromise: Promise<AnonymizationRule[]>;
-  regexWorker: RegexWorkerService;
+  regexWorker: RegexWorker;
   esClient: ElasticsearchClient;
 }

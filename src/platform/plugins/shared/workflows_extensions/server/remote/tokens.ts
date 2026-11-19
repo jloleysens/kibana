@@ -13,6 +13,8 @@ import type { StepHandlerContext } from '../step_registry/types';
 export interface RemoteStepContext {
   /** Executor-local only; this context is never serialized across the RPC seam. */
   readonly handlerContext?: StepHandlerContext;
+  /** Existing placement for backings not yet carved out; executor-local, never serialized. */
+  readonly runUncarvedHandler?: () => Promise<unknown>;
   readonly signal?: AbortSignal;
   readonly attribution?: {
     readonly type: string;

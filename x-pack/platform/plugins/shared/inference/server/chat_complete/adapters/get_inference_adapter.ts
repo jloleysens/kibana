@@ -7,26 +7,22 @@
 
 import { InferenceConnectorType } from '@kbn/inference-common';
 import type { InferenceConnectorAdapter } from '../types';
-import { openAIAdapter } from './openai';
-import { geminiAdapter } from './gemini';
-import { bedrockClaudeAdapter } from './bedrock';
-import { inferenceAdapter } from './inference';
 
-export const getInferenceAdapter = (
+export const getInferenceAdapter = async (
   connectorType: InferenceConnectorType
-): InferenceConnectorAdapter | undefined => {
+): Promise<InferenceConnectorAdapter | undefined> => {
   switch (connectorType) {
     case InferenceConnectorType.OpenAI:
-      return openAIAdapter;
+      return (await import('./openai')).openAIAdapter;
 
     case InferenceConnectorType.Gemini:
-      return geminiAdapter;
+      return (await import('./gemini')).geminiAdapter;
 
     case InferenceConnectorType.Bedrock:
-      return bedrockClaudeAdapter;
+      return (await import('./bedrock')).bedrockClaudeAdapter;
 
     case InferenceConnectorType.Inference:
-      return inferenceAdapter;
+      return (await import('./inference')).inferenceAdapter;
   }
 
   return undefined;

@@ -12,7 +12,7 @@ import type { AnonymizationOutput, ChatCompleteOptions } from '@kbn/inference-co
 import type { AnonymizationFailureMode, AnonymizationRule } from '@kbn/ai-anonymization-common';
 import { createInferenceRequestError } from '@kbn/inference-common';
 import { anonymizeMessages } from '@kbn/ai-anonymization-server';
-import type { RegexWorkerService } from '@kbn/ai-anonymization-server';
+import type { RegexWorker } from '@kbn/ai-anonymization-server';
 import { ReplacementsRepository } from './anonymization/replacements/replacements_repository';
 import { ensureReplacementsIndex } from './anonymization/replacements/replacements_index';
 
@@ -20,7 +20,7 @@ interface PrepareAnonymizationOptions {
   namespace: string;
   logger: Logger;
   anonymizationRules: AnonymizationRule[];
-  regexWorker: RegexWorkerService;
+  regexWorker: RegexWorker;
   esClient: ElasticsearchClient;
   replacementsEsClient?: ElasticsearchClient;
   replacementsEncryptionKeyPromise?: Promise<string | undefined>;

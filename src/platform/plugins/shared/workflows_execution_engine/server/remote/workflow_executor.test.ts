@@ -31,6 +31,48 @@ const GRAPH = 'security.buildAlertEntityGraph';
 const CASE = 'cases.createCase';
 
 describe('WorkflowExecutor', () => {
+  it('retains the explicit original placement for an uncarved inference backing', async () => {
+    const store = createStore(
+      execution([{ name: 'infer', type: 'ai.prompt', with: { prompt: 'legacy' } }])
+    );
+    const steps = catalog([]);
+    steps.supports.mockImplementation((type) => type === 'ai.prompt');
+    steps.run.mockImplementation(async (_type, _scope, _input, context) => {
+      if (!context.runUncarvedHandler) throw new Error('Missing original backing placement');
+      return context.runUncarvedHandler();
+    });
+    const runner: WorkflowStepRunnerApi = {
+      describe: jest.fn(async () => [
+        {
+          type: 'ai.prompt',
+          mode: 'handler' as const,
+          configKeys: [],
+          hasStart: false,
+          hasOnCancel: false,
+          digest: 'test',
+        },
+      ]),
+      invoke: jest.fn(async () => ({ output: { content: 'Original legacy result' } })),
+      cancel: jest.fn(),
+    };
+    const outcome = await new WorkflowExecutor(steps, store.storage, log(), undefined, runner).run({
+      dependencyPlan: store.dependencyPlan,
+      scopeId: 'scope',
+      workflowRunId: 'run-1',
+      spaceId: 'default',
+    });
+    expect(outcome.status).toBe(ExecutionStatus.COMPLETED);
+    expect(runner.invoke).toHaveBeenCalledTimes(1);
+    expect(runner.invoke).toHaveBeenCalledWith(
+      expect.objectContaining({ phase: 'handler', scopeId: 'scope' })
+    );
+    const executionDoc = await store.storage.getExecution('scope', 'run-1', 'default');
+    const docs = await store.storage.getSteps('scope', executionDoc.stepExecutionIds ?? []);
+    expect(docs.find(({ stepId }) => stepId === 'infer')?.output).toEqual({
+      content: 'Original legacy result',
+    });
+  });
+
   it('runs original Kibana request and named handlers locally, never reconstructing coordinator nodes', async () => {
     const store = createStore(
       execution([

@@ -33,7 +33,7 @@ export const loadDefaultConnector = async ({
   actions: ActionsClientProvider;
   request: KibanaRequest;
   esClient: ElasticsearchClient;
-  uiSettingsClient: IUiSettingsClient;
+  uiSettingsClient: Pick<IUiSettingsClient, 'get'>;
   logger: Logger;
 }): Promise<InferenceConnector | undefined> => {
   const [defaultConnectorId, defaultOnly] = await Promise.all([

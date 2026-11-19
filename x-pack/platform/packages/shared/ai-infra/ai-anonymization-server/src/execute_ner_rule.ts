@@ -8,7 +8,8 @@
 import type { Anonymization } from '@kbn/inference-common';
 import type { NamedEntityRecognitionRule } from '@kbn/ai-anonymization-common';
 import type { ElasticsearchClient } from '@kbn/core/server';
-import { chunk, mapValues } from 'lodash';
+import chunk from 'lodash/chunk';
+import mapValues from 'lodash/mapValues';
 import pLimit from 'p-limit';
 import { withActiveInferenceSpan } from '@kbn/inference-tracing';
 import { isNotFoundError, isResponseError } from '@kbn/es-errors';
