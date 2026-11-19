@@ -6,10 +6,17 @@
  */
 
 import type { RemoteModule } from '@kbn/core-remote-common';
+import { KiOperationsToken } from './ki_tokens';
 import { FeedbackOperationsToken, WorkflowStepKind } from './feedback_tokens';
 
 export const remoteModule: RemoteModule = {
   providers: [
+    {
+      token: KiOperationsToken,
+      placement: 'coordinator',
+      modulePath: require.resolve('./ki_operations'),
+      exportName: 'KiOperations',
+    },
     {
       token: FeedbackOperationsToken,
       placement: 'coordinator',
@@ -18,6 +25,34 @@ export const remoteModule: RemoteModule = {
     },
   ],
   contributions: [
+    {
+      kind: WorkflowStepKind,
+      stepType: 'context-engine.verifyKi',
+      needs: [KiOperationsToken, FeedbackOperationsToken],
+      modulePath: require.resolve('./verify_ki_step'),
+      exportName: 'VerifyKiStep',
+    },
+    {
+      kind: WorkflowStepKind,
+      stepType: 'context-engine.createKi',
+      needs: [KiOperationsToken],
+      modulePath: require.resolve('./create_ki_step'),
+      exportName: 'CreateKiStep',
+    },
+    {
+      kind: WorkflowStepKind,
+      stepType: 'context-engine.updateKi',
+      needs: [KiOperationsToken],
+      modulePath: require.resolve('./update_ki_step'),
+      exportName: 'UpdateKiStep',
+    },
+    {
+      kind: WorkflowStepKind,
+      stepType: 'context-engine.deleteKi',
+      needs: [KiOperationsToken],
+      modulePath: require.resolve('./delete_ki_step'),
+      exportName: 'DeleteKiStep',
+    },
     {
       kind: WorkflowStepKind,
       stepType: 'context-engine.getFeedbackContext',

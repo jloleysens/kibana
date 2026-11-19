@@ -5,7 +5,8 @@
  * 2.0.
  */
 
-import type { AuditLogger, KibanaRequest, Logger } from '@kbn/core/server';
+import type { AuditLogger, KibanaRequest, Logger, ElasticsearchClient } from '@kbn/core/server';
+import type { StepContext } from '@kbn/workflows';
 import { ExecutionError } from '@kbn/workflows/server';
 import type { StepHandlerContext } from '@kbn/workflows-extensions/server';
 import { DEFAULT_KI_VERIFIER_STEP_TIMEOUT_SEC } from '../../common/step_types/verify_ki_step';
@@ -51,23 +52,35 @@ export interface VerifyKiParams {
 export type VerifyKi = (params: VerifyKiParams) => Promise<KiVerificationSummary>;
 
 /** Verifies a KI on behalf of the verifyKi and createKi steps. */
-export const createVerifyKi = ({
+export interface VerifyKiOperationParams extends Omit<VerifyKiParams, 'context'> {
+  request: KibanaRequest;
+  workflow: StepContext['workflow'];
+  metadata?: StepContext['metadata'];
+  parent?: StepContext['parent'];
+  getEsClient: () => ElasticsearchClient | Promise<ElasticsearchClient>;
+  abortSignal: AbortSignal;
+}
+
+export const createVerifyKiOperation = ({
   getAuditLogger,
   workflowVerifierDeps,
   analyticsService,
   logger,
-}: VerifyKiDependencies): VerifyKi => {
+}: VerifyKiDependencies) => {
   const service = new KiVerificationService(createKiVerifierRegistry());
 
   return async ({
-    context,
+    request: fakeRequest,
+    workflow,
+    metadata,
+    parent,
+    getEsClient,
+    abortSignal: stepAbortSignal,
     ki,
     verifiers: entries,
     aiIndexId,
     totalTimeoutSec = DEFAULT_KI_VERIFIER_STEP_TIMEOUT_SEC,
-  }) => {
-    const fakeRequest = context.contextManager.getFakeRequest();
-    const { workflow, metadata, parent } = context.contextManager.getContext();
+  }: VerifyKiOperationParams): Promise<KiVerificationSummary> => {
     const { spaceId } = workflow;
 
     const buildVerifiers = async (): Promise<Array<string | KiVerifier> | undefined> => {
@@ -141,10 +154,10 @@ export const createVerifyKi = ({
     const totalTimer = setTimeout(() => totalController.abort(), totalTimeoutSec * 1000);
     const onStepAbort = () => totalController.abort();
     // An already-aborted signal never fires 'abort' again.
-    if (context.abortSignal.aborted) {
+    if (stepAbortSignal.aborted) {
       onStepAbort();
     } else {
-      context.abortSignal.addEventListener('abort', onStepAbort, { once: true });
+      stepAbortSignal.addEventListener('abort', onStepAbort, { once: true });
     }
     const abortSignal = totalController.signal;
 
@@ -158,7 +171,7 @@ export const createVerifyKi = ({
         try {
           return await service.verifyKi(ki, {
             isEnabled: true,
-            esClient: context.contextManager.getScopedEsClient(),
+            esClient: await getEsClient(),
             logger,
             abortSignal,
             verifiers,
@@ -175,7 +188,23 @@ export const createVerifyKi = ({
       },
     }).finally(() => {
       clearTimeout(totalTimer);
-      context.abortSignal.removeEventListener('abort', onStepAbort);
+      stepAbortSignal.removeEventListener('abort', onStepAbort);
+    });
+  };
+};
+
+export const createVerifyKi = (dependencies: VerifyKiDependencies): VerifyKi => {
+  const verify = createVerifyKiOperation(dependencies);
+  return ({ context, ...params }) => {
+    const { workflow, metadata, parent } = context.contextManager.getContext();
+    return verify({
+      ...params,
+      request: context.contextManager.getFakeRequest(),
+      workflow,
+      metadata,
+      parent,
+      getEsClient: () => context.contextManager.getScopedEsClient(),
+      abortSignal: context.abortSignal,
     });
   };
 };
