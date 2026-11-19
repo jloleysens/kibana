@@ -465,6 +465,7 @@ export class WorkflowsExecutionEnginePlugin
                   executeRemote: config.remoteExecution.enabled
                     ? (scopedRequest, workflowSignal, dependencyPlan) =>
                         dispatchWorkflow({
+                          coreStart,
                           remote: core.remote,
                           request: scopedRequest,
                           dependencyPlan,
@@ -773,6 +774,7 @@ export class WorkflowsExecutionEnginePlugin
                   executeRemote: config.remoteExecution.enabled
                     ? (scopedRequest, workflowSignal, dependencyPlan) =>
                         dispatchWorkflow({
+                          coreStart,
                           remote: core.remote,
                           request: scopedRequest,
                           dependencyPlan,
@@ -1213,6 +1215,7 @@ export class WorkflowsExecutionEnginePlugin
                     executeRemote: config.remoteExecution.enabled
                       ? (scopedRequest, workflowSignal, dependencyPlan) =>
                           dispatchWorkflow({
+                            coreStart,
                             remote: core.remote,
                             request: scopedRequest,
                             dependencyPlan,
@@ -1779,6 +1782,7 @@ export class WorkflowsExecutionEnginePlugin
           executeRemote: this.config.remoteExecution.enabled
             ? (scopedRequest, workflowSignal, dependencyPlan) =>
                 dispatchWorkflow({
+                  coreStart,
                   remote,
                   request: scopedRequest,
                   dependencyPlan,

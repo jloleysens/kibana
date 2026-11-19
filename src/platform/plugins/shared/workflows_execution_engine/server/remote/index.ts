@@ -13,6 +13,7 @@ import {
   WorkflowControlToken,
   WorkflowDataPlaneToken,
   WorkflowExecutorToken,
+  WorkflowHttpToken,
   WorkflowLogToken,
   WorkflowStepRunnerToken,
   WorkflowStorageToken,
@@ -30,6 +31,12 @@ export type { WorkflowExecutorApi, WorkflowLogApi, WorkflowStorageApi } from './
 
 export const remoteModule: RemoteModule = {
   providers: [
+    {
+      token: WorkflowHttpToken,
+      placement: 'executor',
+      modulePath: require.resolve('@kbn/core-http-server-internal/src/worker_http_provider'),
+      exportName: 'WorkerHttpProvider',
+    },
     {
       token: WorkflowChildToken,
       placement: 'coordinator',

@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { httpServerMock, httpServiceMock } from '@kbn/core-http-server-mocks';
 import {
   type EsWorkflow,
   type EsWorkflowExecution,
@@ -30,6 +31,70 @@ const GRAPH = 'security.buildAlertEntityGraph';
 const CASE = 'cases.createCase';
 
 describe('WorkflowExecutor', () => {
+  it('runs original Kibana request and named handlers locally, never reconstructing coordinator nodes', async () => {
+    const store = createStore(
+      execution([
+        {
+          name: 'create',
+          type: 'kibana.createCase',
+          with: { title: 'native case', owner: 'cases' },
+        },
+        { name: 'request', type: 'kibana.request', with: { method: 'GET', path: '/api/status' } },
+      ])
+    );
+    const http = httpServiceMock.createStartContract();
+    http.basePath.prepend.mockImplementation((path) => path);
+    const fetch = jest.mocked(http.selfClient.asScoped(httpServerMock.createKibanaRequest()).fetch);
+    fetch.mockResolvedValue({
+      request: new Request('http://kibana/api/status'),
+      response: new Response(JSON.stringify({ title: 'native case' }), {
+        headers: { 'content-type': 'application/json' },
+      }),
+    });
+    http.selfClient.asScoped.mockReturnValue({ fetch });
+    const close = jest.fn(async () => {});
+    const provider = {
+      create: jest.fn(async () => ({
+        basePath: http.basePath,
+        selfClient: { ...http.selfClient, close },
+      })),
+    };
+    const runner = { describe: jest.fn(async () => []), invoke: jest.fn(), cancel: jest.fn() };
+    const executor = new WorkflowExecutor(
+      catalog([]),
+      store.storage,
+      log(),
+      undefined,
+      runner,
+      undefined,
+      provider
+    );
+    const result = await executor.run({
+      dependencyPlan: store.dependencyPlan,
+      scopeId: 'scope',
+      workflowRunId: 'run-1',
+      spaceId: 'default',
+      kibana: {
+        config: http.selfClient.getDispatchConfig(),
+        authorization: 'ApiKey run',
+        eventChainHeaders: {},
+      },
+    });
+    expect(result.status).toBe(ExecutionStatus.COMPLETED);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[0]).toEqual([
+      '/api/cases',
+      expect.objectContaining({
+        method: 'POST',
+        body: { title: 'native case', owner: 'cases' },
+        access: 'internal',
+      }),
+    ]);
+    expect(runner.invoke).not.toHaveBeenCalled();
+    expect(provider.create).toHaveBeenCalledTimes(1);
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
   it('parks a long wait and resumes the case from the saved graph output', async () => {
     const store = createStore(execution());
     const caseTitles: string[] = [];

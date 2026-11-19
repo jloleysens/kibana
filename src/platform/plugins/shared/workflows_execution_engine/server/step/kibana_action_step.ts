@@ -82,7 +82,8 @@ export class KibanaActionStepImpl extends BaseAtomicNodeImplementation<BaseStep>
     private node: KibanaGraphNode,
     stepExecutionRuntime: StepExecutionRuntime,
     workflowRuntime: WorkflowExecutionRuntimeManager,
-    private workflowLogger: IWorkflowEventLogger
+    private workflowLogger: IWorkflowEventLogger,
+    private readonly nativeCallKibanaApi?: StepExecutionRuntime['contextManager']['callKibanaApi']
   ) {
     const step = {
       name: node.stepId,
@@ -205,6 +206,7 @@ export class KibanaActionStepImpl extends BaseAtomicNodeImplementation<BaseStep>
   }
 
   private async shouldUseCoreSelfClient(): Promise<boolean> {
+    if (this.nativeCallKibanaApi) return true;
     return firstValueFrom(
       this.stepExecutionRuntime.contextManager
         .getCoreStart()
@@ -277,7 +279,9 @@ export class KibanaActionStepImpl extends BaseAtomicNodeImplementation<BaseStep>
     const contextManager = this.stepExecutionRuntime.contextManager;
     let result: CallKibanaApiResult;
     try {
-      result = await contextManager.callKibanaApi({
+      result = await (
+        this.nativeCallKibanaApi ?? contextManager.callKibanaApi.bind(contextManager)
+      )({
         method: normalizedMethod as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
         path: requestConfig.path,
         prefixSpace: false,

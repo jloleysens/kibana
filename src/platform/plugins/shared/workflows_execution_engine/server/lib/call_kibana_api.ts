@@ -117,7 +117,7 @@ export interface CallKibanaApiResult<T = unknown> {
 export interface CallKibanaApiDeps {
   fakeRequest: KibanaRequest;
   workflowRunId?: string;
-  coreStart: CoreStart;
+  coreStart: { readonly http: Pick<CoreStart['http'], 'basePath' | 'selfClient'> };
   /**
    * Space the workflow is running in. When set to a non-default space, the request path is
    * prefixed with `/s/{spaceId}`. When omitted or `'default'`, the path is used as-is.

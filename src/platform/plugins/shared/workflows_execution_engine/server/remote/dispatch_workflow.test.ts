@@ -29,7 +29,8 @@ const setup = () => {
   const controller = new AbortController();
   const params = {
     remote,
-    request: httpServerMock.createKibanaRequest(),
+    coreStart: coreMock.createStart(),
+    request: httpServerMock.createKibanaRequest({ headers: { authorization: 'ApiKey run' } }),
     signal: controller.signal,
     workflowRunId: 'run-1',
     spaceId: 'default',

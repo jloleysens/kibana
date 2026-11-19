@@ -9,6 +9,7 @@
 
 import type { ElasticsearchClient } from '@kbn/core/server';
 import { createToken } from '@kbn/core-di';
+import type { HttpSelfClientDispatchConfig } from '@kbn/core-http-server';
 import type {
   EsWorkflow,
   EsWorkflowExecution,
@@ -180,6 +181,7 @@ export interface WorkflowRunRequest {
   readonly spaceId: string;
   readonly credentials?: WorkflowDispatchCredentials;
   readonly facts?: WorkflowDispatchFacts;
+  readonly kibana?: WorkflowKibanaDispatch;
 }
 
 export interface WorkflowStepDescription {
@@ -272,3 +274,24 @@ export interface WorkflowChildApi {
 }
 
 export const WorkflowChildToken = createToken<WorkflowChildApi>('workflows.child');
+
+export const WorkflowHttpToken = createToken<WorkflowHttpApi>('workflows.http');
+export interface WorkflowHttpApi {
+  create(
+    config: HttpSelfClientDispatchConfig,
+    log: import('@kbn/logging').Logger,
+    identity: { readonly authorization: string; readonly uiamAttestation?: string }
+  ): Promise<{
+    readonly basePath: import('@kbn/core-http-server').IBasePath;
+    readonly selfClient: import('@kbn/core-http-server').HttpSelfService & {
+      close(): Promise<void>;
+    };
+  }>;
+}
+
+export interface WorkflowKibanaDispatch {
+  readonly config: HttpSelfClientDispatchConfig;
+  readonly authorization: string;
+  readonly uiamAttestation?: string;
+  readonly eventChainHeaders: Readonly<Record<string, string>>;
+}

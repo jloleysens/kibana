@@ -129,6 +129,7 @@ const createAuthHeaderStorageMock = () => {
 
 const createSelfClientMock = (): SelfClientMocked =>
   lazyObject({
+    getDispatchConfig: jest.fn(),
     asScoped: jest.fn().mockReturnValue({
       fetch: jest.fn(),
     }),

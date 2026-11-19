@@ -17,6 +17,8 @@ import {
   type WorkflowDataPlaneApi,
   WorkflowDataPlaneToken,
   type WorkflowExecutorApi,
+  type WorkflowHttpApi,
+  WorkflowHttpToken,
   type WorkflowLogApi,
   WorkflowLogToken,
   type WorkflowRunOutcome,
@@ -76,7 +78,8 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
     private readonly log: WorkflowLogApi,
     @inject(WorkflowDataPlaneToken) private readonly data?: WorkflowDataPlaneApi,
     @inject(WorkflowStepRunnerToken) private readonly stepRunner?: WorkflowStepRunnerApi,
-    @inject(WorkflowChildToken) private readonly children?: WorkflowChildApi
+    @inject(WorkflowChildToken) private readonly children?: WorkflowChildApi,
+    @inject(WorkflowHttpToken) private readonly http?: WorkflowHttpApi
   ) {}
 
   async placement(): Promise<{
@@ -182,6 +185,8 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
         resume,
         esClient: this.data?.user(request.scopeId),
         facts: request.facts,
+        kibana: request.kibana,
+        http: this.http,
         children: this.children,
         remoteSteps: this.stepRunner ? { runner: this.stepRunner, descriptions } : undefined,
       });
@@ -219,6 +224,7 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
         !this.stepRunner &&
         !CORE_STEP_TYPES.has(step.type) &&
         !step.type.startsWith('elasticsearch.') &&
+        !step.type.startsWith('kibana.') &&
         !this.steps.supports(step.type)
       ) {
         throw new Error(

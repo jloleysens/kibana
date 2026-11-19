@@ -18,12 +18,15 @@ import {
 import { WorkflowGraph } from '@kbn/workflows/graph';
 import type { StepHandlerContext, StepHandlerResult } from '@kbn/workflows-extensions/server';
 import { createNativeChildNode } from './native_child_node';
+import { NativeKibanaHttp } from './native_kibana_http';
 import { noopLogger } from './noop_logger';
 import { createRemoteNode } from './remote_node';
 import { createRemoteStepDefinition } from './remote_step_definition';
 import type {
   WorkflowChildApi,
   WorkflowDispatchFacts,
+  WorkflowHttpApi,
+  WorkflowKibanaDispatch,
   WorkflowLogApi,
   WorkflowRunOutcome,
   WorkflowStepCatalogApi,
@@ -66,6 +69,8 @@ interface EngineLoopRequest {
   signal: AbortSignal;
   esClient?: ElasticsearchClient;
   facts?: WorkflowDispatchFacts;
+  kibana?: WorkflowKibanaDispatch;
+  http?: WorkflowHttpApi;
   remoteSteps?: { runner: WorkflowStepRunnerApi; descriptions: WorkflowStepDescription[] };
 }
 
@@ -143,9 +148,11 @@ export async function runWorkflowEngineInWorker(
     coreStart,
     dependencies,
   });
-  if (request.remoteSteps) {
-    const { runner, descriptions } = request.remoteSteps;
-    dependencies.remoteNode = (runtime) => {
+  const kibana = new NativeKibanaHttp(request.kibana, execution.spaceId, request.http);
+  dependencies.remoteNode = (runtime) => {
+    if (runtime.node.stepType?.startsWith('kibana.')) return kibana.node(runtime, workflowRuntime);
+    if (request.remoteSteps) {
+      const { runner, descriptions } = request.remoteSteps;
       if (
         request.children &&
         (runtime.node.stepType === 'workflow.execute' ||
@@ -175,8 +182,8 @@ export async function runWorkflowEngineInWorker(
         stepIoService,
         scopeId,
       });
-    };
-  }
+    }
+  };
   const stepExecutionRuntimeFactory = new StepExecutionRuntimeFactory({
     workflowExecutionState,
     stepIoService,
@@ -203,23 +210,27 @@ export async function runWorkflowEngineInWorker(
     await workflowRuntime.start();
   }
 
-  await workflowExecutionLoop({
-    workflowExecutionGraph,
-    workflowRuntime,
-    workflowExecutionCursor,
-    stepExecutionRuntimeFactory,
-    workflowExecutionState,
-    stepIoService,
-    workflowLogger,
-    eventQueue,
-    workflowExecutionRepository,
-    nodesFactory,
-    esClient,
-    fakeRequest,
-    coreStart,
-    signal: request.signal,
-    workflowTaskManager: taskManagerStandIn(scopeId, storage, stepIoService),
-  });
+  try {
+    await workflowExecutionLoop({
+      workflowExecutionGraph,
+      workflowRuntime,
+      workflowExecutionCursor,
+      stepExecutionRuntimeFactory,
+      workflowExecutionState,
+      stepIoService,
+      workflowLogger,
+      eventQueue,
+      workflowExecutionRepository,
+      nodesFactory,
+      esClient,
+      fakeRequest,
+      coreStart,
+      signal: request.signal,
+      workflowTaskManager: taskManagerStandIn(scopeId, storage, stepIoService),
+    });
+  } finally {
+    await kibana.close();
+  }
 
   return {
     status: workflowRuntime.getWorkflowExecution().status,

@@ -7,17 +7,21 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import type { KibanaRequest, Logger } from '@kbn/core/server';
+import type { CoreStart, KibanaRequest, Logger } from '@kbn/core/server';
 import { recordRemoteHeap, recordRemoteTiming, recordSeam } from '@kbn/core-remote-common';
 import type { RemoteSetup } from '@kbn/core-remote-server';
+import { UIAM_INTERNAL_CALLER_ATTESTATION_HEADER } from '@kbn/core-security-server';
 import type { WorkflowDispatchFacts, WorkflowExecutorApi, WorkflowRunOutcome } from './tokens';
 import { workflowDispatchCredentials } from './workflow_dispatch_credentials';
+import { getInternalUiamCallerAttestationHeaders } from '../lib/get_internal_uiam_caller_attestation_headers';
+import { getOutboundEventChainHeaders } from '../trigger_events/event_context/event_chain_context';
 import type { StepDependencyPlan } from '../workflow_context_manager/step_dependency_plan';
 import { isWorkflowTaskManagerAbortSignal } from '../workflow_task_shutdown';
 
 /** Dispatches under an exclusive warm-host lease using the identity approved by shared guards. */
 export const dispatchWorkflow = async ({
   remote,
+  coreStart,
   request,
   signal,
   workflowRunId,
@@ -28,6 +32,7 @@ export const dispatchWorkflow = async ({
   phase,
 }: {
   remote: RemoteSetup;
+  coreStart: CoreStart;
   request: KibanaRequest;
   signal: AbortSignal;
   workflowRunId: string;
@@ -59,6 +64,14 @@ export const dispatchWorkflow = async ({
       workflowRunId,
       spaceId,
       credentials: workflowDispatchCredentials(request),
+      kibana: {
+        config: coreStart.http.selfClient.getDispatchConfig(),
+        authorization: requireRunAuthorization(request),
+        uiamAttestation: getInternalUiamCallerAttestationHeaders(coreStart, request)[
+          UIAM_INTERNAL_CALLER_ATTESTATION_HEADER
+        ],
+        eventChainHeaders: getOutboundEventChainHeaders(request, workflowRunId),
+      },
       facts,
       dependencyPlan,
     };
@@ -77,4 +90,11 @@ export const dispatchWorkflow = async ({
     await lease.release();
     recordRemoteHeap('MAIN_HEAP', `after-remote-${phase}`);
   }
+};
+
+const requireRunAuthorization = (request: KibanaRequest): string => {
+  const { authorization } = request.headers;
+  if (typeof authorization !== 'string')
+    throw new Error('Worker Kibana HTTP requires run authorization');
+  return authorization;
 };
