@@ -62,6 +62,7 @@ const setup = () => {
         spaceId: 'space',
         admittedChildren,
       }),
+      resolveStepOutputLimit: jest.fn(),
       admitChild: (_scope, id) => {
         admittedChildren.add(id);
       },

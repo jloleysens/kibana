@@ -134,6 +134,7 @@ const setup = (handler: ServerHandlerStepDefinition['handler']) => {
         spaceId: 'default',
         admittedChildren: new Set(),
       }),
+      resolveStepOutputLimit: jest.fn(),
       admitChild: jest.fn(),
     },
     loggerMock.create()

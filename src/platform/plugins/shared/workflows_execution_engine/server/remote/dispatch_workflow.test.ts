@@ -37,7 +37,7 @@ const setup = () => {
     id: 'run-1',
     spaceId: 'default',
     workflowId: 'workflow-1',
-    workflowDefinition: { name: 'Persisted name' },
+    workflowDefinition: { name: 'Persisted name', steps: [{ name: 'agent', type: 'ai.agent' }] },
     stepExecutionIds: [],
   };
   const repositories = {
@@ -71,13 +71,17 @@ it('leases by non-secret settings and releases all state after success', async (
     settingsKey: JSON.stringify(params.facts),
     signal: params.signal,
   });
-  expect(lease.openScope).toHaveBeenCalledWith(params.request, {
-    workflowRunId: 'run-1',
-    spaceId: 'default',
-    workflowId: 'workflow-1',
-    workflowName: 'Persisted name',
-    admittedChildren: new Set(),
-  });
+  expect(lease.openScope).toHaveBeenCalledWith(
+    params.request,
+    {
+      workflowRunId: 'run-1',
+      spaceId: 'default',
+      workflowId: 'workflow-1',
+      workflowName: 'Persisted name',
+      admittedChildren: new Set(),
+    },
+    new Map([['agent', 1024]])
+  );
   expect(lease.closeScope).toHaveBeenCalledWith('scope-1');
   expect(lease.release).toHaveBeenCalledTimes(1);
 });

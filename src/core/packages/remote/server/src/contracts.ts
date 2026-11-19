@@ -23,6 +23,8 @@ export interface RemoteRunState {
 export interface ScopeLookup {
   /** Coordinator-only metadata installed by the dispatcher, never by the executor. */
   getRunState(scopeId: string): RemoteRunState;
+  /** Coordinator-only persisted-step policy; unknown steps fail closed. */
+  resolveStepOutputLimit(scopeId: string, stepId: string): number;
   /** Coordinator-only admission after a successful child start. */
   admitChild(scopeId: string, childId: string): void;
   get<T>(scopeId: string): T;
@@ -46,7 +48,11 @@ export interface RemoteRegistration {
 
 export interface RemoteSession<T> {
   readonly stub: T;
-  openScope(state: unknown, runState?: RemoteRunState): string;
+  openScope(
+    state: unknown,
+    runState?: RemoteRunState,
+    stepOutputLimits?: ReadonlyMap<string, number>
+  ): string;
   closeScope(scopeId: string): void;
   getScope<TState>(scopeId: string): TState;
 }

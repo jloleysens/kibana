@@ -100,6 +100,7 @@ it('binds coordinator storage reads, writes and scheduling to the dispatch-owned
       spaceId: 'default',
       admittedChildren: new Set<string>(),
     }),
+    resolveStepOutputLimit: jest.fn(),
     admitChild: jest.fn(),
   };
   const storage = new WorkflowStorage(executions, steps, loggerMock.create(), callbacks, scopes);

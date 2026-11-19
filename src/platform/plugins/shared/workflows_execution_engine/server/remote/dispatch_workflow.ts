@@ -11,11 +11,13 @@ import type { CoreStart, KibanaRequest, Logger } from '@kbn/core/server';
 import { recordRemoteHeap, recordRemoteTiming, recordSeam } from '@kbn/core-remote-common';
 import type { RemoteSetup } from '@kbn/core-remote-server';
 import { UIAM_INTERNAL_CALLER_ATTESTATION_HEADER } from '@kbn/core-security-server';
+import { visitNestedSteps } from '@kbn/workflows';
 import type { WorkflowDispatchFacts, WorkflowExecutorApi, WorkflowRunOutcome } from './tokens';
 import { workflowDispatchCredentials } from './workflow_dispatch_credentials';
 import { getInternalUiamCallerAttestationHeaders } from '../lib/get_internal_uiam_caller_attestation_headers';
 import type { StepExecutionRepository } from '../repositories/step_execution_repository';
 import type { WorkflowExecutionRepository } from '../repositories/workflow_execution_repository';
+import { resolveStepOutputLimit } from '../step/resolve_step_output_limit';
 import { getOutboundEventChainHeaders } from '../trigger_events/event_context/event_chain_context';
 import type { StepDependencyPlan } from '../workflow_context_manager/step_dependency_plan';
 import { isWorkflowTaskManagerAbortSignal } from '../workflow_task_shutdown';
@@ -87,13 +89,34 @@ export const dispatchWorkflow = async ({
           admittedChildren.add(childId);
       }
     }
-    scopeId = lease.openScope(request, {
-      workflowRunId,
-      spaceId,
-      workflowId: execution.workflowId,
-      workflowName: execution.workflowDefinition.name,
-      admittedChildren,
-    });
+    const stepOutputLimits = new Map<string, number>();
+    visitNestedSteps(
+      [
+        ...execution.workflowDefinition.steps,
+        ...(execution.workflowDefinition.settings?.['on-failure']?.fallback ?? []),
+      ],
+      ({ step }) => {
+        stepOutputLimits.set(
+          step.name,
+          resolveStepOutputLimit(
+            step['max-step-size'],
+            execution.workflowDefinition.settings?.['max-step-size'],
+            () => facts.maxResponseSizeBytes
+          )
+        );
+      }
+    );
+    scopeId = lease.openScope(
+      request,
+      {
+        workflowRunId,
+        spaceId,
+        workflowId: execution.workflowId,
+        workflowName: execution.workflowDefinition.name,
+        admittedChildren,
+      },
+      stepOutputLimits
+    );
     const activeScope = scopeId;
     const onAbort = () => {
       void lease.stub

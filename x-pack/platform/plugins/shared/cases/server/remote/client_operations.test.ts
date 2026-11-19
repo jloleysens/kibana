@@ -41,6 +41,7 @@ const setup = () => {
       return request;
     }),
     getRunState: jest.fn().mockReturnValue(runState),
+    resolveStepOutputLimit: jest.fn(),
     admitChild: jest.fn(),
     getAbortSignal: (scopeId: string) => {
       if (scopeId !== 'run') throw new Error('Foreign scope');

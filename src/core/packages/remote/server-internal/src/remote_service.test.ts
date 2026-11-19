@@ -684,7 +684,12 @@ it('owns run sidecars and admissions only on coordinator, and clears them when a
       spaceId: 'space',
       admittedChildren,
     };
-    const scopeId = lease.openScope({ request: true }, state);
+    const limits = new Map([['agent', 1024]]);
+    const scopeId = lease.openScope({ request: true }, state, limits);
+    limits.set('agent', 999999);
+    expect(scopes.resolveStepOutputLimit(scopeId, 'agent')).toBe(1024);
+    expect(() => scopes?.resolveStepOutputLimit(scopeId, 'foreign')).toThrow('policy');
+    expect(Object.keys(lease)).not.toContain('resolveStepOutputLimit');
     admittedChildren.add('not-admitted');
     expect(scopes.getRunState(scopeId).admittedChildren).toEqual(new Set(['restored']));
     scopes.admitChild(scopeId, 'started');
@@ -692,6 +697,7 @@ it('owns run sidecars and admissions only on coordinator, and clears them when a
     expect(Object.keys(lease)).not.toContain('admitChild');
     lease.closeScope(scopeId);
     expect(() => scopes?.getRunState(scopeId)).toThrow('scope');
+    expect(() => scopes?.resolveStepOutputLimit(scopeId, 'agent')).toThrow('policy');
   } finally {
     await lease.release();
     await service.stop();

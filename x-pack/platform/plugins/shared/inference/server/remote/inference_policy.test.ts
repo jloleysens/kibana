@@ -32,6 +32,7 @@ const setup = () => {
       return request;
     }),
     getRunState: jest.fn(),
+    resolveStepOutputLimit: jest.fn(),
     admitChild: jest.fn(),
     getAbortSignal: (scope: string) => {
       if (scope !== 'run') throw new Error('Foreign scope');

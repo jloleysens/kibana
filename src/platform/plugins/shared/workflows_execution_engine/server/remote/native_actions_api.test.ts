@@ -72,6 +72,7 @@ const setup = () => {
         spaceId: 'default',
         admittedChildren: new Set(),
       }),
+      resolveStepOutputLimit: jest.fn(),
       admitChild: jest.fn(),
     },
     getClient,
