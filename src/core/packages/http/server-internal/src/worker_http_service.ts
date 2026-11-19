@@ -7,7 +7,11 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import type { HttpSelfClientDispatchConfig, KibanaRequest } from '@kbn/core-http-server';
+import type {
+  HttpSelfClientDispatchConfig,
+  HttpSelfRunCredential,
+  KibanaRequest,
+} from '@kbn/core-http-server';
 import type { Logger } from '@kbn/logging';
 import { BasePath } from './base_path_service';
 import { AuthHeadersStorage } from './auth_headers_storage';
@@ -17,8 +21,11 @@ import { createInternalHttpSelfClient } from './self_client';
 export const createWorkerHttpService = (
   config: HttpSelfClientDispatchConfig,
   log: Logger,
-  identity: { readonly authorization: string; readonly uiamAttestation?: string }
+  identity: { readonly authorization: string; readonly uiamAttestation?: string },
+  refreshRunCredential?: () => Promise<HttpSelfRunCredential | null>
 ) => {
+  let refreshed: HttpSelfRunCredential | null = null;
+  let pending: Promise<HttpSelfRunCredential | null> | undefined;
   const basePath = new BasePath(config.basePath, config.publicBaseUrl);
   const selfClient = createInternalHttpSelfClient({
     basePath,
@@ -34,7 +41,23 @@ export const createWorkerHttpService = (
     log,
     target: config.target,
     getUiamAttestationGetter: () => (_request: KibanaRequest, authorization: string | null) =>
-      authorization === identity.authorization ? identity.uiamAttestation : undefined,
+      authorization === identity.authorization
+        ? identity.uiamAttestation
+        : authorization === refreshed?.authorization
+        ? refreshed.uiamAttestation
+        : undefined,
+    getUnauthorizedErrorHandler: () =>
+      refreshRunCredential
+        ? async (_options, toolkit) => {
+            pending ??= refreshRunCredential().finally(() => {
+              pending = undefined;
+            });
+            refreshed = await pending;
+            return refreshed
+              ? toolkit.retry({ authHeaders: { authorization: refreshed.authorization } })
+              : toolkit.notHandled();
+          }
+        : undefined,
   });
   return { basePath, selfClient, getServerInfo: () => config.serverInfo };
 };

@@ -9,7 +9,7 @@
 
 import type { ElasticsearchClient } from '@kbn/core/server';
 import { createToken } from '@kbn/core-di';
-import type { HttpSelfClientDispatchConfig } from '@kbn/core-http-server';
+import type { HttpSelfClientDispatchConfig, HttpSelfRunCredential } from '@kbn/core-http-server';
 import type {
   EsWorkflow,
   EsWorkflowExecution,
@@ -281,7 +281,8 @@ export interface WorkflowHttpApi {
   create(
     config: HttpSelfClientDispatchConfig,
     log: import('@kbn/logging').Logger,
-    identity: { readonly authorization: string; readonly uiamAttestation?: string }
+    identity: { readonly authorization: string; readonly uiamAttestation?: string },
+    refreshRunCredential?: () => Promise<HttpSelfRunCredential | null>
   ): Promise<{
     readonly basePath: import('@kbn/core-http-server').IBasePath;
     readonly selfClient: import('@kbn/core-http-server').HttpSelfService & {
@@ -296,3 +297,9 @@ export interface WorkflowKibanaDispatch {
   readonly uiamAttestation?: string;
   readonly eventChainHeaders: Readonly<Record<string, string>>;
 }
+
+export interface WorkflowCredentialsApi {
+  refreshRunCredential(scopeId: string): Promise<HttpSelfRunCredential | null>;
+}
+export const WorkflowCredentialsToken =
+  createToken<WorkflowCredentialsApi>('workflows.credentials');

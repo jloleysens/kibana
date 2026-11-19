@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import type { HttpSelfRunCredential } from '@kbn/core-http-server';
 import { recordRemoteHeap, recordRemoteTiming } from '@kbn/core-remote-common';
 import type { KibanaRequestDefinition } from '@kbn/workflows';
 import type { WorkflowHttpApi, WorkflowKibanaDispatch } from './tokens';
@@ -26,7 +27,8 @@ export class NativeKibanaHttp {
     private dispatch: WorkflowKibanaDispatch | undefined,
     private readonly spaceId: string,
     private readonly executionId: string,
-    private readonly http?: WorkflowHttpApi
+    private readonly http?: WorkflowHttpApi,
+    private readonly refreshRunCredential?: () => Promise<HttpSelfRunCredential | null>
   ) {}
 
   async call<T = unknown>(params: CallKibanaApiParams): Promise<CallKibanaApiResult<T>> {
@@ -93,7 +95,8 @@ export class NativeKibanaHttp {
             dispatch,
             this.spaceId,
             this.executionId,
-            http
+            http,
+            this.refreshRunCredential
           );
           if (this.closed) {
             await services.close();

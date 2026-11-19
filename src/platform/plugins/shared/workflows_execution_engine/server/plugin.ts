@@ -90,6 +90,7 @@ import {
   WorkflowChildToken,
   WorkflowConnectorKind,
   WorkflowControlToken,
+  WorkflowCredentialsToken,
   WorkflowDataPlaneToken,
   WorkflowExecutorToken,
   WorkflowLogToken,
@@ -99,6 +100,7 @@ import {
   WorkflowStorageToken,
 } from './remote/tokens';
 import { WorkflowControl } from './remote/workflow_control';
+import { WorkflowCredentials } from './remote/workflow_credentials';
 import { WorkflowLog } from './remote/workflow_log';
 import { WorkflowStepRunner } from './remote/workflow_step_runner';
 import { WorkflowStorage } from './remote/workflow_storage';
@@ -1465,6 +1467,10 @@ export class WorkflowsExecutionEnginePlugin
             },
             this.config
           )
+      );
+      this.coreSetup.remote.bind(
+        WorkflowCredentialsToken,
+        (scopes) => new WorkflowCredentials(coreStart, scopes)
       );
       this.coreSetup.remote.bind(WorkflowStepRunnerToken, (scopes) => {
         const runner = new WorkflowStepRunner(

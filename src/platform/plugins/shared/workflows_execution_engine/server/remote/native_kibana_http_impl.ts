@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import type { HttpSelfRunCredential } from '@kbn/core-http-server';
 import { kibanaRequestFactory } from '@kbn/core-http-server-utils';
 import { asSpaceId } from '@kbn/core-spaces-common';
 import type { KibanaRequestDefinition } from '@kbn/workflows';
@@ -23,9 +24,10 @@ export const createNativeKibanaHttp = async (
   dispatch: WorkflowKibanaDispatch,
   spaceId: string,
   workflowRunId: string,
-  provider: WorkflowHttpApi
+  provider: WorkflowHttpApi,
+  refreshRunCredential?: () => Promise<HttpSelfRunCredential | null>
 ) => {
-  const http = await provider.create(dispatch.config, noopLogger(), dispatch);
+  const http = await provider.create(dispatch.config, noopLogger(), dispatch, refreshRunCredential);
   const fakeRequest = kibanaRequestFactory({
     path: '/',
     headers: {

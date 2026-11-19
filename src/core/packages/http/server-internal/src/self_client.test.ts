@@ -1654,3 +1654,54 @@ describe('getDispatchConfig', () => {
     expect(() => self.getDispatchConfig()).toThrow('must not contain private keys');
   });
 });
+
+it('refreshRunCredential reuses the registered hook and exports only scoped bearer + bound attestation', async () => {
+  const request = createFakeRequest({ authorization: 'Bearer essu_expired' });
+  const handler: HttpSelfUnauthorizedErrorHandler = async (_options, toolkit) =>
+    toolkit.retry({
+      authHeaders: {
+        authorization: 'Bearer essu_refreshed',
+        'refresh-token': 'never-export-refresh',
+        'master-key': 'never-export-master',
+      },
+    });
+  const { self } = createClient({
+    unauthorizedErrorHandler: handler,
+    getUiamAttestationGetter: () => (_request, authorization) =>
+      authorization === 'Bearer essu_refreshed' ? 'bound-attestation' : undefined,
+  });
+  const refreshed = await self.refreshRunCredential(request, new AbortController().signal);
+  expect(refreshed).toEqual({
+    authorization: 'Bearer essu_refreshed',
+    uiamAttestation: 'bound-attestation',
+  });
+  expect(JSON.stringify(refreshed)).not.toMatch(/refresh-token|master-key|never-export/);
+  await self.close();
+});
+
+it('refreshRunCredential preserves the local not-handled failure result', async () => {
+  const { self } = createClient({
+    unauthorizedErrorHandler: async () => {
+      throw new Error('refresh unavailable');
+    },
+  });
+  await expect(
+    self.refreshRunCredential(
+      createFakeRequest({ authorization: 'Bearer essu_expired' }),
+      new AbortController().signal
+    )
+  ).resolves.toBeUndefined();
+  await self.close();
+});
+
+it('refreshRunCredential aborts its scoped wait without cancelling a shared Core exchange', async () => {
+  const controller = new AbortController();
+  const { self } = createClient({ unauthorizedErrorHandler: () => new Promise(() => {}) });
+  const pending = self.refreshRunCredential(
+    createFakeRequest({ authorization: 'Bearer essu_expired' }),
+    controller.signal
+  );
+  controller.abort();
+  await expect(pending).rejects.toThrow();
+  await self.close();
+});

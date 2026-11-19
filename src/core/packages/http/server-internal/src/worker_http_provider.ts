@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import type { HttpSelfClientDispatchConfig } from '@kbn/core-http-server';
+import type { HttpSelfClientDispatchConfig, HttpSelfRunCredential } from '@kbn/core-http-server';
 import type { Logger } from '@kbn/logging';
 
 type Implementation = typeof import('./worker_http_service');
@@ -18,12 +18,18 @@ export class WorkerHttpProvider {
   async create(
     config: HttpSelfClientDispatchConfig,
     log: Logger,
-    identity: { readonly authorization: string; readonly uiamAttestation?: string }
+    identity: { readonly authorization: string; readonly uiamAttestation?: string },
+    refreshRunCredential?: () => Promise<HttpSelfRunCredential | null>
   ) {
     implementation ??= import('./worker_http_service').catch((error) => {
       implementation = undefined;
       throw error;
     });
-    return (await implementation).createWorkerHttpService(config, log, identity);
+    return (await implementation).createWorkerHttpService(
+      config,
+      log,
+      identity,
+      refreshRunCredential
+    );
   }
 }

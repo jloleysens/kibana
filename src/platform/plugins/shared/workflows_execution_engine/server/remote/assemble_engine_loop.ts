@@ -9,6 +9,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { CoreStart, ElasticsearchClient, KibanaRequest } from '@kbn/core/server';
+import type { HttpSelfRunCredential } from '@kbn/core-http-server';
 import { recordRemoteTiming } from '@kbn/core-remote-common';
 import {
   type EsWorkflowExecution,
@@ -71,6 +72,7 @@ interface EngineLoopRequest {
   facts?: WorkflowDispatchFacts;
   kibana?: WorkflowKibanaDispatch;
   http?: WorkflowHttpApi;
+  refreshRunCredential?: () => Promise<HttpSelfRunCredential | null>;
   remoteSteps?: { runner: WorkflowStepRunnerApi; descriptions: WorkflowStepDescription[] };
 }
 
@@ -152,7 +154,8 @@ export async function runWorkflowEngineInWorker(
     request.kibana,
     execution.spaceId,
     execution.id,
-    request.http
+    request.http,
+    request.refreshRunCredential
   );
   dependencies.callKibanaApi = (params) => kibana.call(params);
   dependencies.remoteNode = (runtime) => {

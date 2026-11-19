@@ -59,5 +59,7 @@ it('keeps implementation imports lazy, retries failed imports and shares code bu
     second.create(config, log, identities[1]),
   ]);
   expect(mockImports).toBe(2);
-  expect(mockCreate.mock.calls).toEqual(identities.map((identity) => [config, log, identity]));
+  expect(mockCreate.mock.calls).toEqual(
+    identities.map((identity) => [config, log, identity, undefined])
+  );
 });

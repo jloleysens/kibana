@@ -16,6 +16,7 @@ import type {
   HttpSelfResponse,
   HttpSelfScopedClient,
   HttpSelfService,
+  HttpSelfRunCredential,
   HttpSelfClientSslConfig,
   HttpSelfUnauthorizedErrorHandler,
   HttpSelfUnauthorizedErrorHandlerResult,
@@ -114,6 +115,10 @@ export const createInternalHttpSelfClient = (
   const dispatcherProvider = new SelfHttpDispatcherProvider(params);
   return {
     asScoped: (request) => new InternalHttpSelfScopedClient(params, request, dispatcherProvider),
+    refreshRunCredential: (request, signal) =>
+      new InternalHttpSelfScopedClient(params, request, dispatcherProvider).refreshRunCredential(
+        signal
+      ),
     getDispatchConfig: () => {
       const { name, hostname, port, protocol } = params.getServerInfo();
       const ssl = {
@@ -147,6 +152,32 @@ class InternalHttpSelfScopedClient implements HttpSelfScopedClient {
     private readonly request: KibanaRequest,
     private readonly dispatcherProvider: SelfHttpDispatcherProvider
   ) {}
+
+  public async refreshRunCredential(
+    signal: AbortSignal
+  ): Promise<HttpSelfRunCredential | undefined> {
+    signal.throwIfAborted();
+    const cleanup: Array<() => void> = [];
+    try {
+      const headers = await this.resolveRetryAuthHeaders(
+        '/',
+        this.createRequest('/', {}),
+        new Response(null, { status: 401 }),
+        signal,
+        cleanup
+      );
+      const authorization =
+        headers &&
+        Object.entries(headers).find(([name]) => name.toLowerCase() === 'authorization')?.[1];
+      if (typeof authorization !== 'string') return;
+      return {
+        authorization,
+        uiamAttestation: this.params.getUiamAttestationGetter?.()?.(this.request, authorization),
+      };
+    } finally {
+      cleanup.forEach((clean) => clean());
+    }
+  }
 
   public async fetch<TResponseBody = unknown, TRequestBody = unknown>(
     path: string,

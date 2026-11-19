@@ -14,6 +14,8 @@ import { ExecutionStatus, isTerminalStatus } from '@kbn/workflows-runtime';
 import {
   type WorkflowChildApi,
   WorkflowChildToken,
+  type WorkflowCredentialsApi,
+  WorkflowCredentialsToken,
   type WorkflowDataPlaneApi,
   WorkflowDataPlaneToken,
   type WorkflowExecutorApi,
@@ -79,7 +81,8 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
     @inject(WorkflowDataPlaneToken) private readonly data?: WorkflowDataPlaneApi,
     @inject(WorkflowStepRunnerToken) private readonly stepRunner?: WorkflowStepRunnerApi,
     @inject(WorkflowChildToken) private readonly children?: WorkflowChildApi,
-    @inject(WorkflowHttpToken) private readonly http?: WorkflowHttpApi
+    @inject(WorkflowHttpToken) private readonly http?: WorkflowHttpApi,
+    @inject(WorkflowCredentialsToken) private readonly credentials?: WorkflowCredentialsApi
   ) {}
 
   async placement(): Promise<{
@@ -174,6 +177,7 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
         executionId: execution.id,
         durationMs: performance.now() - importStarted,
       });
+      const credentials = this.credentials;
       const outcome = await runWorkflowEngineInWorker({
         execution,
         dependencyPlan: request.dependencyPlan,
@@ -187,6 +191,9 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
         facts: request.facts,
         kibana: request.kibana,
         http: this.http,
+        refreshRunCredential: credentials
+          ? () => credentials.refreshRunCredential(request.scopeId)
+          : undefined,
         children: this.children,
         remoteSteps: this.stepRunner ? { runner: this.stepRunner, descriptions } : undefined,
       });
