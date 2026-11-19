@@ -273,6 +273,7 @@ const main = async (): Promise<void> => {
           pid: process.pid,
           host: req.headers.host,
           path: req.url,
+          mcpMethod: req.url?.startsWith('/mcp') && text ? JSON.parse(text).method : undefined,
           earsToken: req.headers.authorization?.startsWith('Bearer ears-') ?? false,
           staleEars: req.headers.authorization?.endsWith('-r1') ?? false,
         }) + '\n'
