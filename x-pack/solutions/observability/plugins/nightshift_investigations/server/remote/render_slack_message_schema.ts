@@ -6,7 +6,7 @@
  */
 
 import { lazySchema, z } from '@kbn/zod/v4';
-import { MAX_TEXT_LENGTH } from '@kbn/significant-events-schema';
+import { MAX_TEXT_LENGTH } from '@kbn/significant-events-runtime';
 import { MAX_KEYWORD_LENGTH } from '../../common/limits';
 import { notificationPhaseSchema } from '../lib/notifications/notification_phase';
 

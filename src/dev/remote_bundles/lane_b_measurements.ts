@@ -53,6 +53,8 @@ interface Case {
   comments?: Array<{ id: string; comment?: string }>;
 }
 interface Output {
+  text?: string;
+  blocks?: Array<{ type: string; elements?: Array<{ url?: string }> }>;
   _id?: string;
   case?: Case;
   cases?: Case[];
@@ -202,6 +204,9 @@ const execute = async (
     _source: {
       modelContext?: string;
       selectedModel?: string;
+      slackText?: string;
+      startedText?: string;
+      failedText?: string;
       agentId?: string;
       reinforcementAgentId?: string;
       treeCount?: string;
@@ -229,7 +234,26 @@ const execute = async (
     };
   }>(`${es}/lane-b-quiet-outcomes/_doc/${step('persist')._id}`);
   save(join(directory, `${workflowExecutionId}-business.json`), persisted);
-  if (family === 'nightshift_agents') {
+  if (family === 'nightshift_render') {
+    const { slackText } = persisted._source;
+    assert(slackText);
+    assert(slackText?.startsWith('*' + id + '* — Investigation completed'));
+    assert(slackText.includes('Severity: High'));
+    assert(slackText.includes(id + ' &lt;verified&gt;'));
+    assert(persisted._source.startedText?.includes('Investigation started'));
+    assert(persisted._source.failedText?.includes('Failure &lt;fixture&gt;'));
+    const url = step('render').blocks?.find(({ type }) => type === 'actions')?.elements?.[0]?.url;
+    assert(url);
+    assert(url.startsWith(kibana + '/app/r?'));
+    assert(slackText.includes(url));
+    const conversation = await api<{
+      _source: { metadata: { summary: string; severity: string } };
+    }>(`${es}/.chat-conversations/_doc/${workflowExecutionId}`);
+    assert.equal(conversation._source.metadata.summary, id + ' <verified>');
+    assert.equal(conversation._source.metadata.severity, 'high');
+    await api(`/api/agent_builder/conversations/${workflowExecutionId}`);
+    save(join(directory, `${workflowExecutionId}-render-conversation.json`), conversation);
+  } else if (family === 'nightshift_agents') {
     assert.equal(persisted._source.agentId, 'nightshift.investigation');
     assert.equal(
       persisted._source.reinforcementAgentId,
@@ -459,6 +483,7 @@ export const runLaneBMeasurements = async (): Promise<void> => {
   await api(`${es}/_cluster/health`);
   mkdirSync(output, { recursive: true });
   const smoke = args.includes('--smoke');
+  assert(!args.includes('--families') || smoke, '--families requires --smoke');
   save(join(output, 'identity.json'), {
     source: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
     dirty: execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim(),
@@ -677,6 +702,7 @@ export const runLaneBMeasurements = async (): Promise<void> => {
               'nightshift_recovery',
               'nightshift_trees',
               'nightshift_agents',
+              'nightshift_render',
             ]
           : ['extensions', 'cases'];
       const selectedFamilies = args.includes('--families')

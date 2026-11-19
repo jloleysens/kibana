@@ -14,6 +14,7 @@ import type { InvestigationsApi } from './investigations_tokens';
 import { ModelSelection } from './model_selection';
 import { restoreInvestigationError } from './investigation_errors';
 import { FollowUpRecoveredAlertStep } from './follow_up_recovered_alert_step';
+import { RenderSlackMessageStep } from './render_slack_message_step';
 import { ResolveModelStep } from './resolve_model_step';
 
 const input = {
@@ -177,5 +178,6 @@ it.each([Error, TypeError])(
 it('requires local context for each worker handler', async () => {
   const { api, models } = setup();
   await expect(new FollowUpRecoveredAlertStep(api).run('run', {}, {})).rejects.toThrow('context');
+  await expect(new RenderSlackMessageStep(api).run('run', {}, {})).rejects.toThrow('context');
   await expect(new ResolveModelStep(models).run('run', {}, {})).rejects.toThrow('context');
 });

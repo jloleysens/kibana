@@ -19,11 +19,34 @@ export type LaneBFamily =
   | 'nightshift_model'
   | 'nightshift_recovery'
   | 'nightshift_trees'
-  | 'nightshift_agents';
+  | 'nightshift_agents'
+  | 'nightshift_render';
 
 /** Uses the same original business steps for ordinary Kibana and each worker backend. */
 export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: string) => {
   const steps = {
+    nightshift_render: [
+      {
+        name: 'create',
+        type: 'ai.conversation.create',
+        with: {
+          conversation_id: '{{ execution.id }}',
+          title: id,
+          template_id: 'investigation',
+          access_control: { access_mode: 'public', entries: [] },
+          metadata: { status: 'closed', summary: id + ' <verified>', severity: 'high' },
+        },
+      },
+      ...(['completed', 'started', 'failed'] as const).map((phase) => ({
+        name: phase === 'completed' ? 'render' : phase,
+        type: 'nightshift.renderSlackMessage',
+        with: {
+          investigation_id: '{{ steps.create.output.conversation_id }}',
+          phase,
+          ...(phase === 'failed' ? { reason: 'Failure <fixture>' } : {}),
+        },
+      })),
+    ],
     nightshift_agents: [
       { name: 'ensure', type: 'nightshift.ensureInvestigationAgent' },
       {
@@ -324,6 +347,11 @@ export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: s
     ],
   }[family];
   const document = {
+    nightshift_render: {
+      slackText: '{{ steps.render.output.text }}',
+      startedText: '{{ steps.started.output.text }}',
+      failedText: '{{ steps.failed.output.text }}',
+    },
     nightshift_agents: {
       agentId: '{{ steps.ensure.output.agent_id }}',
       reinforcementAgentId: '{{ steps.ensureReinforcement.output.agent_id }}',

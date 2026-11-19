@@ -34,6 +34,7 @@
     "@kbn/workflows-extensions",
     "@kbn/workflows-management-plugin",
     "@kbn/zod",
+    "@kbn/significant-events-runtime",
     "@kbn/scout-oblt",
     "@kbn/agent-builder-plugin",
     "@kbn/agent-builder-common",

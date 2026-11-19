@@ -43,3 +43,15 @@ it('keeps action schemas in their separate Zod-only load-time cost class', async
     inputs.some((input) => /kbn-workflows\/|i18n|@elastic\/eui|node_modules\/react/.test(input))
   ).toBe(false);
 });
+
+it('keeps significant-event runtime scalars free of every external input', async () => {
+  const entry = 'x-pack/platform/packages/shared/kbn-significant-events-runtime/index.ts';
+  const { metafile } = await build({
+    entryPoints: [resolve(entry)],
+    bundle: true,
+    platform: 'node',
+    write: false,
+    metafile: true,
+  });
+  expect(Object.keys(metafile?.inputs ?? {})).toEqual([entry]);
+});

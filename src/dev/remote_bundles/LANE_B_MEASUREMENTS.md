@@ -35,8 +35,8 @@ directory; retains failed attempts. Workflows, Cases, Notes, fingerprints and
 outcome docs remain for independent review; all identifiers have a lane-B prefix.
 
 `--smoke` runs only three instrumented profiles (ordinary Kibana, child_process,
-in_process), two runs per family: **72 real persisted runs** (12 labels).
-`--families name,name` scopes a run. Not a timing claim.
+in_process), two runs per family: **78 real persisted runs** (13 labels).
+`--families name,name` scopes a smoke run. Not a timing claim.
 The full matrix intentionally runs serially and restarts Kibana many times.
 
 ## Fixed method / outputs
@@ -225,15 +225,16 @@ Live harness performs the original agent execution through real ES inference to
 the loopback fake, independently reads conversation/event data and allowlisted
 stored execution provenance, and asserts generic coordinator invoke0.
 
-## Nightshift: partial family, five routed types
+## Nightshift: partial family, six routed types
 
 - `nightshift`: original pure compose handler, no business callback.
 - `nightshift_model`: original worker projection; scoped SO/UI and connector model policy via typed coordinator operation. Explicit selected endpoint proof, not default-model backing coverage.
 - `nightshift_recovery`: original worker validation/mapping; scoped recovery-domain operation coordinator. No-open-investigation proof, NOT matched recovery dispatch.
 - `nightshift_trees`: original ES tree/learning reads, accessed-file parsing, joins and nonempty reinforcement prompt worker-local. One typed nonsecret configuration read; populated version2 tree plus relevant learning, independently read from ES.
 - `nightshift_agents`: original worker defaults/output/visibility polling/retries; two fixed installers and live availability coordinator (SO/live registry). Both IDs exercised. Independent GETs prove idempotent persisted existence, not forced recreation of pre-existing agents.
+- `nightshift_render`: original worker validation/Slack escaping/text/Block Kit; original scoped authorized investigation read and Space-bound locator coordinator. Completed/started/failed phases; independent persisted conversation and outcome reads. Imports only the same-owner scalar runtime, not eager authoring schemas.
 
-Eleven types remain unfinished, including renderSlackMessage blocked on lane C's significant-events-schema barrel repair. No full16-type, sandbox, memory, optimizer or lifecycle-notification proof is implied. Original suites, PID markers and zero generic coordinator invocation remain required. Final timing matrix is deferred.
+Ten types remain unfinished. No full16-type, sandbox, memory, optimizer or lifecycle-notification proof is implied. Original suites, PID markers and zero generic coordinator invocation remain required. Final timing matrix is deferred.
 
 ## Actions shell guard — explicit supervisor policy change
 

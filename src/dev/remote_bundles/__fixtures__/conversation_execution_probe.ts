@@ -218,6 +218,14 @@ const main = async (): Promise<void> => {
       .reduce((total, file) => total + metadata.outputs[file].bytes, 0);
     const fakeClient = dataPlane.internal('scope');
     const registry = {
+      getRenderingInput: async () => ({
+        investigation: {
+          investigation_id: 'investigation',
+          title: 'Original title',
+          summary: 'Original summary',
+        },
+        redirectUrl: '/app/r?original',
+      }),
       ensure: async () => {},
       // Configuration capability fixture; actual ES operations still use the original native SDK.
       readTreePolicy: async () => ({ enabled: true }),
@@ -374,6 +382,7 @@ const main = async (): Promise<void> => {
         },
       ],
       ['nightshift.ensureInvestigationAgent', {}],
+      ['nightshift.renderSlackMessage', { investigation_id: 'investigation', phase: 'completed' }],
       ['nightshift.resolveModel', { step: 'investigation', connector_id: 'fixture-model' }],
       [
         'nightshift.followUpRecoveredAlert',
@@ -417,6 +426,7 @@ const main = async (): Promise<void> => {
           getFakeRequest: () => ({} as KibanaRequest),
           getContext: () =>
             ({
+              kibanaUrl: 'http://127.0.0.1:5635',
               execution: { id: 'run' },
               workflow: { id: 'workflow', name: 'Workflow', spaceId: 'default' },
             } as ReturnType<StepHandlerContext['contextManager']['getContext']>),
@@ -463,6 +473,8 @@ const main = async (): Promise<void> => {
           space_id: 'default',
           agent_id: 'nightshift.investigation',
         });
+      if (type === 'nightshift.renderSlackMessage')
+        assert((result.output as { text: string }).text.includes('Original summary'));
       if (type === 'nightshift.resolveModel')
         assert.deepEqual(result.output, { connector_id: 'fixture-model' });
       if (type === 'nightshift.followUpRecoveredAlert')

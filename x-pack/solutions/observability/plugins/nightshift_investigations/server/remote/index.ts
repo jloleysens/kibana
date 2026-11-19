@@ -42,6 +42,13 @@ export const remoteModule: RemoteModule = {
   contributions: [
     {
       kind: createToken('workflows.step'),
+      stepType: 'nightshift.renderSlackMessage',
+      needs: [InvestigationsToken],
+      modulePath: require.resolve('./render_slack_message_step'),
+      exportName: 'RenderSlackMessageStep',
+    },
+    {
+      kind: createToken('workflows.step'),
       stepType: 'nightshift.ensureInvestigationAgent',
       needs: [AgentInstallationToken],
       modulePath: require.resolve('./ensure_investigation_agent_step'),

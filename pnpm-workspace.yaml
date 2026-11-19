@@ -1354,6 +1354,7 @@ packages:
   - 'x-pack/platform/packages/shared/kbn-sample-parser'
   - 'x-pack/platform/packages/shared/kbn-search-index-documents'
   - 'x-pack/platform/packages/shared/kbn-shared-components'
+  - 'x-pack/platform/packages/shared/kbn-significant-events-runtime'
   - 'x-pack/platform/packages/shared/kbn-significant-events-schema'
   - 'x-pack/platform/packages/shared/kbn-slo-constants'
   - 'x-pack/platform/packages/shared/kbn-slo-schema'
