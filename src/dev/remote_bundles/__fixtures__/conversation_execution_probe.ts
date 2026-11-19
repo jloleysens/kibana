@@ -196,6 +196,15 @@ const main = async (): Promise<void> => {
       assertAgentUse: async () => {},
       accessibleAgentIds: async () => ['elastic-ai-agent'],
       validateEvents: async (_scope: string, _clientLease: string, events: object[]) => events,
+      prepareWrite: async (
+        _scope: string,
+        _clientLease: string,
+        _id: string,
+        expected?: { seqNo: number; primaryTerm: number }
+      ) => ({
+        writeLeaseId: 'fixture-write',
+        version: expected ? { ...expected, revision: 1 } : undefined,
+      }),
       notify: async () => {},
     };
     const logger = {

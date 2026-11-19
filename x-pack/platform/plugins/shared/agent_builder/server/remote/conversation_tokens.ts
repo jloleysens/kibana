@@ -8,8 +8,10 @@
 import { createToken } from '@kbn/core-di';
 import type { ConversationAddEventInput, ConversationTemplate } from '@kbn/agent-builder-common';
 import type { ElasticsearchClient } from '@kbn/core/server';
-import type { createClient } from '../services/conversation/client/client';
-import type { ScopedConversationEventEmitter } from '../workflows/triggers/conversation_event_bus';
+import type {
+  createClient,
+  ConversationWriteVersion,
+} from '../services/conversation/client/client';
 
 export const CONVERSATION_LOG_LEVELS = [
   'trace',
@@ -25,18 +27,15 @@ type LogLevels = Record<ConversationLogLevel, boolean>;
 type ClientOptions = Parameters<typeof createClient>[0];
 export type ConversationNotification =
   | {
-      [Name in keyof ScopedConversationEventEmitter]: {
-        operation: Name;
-        payload: Parameters<ScopedConversationEventEmitter[Name]>[0];
-      };
-    }[keyof ScopedConversationEventEmitter]
-  | {
-      operation: 'created';
-      payload: Parameters<NonNullable<ClientOptions['onConversationCreated']>>[0];
+      operation: 'created' | 'fieldsChanged' | 'emitConversationUpdated' | 'emitMetadataPatched';
+      conversationId: string;
+      writeLeaseId: string;
     }
   | {
-      operation: 'fieldsChanged';
-      payload: Parameters<NonNullable<ClientOptions['reportFieldsChange']>>[0];
+      operation: 'emitAttachmentEvents';
+      conversationId: string;
+      writeLeaseId: string;
+      eventIds: string[];
     }
   | {
       operation: 'log';
@@ -59,6 +58,12 @@ export interface ConversationRegistryApi {
     clientLeaseId: string,
     events: ConversationAddEventInput[]
   ): Promise<ConversationAddEventInput[]>;
+  prepareWrite(
+    scopeId: string,
+    clientLeaseId: string,
+    conversationId: string,
+    expected?: Pick<ConversationWriteVersion, 'seqNo' | 'primaryTerm'>
+  ): Promise<{ writeLeaseId: string; version?: ConversationWriteVersion }>;
   notify(
     scopeId: string,
     clientLeaseId: string,

@@ -102,7 +102,15 @@ indices are not saved objects. Original request-derived identity/space/template
 facts and opaque client references are per client, not cross-step cached. Live
 agent registry checks and original event validation stay coordinator-side;
 validation precedes OCC. Original audit/event/telemetry/log hooks batch on drain;
-client references release on drain or run abort. Safe typed error DTOs preserve
+client references release on drain or run abort. Hooks are rebuilt coordinator-side
+from original converse-authorized before/after snapshots, never worker-authored
+provenance. Optional original-client beforeWrite capture binds seqNo/primaryTerm
+to the worker's conditional write; notify verifies per-document `_version + 1`
+(not index-global `_seq_no + 1`). Attachment event IDs must resolve to new visible
+persisted events; duplicate notifications and foreign targets are rejected.
+The conversation workload adds3prepare RPCs and6coordinator ES authorization
+reads/run; attachment workload adds5prepare RPCs and10reads/run. Each read's
+wall time and process-wide CPU are retained in `runs.jsonl` and `timing.jsonl`. Safe typed error DTOs preserve
 original AgentBuilder error prototypes without private request/header metadata.
 Attachment handlers reuse the original state manager, version hashing, reconciliation
 and atomic event+snapshot writes in the worker. Only live type validation and
@@ -112,6 +120,16 @@ objects cross, no direct saved-object storage claim. The live workflow-YAML orig
 proof exercises the original workflow authorization and repository, not a fabricated
 SO resolver. Attachment exclusive first-business increments0.10–0.43MB remain
 inside the existing2MiB guard; shared conversation guard unchanged.
+
+### Known remote notification race divergence
+
+In-Kibana describes the successful write from its in-memory before/after and
+never misses that notification. If a concurrent writer updates the document
+between the remote write and notify GET, the remote path deliberately skips the
+notification with an original best-effort coordinator warning (IDs/versions),
+never emits a wrong diff. Tests cover capture/write conflicts and this later race.
+An authoritative durable outbox or atomically captured after-state would close
+the gap; neither is silently claimed here.
 
 ## Pre-existing product safety finding — upstream owner decision
 

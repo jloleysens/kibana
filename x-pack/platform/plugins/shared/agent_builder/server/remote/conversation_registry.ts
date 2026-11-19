@@ -11,6 +11,7 @@ import type { KibanaRequest } from '@kbn/core/server';
 import { remotable, recordRemoteTiming } from '@kbn/core-remote-common';
 import type { ScopeLookup } from '@kbn/core-remote-server';
 import { createRegistryTransportError } from './registry_errors';
+import { ConversationWriteNotifications } from './conversation_write_notifications';
 import type { createClient } from '../services/conversation/client/client';
 import { listTemplates } from '../services/conversation/templates/registry';
 import { validateConversationEvents } from '../services/conversation_events/validation';
@@ -28,7 +29,12 @@ type ClientOptions = Parameters<typeof createClient>[0];
 export class ConversationRegistry implements ConversationRegistryApi {
   readonly #clients = new Map<
     string,
-    { scopeId: string; context: ClientOptions; release(): void }
+    {
+      scopeId: string;
+      context: ClientOptions;
+      writes: ConversationWriteNotifications;
+      release(): void;
+    }
   >();
   readonly #scopeClients = new Map<string, { ids: Set<string>; cleanup(): void }>();
   constructor(
@@ -119,7 +125,12 @@ export class ConversationRegistry implements ConversationRegistryApi {
         owner.ids.delete(clientLeaseId);
         if (owner.ids.size === 0) owner.cleanup();
       };
-      this.#clients.set(clientLeaseId, { scopeId, context, release });
+      this.#clients.set(clientLeaseId, {
+        scopeId,
+        context,
+        release,
+        writes: new ConversationWriteNotifications(scopeId, context),
+      });
       owner.ids.add(clientLeaseId);
       return policy;
     });
@@ -159,6 +170,23 @@ export class ConversationRegistry implements ConversationRegistryApi {
       clientLeaseId
     );
   }
+  prepareWrite(
+    ...[scopeId, clientLeaseId, conversationId, expected]: Parameters<
+      ConversationRegistryApi['prepareWrite']
+    >
+  ): ReturnType<ConversationRegistryApi['prepareWrite']> {
+    return this.#call(
+      scopeId,
+      'prepareWrite',
+      { conversationId, expected },
+      async () => {
+        const client = this.#clients.get(clientLeaseId);
+        if (!client) throw new Error('Conversation client lease is closed');
+        return client.writes.prepare(conversationId, expected);
+      },
+      clientLeaseId
+    );
+  }
   notify(
     scopeId: string,
     clientLeaseId: string,
@@ -168,41 +196,13 @@ export class ConversationRegistry implements ConversationRegistryApi {
       scopeId,
       'notify',
       notifications,
-      async (context) => {
+      async () => {
+        const client = this.#clients.get(clientLeaseId);
+        if (!client) throw new Error('Conversation client lease is closed');
         try {
-          for (const notification of notifications) {
-            try {
-              switch (notification.operation) {
-                case 'log': {
-                  const target =
-                    notification.payload.namespace === 'storage'
-                      ? context.logger.get('storage').get(chatSystemIndex('conversations'))
-                      : context.logger;
-                  target[notification.payload.level](notification.payload.message);
-                  break;
-                }
-                case 'created':
-                  context.onConversationCreated?.(notification.payload);
-                  break;
-                case 'fieldsChanged':
-                  context.reportFieldsChange?.(notification.payload);
-                  break;
-                case 'emitAttachmentEvents':
-                  context.eventEmitter?.emitAttachmentEvents(notification.payload);
-                  break;
-                case 'emitConversationUpdated':
-                  context.eventEmitter?.emitConversationUpdated(notification.payload);
-                  break;
-                case 'emitMetadataPatched':
-                  context.eventEmitter?.emitMetadataPatched(notification.payload);
-                  break;
-              }
-            } catch (error) {
-              context.logger.warn(`Failed to notify conversation write: ${error}`);
-            }
-          }
+          await client.writes.notify(notifications);
         } finally {
-          this.#clients.get(clientLeaseId)?.release();
+          client.release();
         }
       },
       clientLeaseId

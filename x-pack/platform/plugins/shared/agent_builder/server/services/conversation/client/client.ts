@@ -299,6 +299,23 @@ interface ConversationListEsResponse {
 
 export type OnConversationCreated = (params: { conversationId: string; agentId: string }) => void;
 
+export interface ConversationWriteVersion {
+  seqNo: number;
+  primaryTerm: number;
+  revision: number;
+}
+export interface ConversationWriteState {
+  conversation: NormalizedConversation;
+  version: ConversationWriteVersion;
+}
+export interface ConversationWriteStateReader {
+  getWriteState(conversationId: string): Promise<ConversationWriteState>;
+}
+type BeforeConversationWrite = (
+  id: string,
+  expected?: Pick<ConversationWriteVersion, 'seqNo' | 'primaryTerm'>
+) => Promise<ConversationWriteVersion | undefined>;
+
 type ConversationEventValidator = (
   events: ConversationAddEventInput[]
 ) => Promise<ConversationAddEventInput[]>;
@@ -321,6 +338,7 @@ export const createClient = ({
   reportFieldsChange,
   templateLookup,
   validateEvents,
+  beforeWrite,
 }: {
   space: string;
   logger: Logger;
@@ -331,7 +349,8 @@ export const createClient = ({
   onConversationCreated?: OnConversationCreated;
   reportFieldsChange?: ConversationFieldsChangeReporter;
   templateLookup?: (id: string) => ConversationTemplate | undefined;
-} & ConversationEventValidation): ConversationClient => {
+  beforeWrite?: BeforeConversationWrite;
+} & ConversationEventValidation): ConversationClient & ConversationWriteStateReader => {
   const storage = createStorage({ logger, esClient });
   return new ConversationClientImpl({
     storage,
@@ -346,6 +365,7 @@ export const createClient = ({
     reportFieldsChange,
     templateLookup,
     validateEvents,
+    beforeWrite,
   });
 };
 
@@ -415,6 +435,7 @@ class ConversationClientImpl implements ConversationClient {
   private readonly eventEmitter?: ScopedConversationEventEmitter;
   private readonly onConversationCreated?: OnConversationCreated;
   private readonly reportFieldsChange?: ConversationFieldsChangeReporter;
+  private readonly beforeWrite?: BeforeConversationWrite;
   private readonly templateLookup: (id: string) => ConversationTemplate | undefined;
   private readonly validateEvents: (
     events: ConversationAddEventInput[]
@@ -433,6 +454,7 @@ class ConversationClientImpl implements ConversationClient {
     reportFieldsChange,
     templateLookup,
     validateEvents,
+    beforeWrite,
   }: {
     storage: ConversationStorage;
     esClient: ElasticsearchClient;
@@ -444,6 +466,7 @@ class ConversationClientImpl implements ConversationClient {
     eventEmitter?: ScopedConversationEventEmitter;
     onConversationCreated?: OnConversationCreated;
     reportFieldsChange?: ConversationFieldsChangeReporter;
+    beforeWrite?: BeforeConversationWrite;
     templateLookup?: (id: string) => ConversationTemplate | undefined;
     validateEvents?: (events: ConversationAddEventInput[]) => Promise<ConversationAddEventInput[]>;
   }) {
@@ -456,6 +479,7 @@ class ConversationClientImpl implements ConversationClient {
     this.eventEmitter = eventEmitter;
     this.onConversationCreated = onConversationCreated;
     this.reportFieldsChange = reportFieldsChange;
+    this.beforeWrite = beforeWrite;
     this.templateLookup = templateLookup ?? getTemplate;
     if (validateEvents) this.validateEvents = validateEvents;
     else if (conversationEvents)
@@ -765,6 +789,22 @@ class ConversationClientImpl implements ConversationClient {
     ];
   }
 
+  async getWriteState(conversationId: string): Promise<ConversationWriteState> {
+    const document = await this.getDocumentWithAccess({ conversationId, access: 'converse' });
+    if (document._version === undefined)
+      throw createInternalError(
+        'Conversation write authorization requires document version metadata'
+      );
+    return {
+      conversation: fromEs(document, this.getUser()),
+      version: {
+        seqNo: document._seq_no,
+        primaryTerm: document._primary_term,
+        revision: document._version,
+      },
+    };
+  }
+
   async get(conversationId: string): Promise<ConversationWithPermissions> {
     const document = await this.getDocumentWithAccess({ conversationId, access: 'converse' });
     const conversation = await toResponseConversation({
@@ -959,6 +999,7 @@ class ConversationClientImpl implements ConversationClient {
       leadingEvents: [createdEvent],
     });
 
+    await this.beforeWrite?.(id);
     let indexed: { _seq_no?: number; _primary_term?: number };
     try {
       indexed = await this.storage.getClient().index({
@@ -1858,6 +1899,18 @@ class ConversationClientImpl implements ConversationClient {
     return new OccWriter<NormalizedConversation>({
       get: async (id) => {
         const document = await this.getDocumentWithAccess({ conversationId: id, access });
+        if (this.beforeWrite) {
+          const captured = await this.beforeWrite(id, {
+            seqNo: document._seq_no,
+            primaryTerm: document._primary_term,
+          });
+          if (
+            !captured ||
+            captured.seqNo !== document._seq_no ||
+            captured.primaryTerm !== document._primary_term
+          )
+            throw createConversationWriteConflictError({ conversationId: id });
+        }
 
         return {
           id,

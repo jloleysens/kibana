@@ -88,7 +88,20 @@ export const createNativeConversation = async ({
         level === 'all' ? levels.trace : level === 'off' ? false : levels[level],
     };
   };
+  let writeLeaseId: string | undefined;
+  const notificationWrite = (conversationId: string) => {
+    if (!writeLeaseId)
+      throw new Error('Conversation notification requires its authorized write lease');
+    return { conversationId, writeLeaseId };
+  };
   const client = createClient({
+    beforeWrite: async (id, expected) => {
+      const prepared = await restoreRegistryError(
+        registry.prepareWrite(scopeId, policy.clientLeaseId, id, expected)
+      );
+      writeLeaseId = prepared.writeLeaseId;
+      return prepared.version;
+    },
     user: policy.user,
     space: policy.space,
     esClient,
@@ -101,13 +114,23 @@ export const createNativeConversation = async ({
       ? {
           eventEmitter: {
             emitAttachmentEvents: (payload) => {
-              notifications.push({ operation: 'emitAttachmentEvents', payload });
+              notifications.push({
+                operation: 'emitAttachmentEvents',
+                ...notificationWrite(payload.conversationId),
+                eventIds: payload.events.map(({ id }) => id),
+              });
             },
             emitConversationUpdated: (payload) => {
-              notifications.push({ operation: 'emitConversationUpdated', payload });
+              notifications.push({
+                operation: 'emitConversationUpdated',
+                ...notificationWrite(payload.conversationId),
+              });
             },
             emitMetadataPatched: (payload) => {
-              notifications.push({ operation: 'emitMetadataPatched', payload });
+              notifications.push({
+                operation: 'emitMetadataPatched',
+                ...notificationWrite(payload.conversationId),
+              });
             },
           },
         }
@@ -115,14 +138,20 @@ export const createNativeConversation = async ({
     ...(policy.reportsCreation
       ? {
           onConversationCreated: (payload) => {
-            notifications.push({ operation: 'created', payload });
+            notifications.push({
+              operation: 'created',
+              ...notificationWrite(payload.conversationId),
+            });
           },
         }
       : {}),
     ...(policy.reportsFieldChanges
       ? {
           reportFieldsChange: (payload) => {
-            notifications.push({ operation: 'fieldsChanged', payload });
+            notifications.push({
+              operation: 'fieldsChanged',
+              ...notificationWrite(payload.conversation_id),
+            });
           },
         }
       : {}),

@@ -257,8 +257,29 @@ it.each(remoteModule.contributions ?? [])(
 );
 
 it('batches original notification hooks and preserves their best-effort independence', async () => {
-  const { api, getOptions } = setup();
+  const { api, getOptions, get } = setup();
   const original = await getOptions();
+  get.mockRejectedValueOnce({ statusCode: 404 });
+  get.mockResolvedValue({
+    _id: 'conversation',
+    _index: '.chat-conversations-000001',
+    _seq_no: 10,
+    _primary_term: 1,
+    _version: 1,
+    found: true,
+    _source: {
+      user_id: 'owner',
+      user_name: 'owner',
+      agent_id: 'agent',
+      space: 'default',
+      title: 'Created',
+      created_at: '2026-01-01',
+      updated_at: '2026-01-01',
+      conversation_rounds: [],
+      events: [],
+      schema_version: 1,
+    },
+  });
   const created = jest.fn(() => {
     throw new Error('Original audit hook failed');
   });
@@ -267,26 +288,27 @@ it('batches original notification hooks and preserves their best-effort independ
     ...original,
     onConversationCreated: created,
     eventEmitter: {
-      emitMetadataPatched: patched,
+      emitMetadataPatched: jest.fn(),
       emitAttachmentEvents: jest.fn(),
-      emitConversationUpdated: jest.fn(),
+      emitConversationUpdated: patched,
     },
   }));
   const policy = await api.read('run');
+  const { writeLeaseId } = await api.prepareWrite('run', policy.clientLeaseId, 'conversation');
   await expect(
     api.notify('run', policy.clientLeaseId, [
-      { operation: 'created', payload: { conversationId: 'conversation', agentId: 'agent' } },
-      {
-        operation: 'emitMetadataPatched',
-        payload: { conversationId: 'conversation', changedFields: ['status'] },
-      },
+      { operation: 'created', conversationId: 'conversation', writeLeaseId },
+      { operation: 'emitConversationUpdated', conversationId: 'conversation', writeLeaseId },
     ])
   ).resolves.toBeUndefined();
   expect(created).toHaveBeenCalledTimes(1);
-  expect(patched).toHaveBeenCalledWith({
-    conversationId: 'conversation',
-    changedFields: ['status'],
-  });
+  expect(patched).toHaveBeenCalledWith(
+    expect.objectContaining({
+      conversationId: 'conversation',
+      source: 'workflow',
+      changeKinds: ['created', 'title'],
+    })
+  );
   expect(original.logger.warn).toHaveBeenCalled();
 });
 

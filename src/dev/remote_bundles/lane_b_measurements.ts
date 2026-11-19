@@ -82,6 +82,12 @@ interface Seam {
   name: string;
   bytes: number;
 }
+interface AuthorizationRead {
+  event: string;
+  stepType: string;
+  durationMs: number;
+  cpuMicros: number;
+}
 interface Cell {
   backend: 'baseline' | 'child_process' | 'in_process';
   delayMs: number;
@@ -632,7 +638,15 @@ export const runLaneBMeasurements = async (): Promise<void> => {
               );
             for (let repeat = 0; repeat < (smoke ? 2 : 6); repeat++) {
               const before = lines<Seam>(join(directory, 'seams.jsonl')).length;
+              const timingBefore = lines<AuthorizationRead>(join(directory, 'timing.jsonl')).length;
               const result = await execute(family, id, directory);
+              const authorizationReads = lines<AuthorizationRead>(join(directory, 'timing.jsonl'))
+                .slice(timingBefore)
+                .filter(({ event }) => event === 'conversation_authorization_read');
+              if (cell.memory && cell.backend !== 'baseline') {
+                if (family === 'conversation') assert.equal(authorizationReads.length, 6);
+                if (family === 'attachments') assert.equal(authorizationReads.length, 10);
+              }
               const requests = lines<Seam>(join(directory, 'seams.jsonl'))
                 .slice(before)
                 .filter(
@@ -655,6 +669,7 @@ export const runLaneBMeasurements = async (): Promise<void> => {
                 profile,
                 cold: repeat === 0,
                 callbacks,
+                conversationAuthorizationReads: authorizationReads,
                 callbackPayloadBytes: requests.reduce((total, request) => total + request.bytes, 0),
               };
               runs.push(row);

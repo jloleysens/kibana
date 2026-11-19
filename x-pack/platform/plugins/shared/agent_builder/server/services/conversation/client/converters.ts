@@ -76,6 +76,7 @@ export type Document = Omit<
   '_source'
 > & {
   _source: ConversationProperties;
+  _version?: number;
 };
 
 export const isConversationDocument = (hit: Partial<Document>): hit is Document => {
