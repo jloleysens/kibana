@@ -10,7 +10,8 @@ One command, from the merged worktree (pinned Node):
 ```sh
 node scripts/measure_runner_lane_b.js \
   --config .scratch/runner-poc-lane-b/quiet-base.yml \
-  --output .scratch/runner-poc-lane-b/quiet-$(date +%s)
+  --output .scratch/runner-poc-lane-b/quiet-$(date +%s) \
+  --sandbox-config-fixture
 ```
 
 Required flat-key YAML base config: `server.port: 5635`,
@@ -18,7 +19,12 @@ Required flat-key YAML base config: `server.port: 5635`,
 `elasticsearch.hosts: [http://127.0.0.1:9235]`, ordinary local development security,
 reporting and encrypted-SO keys/accounts, `path.data` under this worktree's
 `.scratch/`, `xpack.alertzero.enabled: true`, and
-`feature_flags.overrides: {workflows.kibanaRequest.coreSelfClientEnabled: true}`.
+`feature_flags.overrides: {workflows.kibanaRequest.coreSelfClientEnabled: true, nightshift.enabled: true}`,
+`xpack.agenticInvestigations.enabled: true`, and `xpack.proposals.enabled: true`.
+Tree preparation also requires the original sandbox availability gate.
+`--sandbox-config-fixture` enables the original sandbox plugin with a nonsecret
+fixture key and the owned ephemeral loopback target for configuration only.
+That target is **not** a sandbox API; no sandbox allocation/FS I/O is proved.
 The session5 `s5-child.yml` is a working example. Config contents are not printed;
 identity records their hash. Generated local configs contain these local keys;
 keep output ignored and private. The command owns/restarts only its own Kibana,
@@ -29,7 +35,8 @@ directory; retains failed attempts. Workflows, Cases, Notes, fingerprints and
 outcome docs remain for independent review; all identifiers have a lane-B prefix.
 
 `--smoke` runs only three instrumented profiles (ordinary Kibana, child_process,
-in_process), two runs per family: **48 real persisted runs**. Not a timing claim.
+in_process), two runs per family: **72 real persisted runs** (12 labels).
+`--families name,name` scopes a run. Not a timing claim.
 The full matrix intentionally runs serially and restarts Kibana many times.
 
 ## Fixed method / outputs
@@ -71,7 +78,7 @@ The full matrix intentionally runs serially and restarts Kibana many times.
   `finalTimingClaims:false` is deliberate: a harness cannot certify a quiet laptop.
 - Separate instrumented memory/callback profiles: baseline, child_process and
   in_process, fixed family order extensions -> Cases -> inference -> conversation
-  -> attachments -> rerank -> agent -> nightshift-compose. Per-step Core
+  -> attachments -> rerank -> agent -> nightshift-compose -> Nightshift model/recovery/trees/agents. Per-step Core
   heap markers + 100ms per-process RSS/heap/cumulative process CPU samples.
   Acknowledged SIGUSR2 samples force GC in **each owned process** before/after each
   run. `memory-curve.jsonl` retains individual PIDs and combined Kibana+worker RSS/
@@ -218,14 +225,15 @@ Live harness performs the original agent execution through real ES inference to
 the loopback fake, independently reads conversation/event data and allowlisted
 stored execution provenance, and asserts generic coordinator invoke0.
 
-## Nightshift: partial family, not sixteen-step coverage
+## Nightshift: partial family, five routed types
 
-The additional Nightshift workload executes **only** the original pure
-`nightshift.composeHydrateNotifications` handler (same function as the original
-authoring definition), nonempty writer content plus an incomplete writer and
-recalled-memory IDs. No coordinator business callback. Fifteen other Nightshift
-types remain unfinished. The harness's `nightshift` family label must not be
-read as full Nightshift service coverage.
+- `nightshift`: original pure compose handler, no business callback.
+- `nightshift_model`: original worker projection; scoped SO/UI and connector model policy via typed coordinator operation. Explicit selected endpoint proof, not default-model backing coverage.
+- `nightshift_recovery`: original worker validation/mapping; scoped recovery-domain operation coordinator. No-open-investigation proof, NOT matched recovery dispatch.
+- `nightshift_trees`: original ES tree/learning reads, accessed-file parsing, joins and nonempty reinforcement prompt worker-local. One typed nonsecret configuration read; populated version2 tree plus relevant learning, independently read from ES.
+- `nightshift_agents`: original worker defaults/output/visibility polling/retries; two fixed installers and live availability coordinator (SO/live registry). Both IDs exercised. Independent GETs prove idempotent persisted existence, not forced recreation of pre-existing agents.
+
+Eleven types remain unfinished, including renderSlackMessage blocked on lane C's significant-events-schema barrel repair. No full16-type, sandbox, memory, optimizer or lifecycle-notification proof is implied. Original suites, PID markers and zero generic coordinator invocation remain required. Final timing matrix is deferred.
 
 ## Actions shell guard — explicit supervisor policy change
 

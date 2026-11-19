@@ -5,6 +5,11 @@
  * 2.0.
  */
 
+export {
+  RECORD_REMEDIATION_TOOL_ID,
+  RECORD_SYSTEM_LEARNING_TOOL_ID,
+  RECORD_TOOL_LEARNING_TOOL_ID,
+} from './learning_tools_ids';
 import { z } from '@kbn/zod/v4';
 import { ToolType } from '@kbn/agent-builder-common';
 import { ToolResultType } from '@kbn/agent-builder-common/tools/tool_result';
@@ -18,9 +23,11 @@ import type { LearningRecord } from '@kbn/nightshift-decision-trees';
 import type { LearningStore } from '../../decision_trees/learning_store';
 import { getScopedConversationId } from '../sandbox_bash/tool_utils';
 
-export const RECORD_SYSTEM_LEARNING_TOOL_ID = 'nightshift_record_system_learning';
-export const RECORD_TOOL_LEARNING_TOOL_ID = 'nightshift_record_tool_learning';
-export const RECORD_REMEDIATION_TOOL_ID = 'nightshift_record_remediation';
+import {
+  RECORD_REMEDIATION_TOOL_ID,
+  RECORD_SYSTEM_LEARNING_TOOL_ID,
+  RECORD_TOOL_LEARNING_TOOL_ID,
+} from './learning_tools_ids';
 
 const MAX_LEARNING_LENGTH = 2048;
 

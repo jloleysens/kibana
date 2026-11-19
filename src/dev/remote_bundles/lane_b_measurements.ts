@@ -201,6 +201,13 @@ const execute = async (
   const persisted = await api<{
     _source: {
       modelContext?: string;
+      selectedModel?: string;
+      agentId?: string;
+      reinforcementAgentId?: string;
+      treeCount?: string;
+      treeMessage?: string;
+      turnKind?: string;
+      skipReason?: string;
       recalledId?: string;
       message?: string;
       tokens?: string;
@@ -222,7 +229,39 @@ const execute = async (
     };
   }>(`${es}/lane-b-quiet-outcomes/_doc/${step('persist')._id}`);
   save(join(directory, `${workflowExecutionId}-business.json`), persisted);
-  if (family === 'nightshift') {
+  if (family === 'nightshift_agents') {
+    assert.equal(persisted._source.agentId, 'nightshift.investigation');
+    assert.equal(
+      persisted._source.reinforcementAgentId,
+      'significant-events.decision-tree-reinforcement'
+    );
+    const agent = await api<{ id: string }>(
+      `/api/agent_builder/agents/${persisted._source.agentId}`
+    );
+    const reinforcement = await api<{ id: string }>(
+      `/api/agent_builder/agents/${persisted._source.reinforcementAgentId}`
+    );
+    assert.equal(agent.id, persisted._source.agentId);
+    assert.equal(reinforcement.id, persisted._source.reinforcementAgentId);
+    save(join(directory, `${workflowExecutionId}-agents.json`), { agent, reinforcement });
+  } else if (family === 'nightshift_trees') {
+    assert.equal(persisted._source.treeCount, '1');
+    assert.equal(persisted._source.turnKind, 'feedback_reinforcement');
+    assert(persisted._source.treeMessage?.includes('Verified learning ' + id));
+    assert(persisted._source.treeMessage?.includes(`decision_tree_${id}.md`));
+    const tree = await api<{ _source: { attributes: { tree_id: string; version: number } } }>(
+      `${es}/ai-index-idx-nightshift-decision-trees/_doc/default:dtree_${id}`
+    );
+    assert.equal(tree._source.attributes.tree_id, 'symptom:' + id);
+    assert.equal(tree._source.attributes.version, 2);
+    save(join(directory, `${workflowExecutionId}-tree.json`), tree);
+  } else if (family === 'nightshift_model') {
+    const workflow = await api<{ yaml: string }>(`/api/workflows/workflow/${id}`);
+    const definition: { steps: Array<{ with?: { connector_id?: string } }> } = parse(workflow.yaml);
+    assert.equal(persisted._source.selectedModel, definition.steps[0].with?.connector_id);
+  } else if (family === 'nightshift_recovery') {
+    assert.equal(persisted._source.skipReason, 'no_open_investigation');
+  } else if (family === 'nightshift') {
     assert.equal(
       persisted._source.modelContext,
       `<system_update>\n${id}\n\nMaterialization of /workspace/cortex/ encountered an error; its contents may be incomplete or missing.\n</system_update>`
@@ -634,9 +673,23 @@ export const runLaneBMeasurements = async (): Promise<void> => {
               'rerank',
               'agent',
               'nightshift',
+              'nightshift_model',
+              'nightshift_recovery',
+              'nightshift_trees',
+              'nightshift_agents',
             ]
           : ['extensions', 'cases'];
-      const groups = cell.memory ? [families] : families.map((family) => [family]);
+      const selectedFamilies = args.includes('--families')
+        ? option('--families').split(',')
+        : families;
+      assert(
+        selectedFamilies.every((family) => families.includes(family as LaneBFamily)),
+        'Unknown or unavailable family'
+      );
+      const requestedFamilies = families.filter((family) => selectedFamilies.includes(family));
+      const groups = cell.memory
+        ? [requestedFamilies]
+        : requestedFamilies.map((family) => [family]);
       for (const group of groups)
         for (let block = 0; block < (cell.memory || smoke ? 1 : 3); block++) {
           const profile = `${cell.memory ? 'memory' : 'timing'}-${cell.backend}-${
@@ -653,6 +706,16 @@ export const runLaneBMeasurements = async (): Promise<void> => {
             configFile,
             stringify({
               ...base,
+              ...(args.includes('--sandbox-config-fixture')
+                ? {
+                    // Prepare reads tree stores only. This config enables its original availability gate;
+                    // the fixture is NOT a sandbox API and cannot prove allocation or filesystem I/O.
+                    'xpack.sandbox.enabled': true,
+                    'xpack.sandbox.host': '127.0.0.1',
+                    'xpack.sandbox.port': address.port,
+                    'xpack.sandbox.api_key': 'lane-b-configuration-only-fixture',
+                  }
+                : {}),
               'workflowsExecutionEngine.remoteExecution.enabled': cell.backend !== 'baseline',
               'core.remote.backend': cell.backend === 'baseline' ? 'child_process' : cell.backend,
             })
@@ -735,7 +798,44 @@ export const runLaneBMeasurements = async (): Promise<void> => {
             'PUT'
           );
           for (const family of group) {
-            const id = `lane-b-quiet-${family}-${Date.now()}`;
+            const id = `lane-b-quiet-${family.replaceAll('_', '-')}-${Date.now()}`;
+            if (family === 'nightshift_trees') {
+              const index = es + '/ai-index-idx-nightshift-decision-trees/_doc/';
+              await api(
+                index + 'default:dtree_' + id + '?refresh=true',
+                {
+                  '@timestamp': new Date().toISOString(),
+                  type: 'decision_tree',
+                  title: id,
+                  content: '# Verified tree',
+                  tags: ['nightshift', 'decision-tree'],
+                  learnings: [],
+                  attributes: {
+                    space_id: 'default',
+                    tree_id: 'symptom:' + id,
+                    symptom: id,
+                    version: 2,
+                    status: 'established',
+                  },
+                },
+                'PUT'
+              );
+              await api(
+                index + 'default:dtree_learning_' + id + '?refresh=true',
+                {
+                  '@timestamp': new Date().toISOString(),
+                  type: 'decision_tree_learning',
+                  title: 'Verified learning',
+                  kind: 'remediation',
+                  tree_id: 'symptom:' + id,
+                  content: 'Verified learning ' + id,
+                  keywords: [],
+                  tags: ['nightshift', 'decision-tree', 'learning'],
+                  attributes: { space_id: 'default', tree_id: 'symptom:' + id },
+                },
+                'PUT'
+              );
+            }
             const definition = createLaneBWorkflow(family, id, endpoint);
             await api('/api/workflows/workflow', { id, yaml: stringify(definition) });
             if (cell.memory)

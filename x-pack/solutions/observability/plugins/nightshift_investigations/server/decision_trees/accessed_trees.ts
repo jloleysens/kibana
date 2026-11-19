@@ -6,7 +6,7 @@
  */
 
 import { symptomTreeId } from '@kbn/nightshift-decision-trees';
-import { extractWorkspaceReadsFromToolCalls } from '../investigation_round';
+import { extractWorkspaceReadsFromToolCalls } from '../investigation_round/workspace_reads';
 
 /** One post-execution tool call, matching Agent Builder's after-execution workflow payload. */
 export interface InvestigationToolCall {

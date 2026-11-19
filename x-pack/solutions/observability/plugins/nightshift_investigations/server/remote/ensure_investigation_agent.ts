@@ -1,0 +1,52 @@
+/*
+ * Copyright Elasticsearch B.V. and/or licensed to Elasticsearch B.V. under one
+ * or more contributor license agreements. Licensed under the Elastic License
+ * 2.0; you may not use this file except in compliance with the Elastic License
+ * 2.0.
+ */
+
+import pRetry, { AbortError } from 'p-retry';
+import type { StepHandler } from '@kbn/workflows-extensions/server';
+import { NIGHTSHIFT_INVESTIGATION_AGENT_ID } from '../../common/agent_ids';
+import type { inputSchema, outputSchema } from '../step_definitions/ensure_investigation_agent';
+import type { NightshiftAgentId } from './agent_installation_tokens';
+
+/**
+ * `agents.ensure` guarantees the agent document exists, not that it is searchable, and the
+ * lookup on the read side is a space-filtered search rather than a realtime get. Callers that
+ * schedule the workflow through Task Manager get seconds of slack for free; two adjacent steps
+ * in one execution do not, so the visibility has to be waited on explicitly. Matches the retry
+ * agent_builder itself uses when it installs the default agent just-in-time.
+ */
+const VISIBILITY_RETRY_OPTIONS = { retries: 9, factor: 1, minTimeout: 300 } as const;
+
+type Handler = StepHandler<typeof inputSchema, typeof outputSchema>;
+export const createEnsureInvestigationAgentHandler =
+  (
+    ensureAgent: (context: Parameters<Handler>[0], agentId: NightshiftAgentId) => Promise<void>
+  ): Handler =>
+  async (context) => {
+    const { spaceId } = context.contextManager.getContext().workflow;
+    // Defaulted here rather than on the schema: a step that omits `with` altogether never
+    // reaches zod, so a schema-level default would leave `agent_id` undefined at runtime.
+    const agentId = context.input.agent_id ?? NIGHTSHIFT_INVESTIGATION_AGENT_ID;
+
+    await ensureAgent(context, agentId);
+
+    // Polls in the space the agent was just written to: the fake request carries no space, so
+    // `callKibanaApi` prefixes the path from `workflow.spaceId` instead. Reading through
+    // `getRegistry({ request: getFakeRequest() })` would resolve the default space and could
+    // match an agent installed there rather than the one written here (see #284786).
+    // A 404 while the write is still refreshing throws, which is what drives the retry.
+    await pRetry(async () => {
+      if (context.abortSignal.aborted) {
+        throw new AbortError(`Cancelled while waiting for the agent in space "${spaceId}"`);
+      }
+      await context.contextManager.callKibanaApi({
+        method: 'GET',
+        path: `/api/agent_builder/agents/${agentId}`,
+      });
+    }, VISIBILITY_RETRY_OPTIONS);
+
+    return { output: { space_id: spaceId, agent_id: agentId } };
+  };

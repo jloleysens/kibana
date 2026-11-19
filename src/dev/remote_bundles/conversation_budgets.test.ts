@@ -74,6 +74,10 @@ it('bounds original native conversation client first business execution and conv
         'ai.attachment.delete',
         'ai.agent',
         'nightshift.composeHydrateNotifications',
+        'nightshift.decisionTreePrepare',
+        'nightshift.ensureInvestigationAgent',
+        'nightshift.resolveModel',
+        'nightshift.followUpRecoveredAlert',
         'search.rerank',
       ]);
       for (const event of result.events) {

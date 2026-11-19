@@ -10,6 +10,10 @@ import { coreMock, httpServerMock } from '@kbn/core/server/mocks';
 import { alertsMock } from '@kbn/alerting-plugin/server/mocks';
 import { BehaviorSubject } from 'rxjs';
 import { NIGHTSHIFT_ENABLED_FLAG } from '@kbn/nightshift-shared';
+import { AgentInstallationToken } from './remote/agent_installation_tokens';
+import { InvestigationsToken } from './remote/investigations_tokens';
+import { ModelSelectionToken } from './remote/model_selection_tokens';
+import { DecisionTreePolicyToken } from './remote/decision_tree_policy_tokens';
 import { NIGHTSHIFT_INVESTIGATION_LOCATOR_ID } from '../common/locators';
 import type { InvestigationQuotaCallback, NightshiftInvestigationsSetupDeps } from './types';
 import { NightshiftInvestigationsPlugin } from './plugin';
@@ -31,6 +35,17 @@ const createSetupDeps = () =>
   } as unknown as NightshiftInvestigationsSetupDeps);
 
 describe('NightshiftInvestigationsPlugin setup', () => {
+  it('binds every declared coordinator capability even when no workflow starts', () => {
+    const core = coreMock.createSetup();
+    createPlugin().setup(core, createSetupDeps());
+    for (const token of [
+      InvestigationsToken,
+      ModelSelectionToken,
+      DecisionTreePolicyToken,
+      AgentInstallationToken,
+    ])
+      expect(core.remote.bind).toHaveBeenCalledWith(token, expect.any(Function));
+  });
   it('registers the investigation locator on the server', async () => {
     const dependencies = createSetupDeps();
     createPlugin().setup(coreMock.createSetup(), dependencies);

@@ -19,6 +19,10 @@ it.each([
   'rerank',
   'agent',
   'nightshift',
+  'nightshift_model',
+  'nightshift_recovery',
+  'nightshift_trees',
+  'nightshift_agents',
 ] as const)('%s retains a real persisted outcome', (family) => {
   const workflow = createLaneBWorkflow(family, 'proof', 'endpoint');
   expect(workflow.steps.at(-1)).toMatchObject({

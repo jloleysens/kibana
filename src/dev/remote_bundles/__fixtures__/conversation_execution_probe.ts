@@ -66,6 +66,41 @@ const main = async (): Promise<void> => {
     response.setHeader('content-type', 'application/json');
     response.setHeader('x-elastic-product', 'Elasticsearch');
     const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+    if (path.includes('ai-index-idx-nightshift-decision-trees') && path.endsWith('/_search')) {
+      const query = JSON.parse(body);
+      const tree = query.query.bool.filter.some(
+        (filter: { term?: { type?: string } }) => filter.term?.type === 'decision_tree'
+      );
+      response.end(
+        JSON.stringify({
+          hits: {
+            hits: [
+              {
+                _source: tree
+                  ? {
+                      '@timestamp': new Date().toISOString(),
+                      title: 'Fixture tree',
+                      attributes: {
+                        tree_id: 'symptom:fixture',
+                        symptom: 'fixture',
+                        version: 2,
+                        status: 'established',
+                      },
+                      learnings: [],
+                    }
+                  : {
+                      kind: 'remediation',
+                      tree_id: 'symptom:fixture',
+                      content: 'Fixture learning',
+                      keywords: [],
+                    },
+              },
+            ],
+          },
+        })
+      );
+      return;
+    }
     if (path.includes('/_inference/') && request.method === 'POST') {
       const input = JSON.parse(body);
       assert.deepEqual(input.input, ['First', 'Second']);
@@ -183,6 +218,14 @@ const main = async (): Promise<void> => {
       .reduce((total, file) => total + metadata.outputs[file].bytes, 0);
     const fakeClient = dataPlane.internal('scope');
     const registry = {
+      ensure: async () => {},
+      // Configuration capability fixture; actual ES operations still use the original native SDK.
+      readTreePolicy: async () => ({ enabled: true }),
+      resolve: async () => 'fixture-model',
+      followUpRecoveredAlert: async () => ({
+        investigation_id: 'investigation',
+        execution_id: 'recovered-execution',
+      }),
       read: async () => ({
         clientLeaseId: 'fixture-client',
         user: { id: 'owner', username: 'owner', isAdmin: true },
@@ -318,6 +361,31 @@ const main = async (): Promise<void> => {
         },
       ],
       [
+        'nightshift.decisionTreePrepare',
+        {
+          response: 'status: confirmed',
+          agent_id: 'nightshift.investigation',
+          tool_calls: [
+            {
+              tool_id: 'nightshift_sandbox_view_file',
+              params: { file_path: '/workspace/decision-trees/decision_tree_fixture.md' },
+            },
+          ],
+        },
+      ],
+      ['nightshift.ensureInvestigationAgent', {}],
+      ['nightshift.resolveModel', { step: 'investigation', connector_id: 'fixture-model' }],
+      [
+        'nightshift.followUpRecoveredAlert',
+        {
+          alert_uuid: 'alert',
+          alert_id: 'instance',
+          rule_id: 'rule',
+          rule_name: 'Rule',
+          rule_type_id: 'type',
+        },
+      ],
+      [
         'search.rerank',
         {
           rerank_text: 'Second',
@@ -361,7 +429,9 @@ const main = async (): Promise<void> => {
           }),
         },
       };
-      const result = (await new Ctor(registry, { internal: () => fakeClient }, attachments).run(
+      const operations =
+        type === 'nightshift.decisionTreePrepare' ? { read: registry.readTreePolicy } : registry;
+      const result = (await new Ctor(operations, { internal: () => fakeClient }, attachments).run(
         'scope',
         {},
         { handlerContext: context }
@@ -377,6 +447,28 @@ const main = async (): Promise<void> => {
           workflow_context: {
             'nightshift.semantic_memory.recall': { version: 1, data: { recalled_ids: ['memory'] } },
           },
+        });
+      if (type === 'nightshift.decisionTreePrepare') {
+        const prepared = result.output as {
+          message: string;
+          tree_count: number;
+          turn_kind: string;
+        };
+        assert.equal(prepared.tree_count, 1);
+        assert.equal(prepared.turn_kind, 'feedback_reinforcement');
+        assert(prepared.message.includes('Fixture learning'));
+      }
+      if (type === 'nightshift.ensureInvestigationAgent')
+        assert.deepEqual(result.output, {
+          space_id: 'default',
+          agent_id: 'nightshift.investigation',
+        });
+      if (type === 'nightshift.resolveModel')
+        assert.deepEqual(result.output, { connector_id: 'fixture-model' });
+      if (type === 'nightshift.followUpRecoveredAlert')
+        assert.deepEqual(result.output, {
+          investigation_id: 'investigation',
+          execution_id: 'recovered-execution',
         });
       if (type === 'search.rerank')
         assert.deepEqual(result.output, [

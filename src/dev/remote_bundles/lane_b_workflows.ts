@@ -15,11 +15,59 @@ export type LaneBFamily =
   | 'attachments'
   | 'rerank'
   | 'agent'
-  | 'nightshift';
+  | 'nightshift'
+  | 'nightshift_model'
+  | 'nightshift_recovery'
+  | 'nightshift_trees'
+  | 'nightshift_agents';
 
 /** Uses the same original business steps for ordinary Kibana and each worker backend. */
 export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: string) => {
   const steps = {
+    nightshift_agents: [
+      { name: 'ensure', type: 'nightshift.ensureInvestigationAgent' },
+      {
+        name: 'ensureReinforcement',
+        type: 'nightshift.ensureInvestigationAgent',
+        with: { agent_id: 'significant-events.decision-tree-reinforcement' },
+      },
+    ],
+    nightshift_trees: [
+      {
+        name: 'prepare',
+        type: 'nightshift.decisionTreePrepare',
+        with: {
+          response: 'status: confirmed',
+          agent_id: 'nightshift.investigation',
+          tool_calls: [
+            {
+              tool_id: 'nightshift_sandbox_view_file',
+              params: { file_path: `/workspace/decision-trees/decision_tree_${id}.md` },
+            },
+          ],
+        },
+      },
+    ],
+    nightshift_model: [
+      {
+        name: 'model',
+        type: 'nightshift.resolveModel',
+        with: { step: 'investigation', connector_id: endpoint },
+      },
+    ],
+    nightshift_recovery: [
+      {
+        name: 'recover',
+        type: 'nightshift.followUpRecoveredAlert',
+        with: {
+          alert_uuid: id,
+          alert_id: id,
+          rule_id: 'lane-b-rule',
+          rule_name: 'Lane B rule',
+          rule_type_id: 'lane-b-local',
+        },
+      },
+    ],
     nightshift: [
       {
         name: 'compose',
@@ -276,6 +324,17 @@ export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: s
     ],
   }[family];
   const document = {
+    nightshift_agents: {
+      agentId: '{{ steps.ensure.output.agent_id }}',
+      reinforcementAgentId: '{{ steps.ensureReinforcement.output.agent_id }}',
+    },
+    nightshift_trees: {
+      treeCount: '{{ steps.prepare.output.tree_count }}',
+      treeMessage: '{{ steps.prepare.output.message }}',
+      turnKind: '{{ steps.prepare.output.turn_kind }}',
+    },
+    nightshift_model: { selectedModel: '{{ steps.model.output.connector_id }}' },
+    nightshift_recovery: { skipReason: '{{ steps.recover.output.skip_reason }}' },
     nightshift: {
       modelContext: '{{ steps.compose.output.model_context }}',
       recalledId:

@@ -12,15 +12,12 @@ import type {
   AgentTypeDefinition,
 } from '@kbn/agent-builder-server/agents';
 import type { Logger } from '@kbn/core/server';
-import {
-  SET_HYPOTHESES_TOOL_ID,
-  SET_IMPACT_TOOL_ID,
-} from '@kbn/agentic-investigations-plugin/common';
 import { PROPOSALS_CREATE_TOOL_ID } from '@kbn/proposals-common';
 import {
   NIGHTSHIFT_AGENT_OPTIMIZE_WORKFLOW_ID,
   NIGHTSHIFT_SANDBOX_MATERIALIZE_WORKSPACE_WORKFLOW_ID,
 } from '@kbn/workflows/managed';
+import { INVESTIGATION_TOOL_IDS } from './tool_ids';
 import { NIGHTSHIFT_INVESTIGATION_AGENT_ID } from '../../../common';
 import instructions from './instructions/investigator.md.text';
 import decisionTreesSection from './instructions/decision_trees.text';
@@ -45,7 +42,7 @@ export const SANDBOX_TOOL_IDS = [
  * `set_conversation_metadata` (summary, verdict, severity) is not listed: Agent Builder adds it to
  * every run on a template conversation, which every investigation is.
  */
-export const INVESTIGATION_TOOL_IDS = [SET_IMPACT_TOOL_ID, SET_HYPOTHESES_TOOL_ID] as const;
+export { INVESTIGATION_TOOL_IDS } from './tool_ids';
 
 export const INVESTIGATION_AGENT_NAME = 'Nightshift Investigator';
 export const INVESTIGATION_AGENT_DESCRIPTION =

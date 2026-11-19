@@ -21,8 +21,8 @@ import {
 } from '../decision_trees/materialize';
 import { MEMORY_WORKSPACE_ROOT } from '../memory/materialize';
 import { isCanonicalMemoryId, slugFromMemoryId, toMemoryKiId } from '../memory/page_store';
-import { SANDBOX_BASH_TOOL_ID } from '../tools/sandbox_bash/tool';
-import { SANDBOX_VIEW_FILE_TOOL_ID } from '../tools/sandbox_bash/view_file_tool';
+import { SANDBOX_BASH_TOOL_ID } from '../tools/sandbox_bash/tool_ids';
+import { SANDBOX_VIEW_FILE_TOOL_ID } from '../tools/sandbox_bash/view_file_tool_ids';
 import {
   stepsFromRound,
   type InvestigationTranscriptStep,

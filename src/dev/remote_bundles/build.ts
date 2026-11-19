@@ -141,6 +141,7 @@ export const buildRemoteBundle = async ({
     metafile: true,
     write: false,
     charset: 'ascii',
+    loader: { '.text': 'text' },
     tsconfigRaw: { compilerOptions: { experimentalDecorators: true } },
     plugins: [
       {

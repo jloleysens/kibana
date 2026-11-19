@@ -8,7 +8,7 @@
 import type { Logger } from '@kbn/core/server';
 import type { SandboxSession } from '@kbn/sandbox-plugin/server';
 import { formatHydrateNotification } from '../lib/hydrate_notification';
-import { SANDBOX_VIEW_FILE_TOOL_ID } from '../tools/sandbox_bash/view_file_tool';
+import { SANDBOX_VIEW_FILE_TOOL_ID } from '../tools/sandbox_bash/view_file_tool_ids';
 import { formatPageRefs, previewText } from './log_format';
 import type { MemoryPageStore } from './page_store';
 import {

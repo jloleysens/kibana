@@ -12,7 +12,8 @@ import { defineInvestigationAttachment } from '@kbn/agentic-investigations-plugi
 import { investigationNotificationDestinationSchema } from '../../../common';
 
 export const NOTIFICATION_ROUTING_ATTACHMENT_TYPE = 'nightshift.notification_routing';
-export const notificationPhaseSchema = z.enum(['started', 'completed', 'failed']);
+export { notificationPhaseSchema } from './notification_phase';
+import { notificationPhaseSchema } from './notification_phase';
 const identifier = z.string().min(1).max(500);
 const messageId = z.string().min(1).max(100);
 const timestamp = z.string().min(1).max(64);

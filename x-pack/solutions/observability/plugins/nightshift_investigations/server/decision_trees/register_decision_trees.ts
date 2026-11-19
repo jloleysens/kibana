@@ -9,21 +9,13 @@ import type { ElasticsearchClient, Logger } from '@kbn/core/server';
 import { i18n } from '@kbn/i18n';
 import type { ContextEnginePluginSetup } from '@kbn/context-engine-plugin/server';
 import type { SandboxSession } from '@kbn/sandbox-plugin/server';
-import type { DecisionTreeTurnKind } from '@kbn/nightshift-decision-trees';
 import {
   DECISION_TREE_AI_INDEX_DEST,
   DECISION_TREE_AI_INDEX_ID,
 } from '../../common/decision_trees';
-import {
-  embedAccessedTreesMarker,
-  extractAccessedTreeIds,
-  parseAccessedTreesMarker,
-  type InvestigationToolCall,
-} from './accessed_trees';
-import { createLearningStore } from './learning_store';
+import { parseAccessedTreesMarker } from './accessed_trees';
 import { materializeDecisionTrees } from './materialize';
 import { createDecisionTreeStore } from './store';
-import { buildReinforcementPrompt } from './turn';
 
 /**
  * Registers the dedicated decision-tree AI index with the Context Engine so it is a managed,
@@ -79,46 +71,4 @@ export const hydrateDecisionTreeWorkspace = async ({
   return trees.length;
 };
 
-/**
- * Builds the closing message for a completed investigation round: the trees the agent may edit,
- * the learnings already on file, and the turn script for this phase. The round itself is handed
- * to the agent separately, as conversation history.
- */
-export const prepareReinforcementTurn = async ({
-  response,
-  connectorNames,
-  esClient,
-  logger,
-  spaceId,
-  signal,
-  toolCalls = [],
-}: {
-  response: string;
-  connectorNames: string[];
-  esClient: ElasticsearchClient;
-  logger: Logger;
-  spaceId: string;
-  signal?: AbortSignal;
-  toolCalls?: InvestigationToolCall[];
-}): Promise<{ message: string; treeCount: number; turnKind: DecisionTreeTurnKind }> => {
-  const [trees, learnings] = await Promise.all([
-    createDecisionTreeStore({ esClient, logger, spaceId, signal }).list(),
-    createLearningStore({ esClient, logger, spaceId, signal }).list(),
-  ]);
-
-  const accessedIds = new Set(extractAccessedTreeIds(toolCalls));
-  const accessed = trees.filter(
-    (tree) => tree.status !== 'archived' && accessedIds.has(tree.tree_id)
-  );
-  const { message, turnKind } = buildReinforcementPrompt({
-    trees: accessed,
-    learnings,
-    connectorNames,
-    response,
-  });
-  return {
-    message: [embedAccessedTreesMarker(accessed.map((tree) => tree.tree_id)), message].join('\n'),
-    treeCount: accessed.length,
-    turnKind,
-  };
-};
+export { prepareReinforcementTurn } from './prepare_reinforcement_turn';

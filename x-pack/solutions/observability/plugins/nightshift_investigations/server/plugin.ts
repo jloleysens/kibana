@@ -62,6 +62,15 @@ import { triggerInvestigationStepDefinition } from './step_definitions/trigger_i
 import { followUpRecoveredAlertStepDefinition } from './step_definitions/follow_up_recovered_alert';
 import { obtainSandboxStepDefinition } from './step_definitions/obtain_sandbox';
 import { composeHydrateNotificationsStepDefinition } from './step_definitions/compose_hydrate_notifications';
+import { DecisionTreePolicyToken } from './remote/decision_tree_policy_tokens';
+import { DecisionTreePolicy } from './remote/decision_tree_policy';
+import { AgentInstallationToken } from './remote/agent_installation_tokens';
+import { AgentInstallation, createAgentInstaller } from './remote/agent_installation';
+import { InvestigationsToken } from './remote/investigations_tokens';
+import { ModelSelectionToken } from './remote/model_selection_tokens';
+import { ModelSelection } from './remote/model_selection';
+import { createModelResolver } from './remote/model_resolution';
+import { Investigations } from './remote/investigations';
 import { resolveModelStepDefinition } from './step_definitions/resolve_model';
 import { cortexHydrateStepDefinition } from './step_definitions/cortex_hydrate';
 import { memoryMaterializeToSandboxStepDefinition } from './step_definitions/memory_materialize_to_sandbox';
@@ -174,6 +183,42 @@ export class NightshiftInvestigationsPlugin
     );
     const settingsLocator = plugins.share.url.locators.create(
       new NightshiftSettingsLocatorDefinition()
+    );
+    core.remote.bind(
+      ModelSelectionToken,
+      (scopes) =>
+        new ModelSelection(
+          scopes,
+          createModelResolver({
+            getInference: () => this.inference,
+            getSavedObjects: () => this.savedObjects,
+            getUiSettings: () => this.uiSettings,
+            logger: this.logger.get('resolve_model'),
+          })
+        )
+    );
+    core.remote.bind(
+      InvestigationsToken,
+      (scopes) => new Investigations(scopes, this.getInvestigationsClient, investigationLocator)
+    );
+    core.remote.bind(
+      DecisionTreePolicyToken,
+      (scopes) =>
+        new DecisionTreePolicy(scopes, () => ({
+          enabled: this.decisionTreesEnabled,
+          telemetryConnectorId: this.ctx.config.get().sandbox?.telemetry_connector_id,
+        }))
+    );
+    core.remote.bind(
+      AgentInstallationToken,
+      (scopes) =>
+        new AgentInstallation(
+          scopes,
+          createAgentInstaller({
+            getAgentBuilder: () => this.agentBuilder,
+            getAgentAvailability: () => this.getInvestigationAvailability(),
+          })
+        )
     );
     registerInvestigationsWorkflowTriggers(plugins.workflowsExtensions);
     const isNightshiftEnabledSync = createIsNightshiftEnabledSync(core.getStartServices);

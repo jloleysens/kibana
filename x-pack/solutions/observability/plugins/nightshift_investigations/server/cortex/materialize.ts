@@ -15,7 +15,7 @@ import {
   type CortexPageSummary,
 } from '../../common/cortex';
 import type { CortexTelemetry } from '../telemetry';
-import { SANDBOX_VIEW_FILE_TOOL_ID } from '../tools/sandbox_bash/view_file_tool';
+import { SANDBOX_VIEW_FILE_TOOL_ID } from '../tools/sandbox_bash/view_file_tool_ids';
 import type { CortexPageStore } from './page_store';
 
 export const CORTEX_WORKSPACE_ROOT = '/workspace/cortex';

@@ -102,7 +102,7 @@ export const createLearningStore = ({
   signal,
 }: {
   esClient: ElasticsearchClient;
-  logger: Logger;
+  logger: Pick<Logger, 'debug'>;
   spaceId: string;
   signal?: AbortSignal;
 }): LearningStore => {
