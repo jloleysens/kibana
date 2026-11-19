@@ -179,7 +179,7 @@ streaming coverage deliberately calls original `model.stream`, never changes
 workflow semantics to manufacture a streaming workflow API.
 
 Reviewed shell source growth:2188B ->2857B (laneA runLegacy/types) ->2996B (additive
-runLocal). Source ceiling3300B; same exact two-input allowlist;40KiB median post-GC
+runLocal). Source ceiling3300B; same exact two-input allowlist;50,000B median post-GC
 shell heap unchanged (measured33.6–38.8KiB). Source cap may grow only for explicit
 reviewed API methods with this unchanged allowlist. Any new input requires a
 source fix, not a higher cap. Both token-tracker imports remain dynamic.

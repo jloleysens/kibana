@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import type { SavedObjectsClientContract } from '@kbn/core/server';
+import type { Logger, SavedObjectsClientContract } from '@kbn/core/server';
 import type { ConnectorDashboardRequest, ConnectorDashboardResponse } from './types';
 
 /** Limits dashboard access to the prepared LLM subaction and its requested dashboard ID. */
@@ -19,7 +19,8 @@ export class ConnectorDashboardState {
     private readonly signal: AbortSignal,
     private readonly getAttributes?: (
       id: string
-    ) => import('@kbn/core/server').SavedObjectAttributes
+    ) => import('@kbn/core/server').SavedObjectAttributes,
+    private readonly logger?: Pick<Logger, 'error'>
   ) {
     const subParams = params.subActionParams;
     if (
@@ -49,11 +50,13 @@ export class ConnectorDashboardState {
           : await this.client.create('dashboard', this.getAttributes(id), { id, overwrite: true });
       return { value };
     } catch (error) {
+      this.logger?.error(error);
       return {
         error: {
-          message: error.message,
-          statusCode: error.output?.statusCode ?? 500,
-          error: error.output?.payload?.error ?? 'Error',
+          message: error instanceof Error ? error.message : 'Dashboard service failed',
+          statusCode: typeof error.output?.statusCode === 'number' ? error.output.statusCode : 500,
+          error:
+            typeof error.output?.payload?.error === 'string' ? error.output.payload.error : 'Error',
         },
       };
     }

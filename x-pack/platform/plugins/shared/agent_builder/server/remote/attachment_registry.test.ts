@@ -36,6 +36,8 @@ const setup = () => {
       if (id !== 'run') throw new Error('Foreign run');
       return request;
     }),
+    getRunState: jest.fn(),
+    admitChild: jest.fn(),
     getAbortSignal: (id: string) => {
       if (id !== 'run') throw new Error('Foreign run');
       return controller.signal;

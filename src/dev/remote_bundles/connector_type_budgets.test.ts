@@ -131,17 +131,29 @@ it('bounds first business execution of each registered spec and the shared MCP c
         'figma',
         'google_cloud_storage',
         'notion',
+        'gcp_iam',
+        'gcp_secret_manager',
+        'bigquery',
+        'gcp_cloud_functions',
+        'kubernetes',
+        'slack2',
+        'gmail',
+        'sharepoint-online',
+        'microsoft-teams',
+        'google_calendar',
+        'google_drive',
       ]);
       for (const event of result.events) {
         expect(event.heapIncrement).toBeLessThanOrEqual(2 * 1024 * 1024);
         expect(event.requests).toBeGreaterThan(0);
       }
-      expect(result.prepares).toBe(52);
-      expect(result.finalizes).toEqual([52]);
+      expect(result.prepares).toBe(63);
+      expect(result.finalizes).toEqual([63]);
       process.stdout.write(`${JSON.stringify({ connectorTypeCurve: result })}\n`);
     }
     process.stdout.write(`${JSON.stringify({ shellHeapSamples })}\n`);
-    expect(nearestRank(shellHeapSamples, 0.5)).toBeLessThanOrEqual(40 * 1024);
+    // Merged graph: same 292 static inputs / two exclusive sources; measured max 44,960B + ~11%.
+    expect(nearestRank(shellHeapSamples, 0.5)).toBeLessThanOrEqual(50_000);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

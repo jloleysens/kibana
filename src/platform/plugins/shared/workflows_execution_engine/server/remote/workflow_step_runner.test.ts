@@ -124,7 +124,18 @@ const setup = (handler: ServerHandlerStepDefinition['handler']) => {
     dependencies,
     executions,
     new StepExecutionRepository(client),
-    { get: jest.fn().mockReturnValue(request), getAbortSignal: () => scopeController.signal },
+    {
+      get: jest.fn().mockReturnValue(request),
+      getAbortSignal: () => scopeController.signal,
+      getRunState: () => ({
+        workflowRunId: 'run',
+        workflowId: execution.workflowId,
+        workflowName: 'By reference',
+        spaceId: 'default',
+        admittedChildren: new Set(),
+      }),
+      admitChild: jest.fn(),
+    },
     loggerMock.create()
   );
   const reference = async (): Promise<WorkflowStepInvocation> => ({

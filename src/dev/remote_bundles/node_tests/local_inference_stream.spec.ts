@@ -81,6 +81,7 @@ it.each(['in_process', 'child_process'] as const)(
         Parameters<NativeActionsApi['finalize']>
       >(async () => {});
       const actions: NativeActionsApi = {
+        finalizeRetry: jest.fn(async () => {}),
         dashboard: jest.fn(),
         token: jest.fn(),
         relay: jest.fn(),

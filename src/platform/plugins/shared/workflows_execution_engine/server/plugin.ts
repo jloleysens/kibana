@@ -471,6 +471,7 @@ export class WorkflowsExecutionEnginePlugin
                     ? (scopedRequest, workflowSignal, dependencyPlan) =>
                         dispatchWorkflow({
                           coreStart,
+                          repositories: { workflowExecutionRepository, stepExecutionRepository },
                           remote: core.remote,
                           request: scopedRequest,
                           dependencyPlan,
@@ -780,6 +781,7 @@ export class WorkflowsExecutionEnginePlugin
                     ? (scopedRequest, workflowSignal, dependencyPlan) =>
                         dispatchWorkflow({
                           coreStart,
+                          repositories: { workflowExecutionRepository, stepExecutionRepository },
                           remote: core.remote,
                           request: scopedRequest,
                           dependencyPlan,
@@ -1221,6 +1223,7 @@ export class WorkflowsExecutionEnginePlugin
                       ? (scopedRequest, workflowSignal, dependencyPlan) =>
                           dispatchWorkflow({
                             coreStart,
+                            repositories: { workflowExecutionRepository, stepExecutionRepository },
                             remote: core.remote,
                             request: scopedRequest,
                             dependencyPlan,
@@ -1415,7 +1418,8 @@ export class WorkflowsExecutionEnginePlugin
                 signal.removeEventListener('abort', onAbort);
               }
             },
-          }
+          },
+          scopes
         );
       };
       this.coreSetup.remote.bindInProcess(WorkflowStorageToken, storageFactory);
@@ -1481,7 +1485,8 @@ export class WorkflowsExecutionEnginePlugin
                 );
                 return {};
               }
-            }
+            },
+            this.logger
           )
       );
       this.coreSetup.remote.bind(
@@ -1500,7 +1505,9 @@ export class WorkflowsExecutionEnginePlugin
                 throw new Error('Workflow engine is not ready');
               return workflowsExecutionEngineForRemoteNodes;
             },
-            this.config
+            this.config,
+            (workflow, request, spaceId) =>
+              hasWorkflowAccess(workflow, request, coreStart, { id: workflow.id, spaceId })
           )
       );
       this.coreSetup.remote.bind(
@@ -1824,6 +1831,7 @@ export class WorkflowsExecutionEnginePlugin
             ? (scopedRequest, workflowSignal, dependencyPlan) =>
                 dispatchWorkflow({
                   coreStart,
+                  repositories: { workflowExecutionRepository, stepExecutionRepository },
                   remote,
                   request: scopedRequest,
                   dependencyPlan,

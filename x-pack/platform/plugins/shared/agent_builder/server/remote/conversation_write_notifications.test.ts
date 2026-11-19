@@ -225,7 +225,12 @@ it('fails as an original OCC conflict when the worker read differs from the coor
   get.mockResolvedValueOnce(snapshot(1)).mockResolvedValueOnce(snapshot(2));
   const request = httpServerMock.createKibanaRequest();
   const registry = new ConversationRegistry(
-    { get: jest.fn().mockReturnValue(request), getAbortSignal: () => new AbortController().signal },
+    {
+      get: jest.fn().mockReturnValue(request),
+      getRunState: jest.fn(),
+      admitChild: jest.fn(),
+      getAbortSignal: () => new AbortController().signal,
+    },
     async () => context
   );
   const native = await createNativeConversation({
@@ -254,6 +259,8 @@ it('uses the captured OCC tokens and never notifies after a competing write wins
   const registry = new ConversationRegistry(
     {
       get: jest.fn().mockReturnValue(httpServerMock.createKibanaRequest()),
+      getRunState: jest.fn(),
+      admitChild: jest.fn(),
       getAbortSignal: () => new AbortController().signal,
     },
     async () => context

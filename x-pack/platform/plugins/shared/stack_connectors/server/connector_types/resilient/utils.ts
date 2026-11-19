@@ -5,7 +5,10 @@
  * 2.0.
  */
 
-import { isNumber, isString, isBoolean, isObject } from 'lodash';
+import isNumber from 'lodash/isNumber';
+import isString from 'lodash/isString';
+import isBoolean from 'lodash/isBoolean';
+import isObject from 'lodash/isObject';
 import type {
   ResilientUpdateFieldValue,
   ResilientTextAreaField,

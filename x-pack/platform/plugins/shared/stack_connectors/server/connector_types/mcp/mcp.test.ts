@@ -14,19 +14,17 @@ import type { ServiceParams } from '@kbn/actions-plugin/server/sub_action_framew
 import { LeasePool } from '@kbn/actions-plugin/server/lib';
 import type { MCPConnectorConfig, MCPConnectorSecrets } from '@kbn/connector-schemas/mcp';
 import { CONNECTOR_ID, SUB_ACTION } from '@kbn/connector-schemas/mcp/constants';
-import { clientTypes } from '@kbn/connector-specs/server';
+import { mcpClientType as originalMcpClientType } from '@kbn/connector-specs/server/mcp_client_type';
 import { getErrorSource, TaskErrorSource } from '@kbn/task-manager-plugin/server/task_running';
 import { buildHeadersFromSecrets } from './auth_helpers';
 
-jest.mock('@kbn/connector-specs/server', () => ({
-  clientTypes: {
-    mcp: {
-      id: 'mcp',
-      build: jest.fn(),
-      terminate: jest.fn(),
-      isUserError: jest.fn(),
-      shouldInvalidateOnError: jest.fn(),
-    },
+jest.mock('@kbn/connector-specs/server/mcp_client_type', () => ({
+  mcpClientType: {
+    id: 'mcp',
+    build: jest.fn(),
+    terminate: jest.fn(),
+    isUserError: jest.fn(),
+    shouldInvalidateOnError: jest.fn(),
   },
 }));
 
@@ -34,7 +32,7 @@ jest.mock('./auth_helpers', () => ({
   buildHeadersFromSecrets: jest.fn().mockReturnValue({}),
 }));
 
-const mcpClientType = clientTypes.mcp as {
+const mcpClientType = originalMcpClientType as {
   id: string;
   build: jest.Mock;
   terminate: jest.Mock;

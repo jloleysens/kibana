@@ -5,6 +5,7 @@
  * 2.0.
  */
 
+import type { DocWithOptionalId } from './es/cluster_client_adapter';
 import { nanosToMillis } from '../common';
 import type { IEvent, IEventLogger, IEventLogService } from '.';
 import { ECS_VERSION } from './types';
@@ -73,6 +74,34 @@ describe('EventLogger', () => {
       .mockRejectedValue(new Error('bulk unavailable'));
     await expect(eventLogger.logEvents([{ message: 'three' }])).rejects.toThrow('bulk unavailable');
   });
+
+  test.each(['partial success', 'lost acknowledgement'])(
+    'logEvents reuses explicit IDs after %s',
+    async (failure) => {
+      service.registerProviderActions('test-provider', ['test-action-1']);
+      eventLogger = service.getLogger({
+        event: { provider: 'test-provider', action: 'test-action-1' },
+      });
+      const persisted = new Map();
+      let attempt = 0;
+      jest.mocked(esContext.esAdapter.indexDocuments).mockImplementation(async (docs) => {
+        attempt++;
+        for (const [index, doc] of docs.entries()) {
+          if (failure === 'partial success' && attempt === 1 && index === 1) break;
+          const { id, body } = doc as DocWithOptionalId;
+          expect(typeof id).toBe('string');
+          persisted.set(id, body);
+        }
+        if (attempt === 1) throw new Error(failure);
+      });
+      const events = [{ message: 'one' }, { message: 'two' }];
+      await expect(eventLogger.logEvents(events)).rejects.toThrow(failure);
+      await eventLogger.logEvents(events);
+      expect(persisted.size).toBe(2);
+      const calls = jest.mocked(esContext.esAdapter.indexDocuments).mock.calls;
+      expect(calls[1][0]).toEqual(calls[0][0]);
+    }
+  );
 
   test('logEvents validates the whole batch before writing anything', async () => {
     service.registerProviderActions('test-provider', ['test-action-1']);

@@ -65,3 +65,17 @@ it.each(['abort', 'finalize'])('rejects calls after %s', async (operation) => {
   await expect(state.execute({ operation: 'create' })).rejects.toThrow();
   expect(client.create).not.toHaveBeenCalled();
 });
+
+it('serializes dashboard failures without service request metadata', async () => {
+  const { client, state } = setup();
+  client.get.mockRejectedValue(
+    Object.assign(new Error('not found'), {
+      output: { statusCode: 404, payload: { error: 'Not Found' } },
+      meta: { request: { headers: { Authorization: 'Bearer coordinator-only-secret' } } },
+    })
+  );
+  const wire = JSON.stringify(await state.execute({ operation: 'get' }));
+  expect(wire).toContain('404');
+  expect(wire).not.toContain('Authorization');
+  expect(wire).not.toContain('coordinator-only-secret');
+});

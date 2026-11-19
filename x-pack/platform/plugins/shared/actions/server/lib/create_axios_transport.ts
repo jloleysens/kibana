@@ -113,6 +113,7 @@ const resolveConnectorAuth = (
     profileUid,
   };
   const authCtx: AuthContext = {
+    ensureUriAllowed: (url) => configurationUtilities.ensureUriAllowed(url),
     getCustomHostSettings: (url: string) => configurationUtilities.getCustomHostSettings(url),
     getToken: async (opts: GetTokenOpts) => {
       try {

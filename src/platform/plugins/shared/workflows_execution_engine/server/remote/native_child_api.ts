@@ -10,9 +10,14 @@
 import type { KibanaRequest } from '@kbn/core/server';
 import { remotable } from '@kbn/core-remote-common';
 import type { ScopeLookup } from '@kbn/core-remote-server';
-import { toWorkflowExecutionEngineModel, type WorkflowRepository } from '@kbn/workflows';
+import {
+  type EsWorkflow,
+  toWorkflowExecutionEngineModel,
+  type WorkflowRepository,
+} from '@kbn/workflows';
 import { WORKFLOW_STEP_TRIGGER_SOURCE } from '@kbn/workflows-runtime';
 import type { WorkflowChildApi } from './tokens';
+import { assertWorkflowRunScope } from './workflow_run_scope';
 import type { WorkflowsExecutionEngineConfig } from '../config';
 import type { StepExecutionRepository } from '../repositories/step_execution_repository';
 import type { WorkflowExecutionRepository } from '../repositories/workflow_execution_repository';
@@ -31,26 +36,38 @@ export class NativeChildApi implements WorkflowChildApi {
       WorkflowsExecutionEnginePluginStart,
       'executeWorkflow' | 'cancelWorkflowExecution'
     >,
-    private readonly config: Pick<WorkflowsExecutionEngineConfig, 'maxWorkflowDepth'>
+    private readonly config: Pick<WorkflowsExecutionEngineConfig, 'maxWorkflowDepth'>,
+    private readonly canExecute: (
+      workflow: EsWorkflow,
+      request: KibanaRequest,
+      spaceId: string
+    ) => Promise<boolean>
   ) {}
 
   async getWorkflow(
     ...args: Parameters<WorkflowChildApi['getWorkflow']>
   ): ReturnType<WorkflowChildApi['getWorkflow']> {
     const [scopeId, parentId, spaceId, workflowId] = args;
-    this.scopes.get<KibanaRequest>(scopeId);
+    assertWorkflowRunScope(this.scopes, scopeId, parentId, spaceId);
     const parent = await this.executions.getWorkflowExecutionById(parentId, spaceId);
     if (!parent) throw new Error('Parent workflow execution not found');
-    return this.workflows.getWorkflow(workflowId, spaceId, {
+    const workflow = await this.workflows.getWorkflow(workflowId, spaceId, {
       includeGlobal: parent.managed === true,
       managedFilter: parent.managed === true ? 'all' : 'unmanaged',
     });
+    if (
+      workflow &&
+      !(await this.canExecute(workflow, this.scopes.get<KibanaRequest>(scopeId), spaceId))
+    )
+      throw new Error('You do not have permission to execute this workflow');
+    return workflow;
   }
 
   async start(
     ...args: Parameters<WorkflowChildApi['start']>
   ): ReturnType<WorkflowChildApi['start']> {
     const [scopeId, parentId, spaceId, request] = args;
+    assertWorkflowRunScope(this.scopes, scopeId, parentId, spaceId);
     const fakeRequest = this.scopes.get<KibanaRequest>(scopeId);
     const signal = this.scopes.getAbortSignal(scopeId);
     signal.throwIfAborted();
@@ -86,6 +103,7 @@ export class NativeChildApi implements WorkflowChildApi {
       },
       fakeRequest
     );
+    if (!signal.aborted) this.scopes.admitChild(scopeId, result.workflowExecutionId);
     if (signal.aborted) {
       await this.engine().cancelWorkflowExecution(result.workflowExecutionId, spaceId, fakeRequest);
       signal.throwIfAborted();
@@ -97,7 +115,7 @@ export class NativeChildApi implements WorkflowChildApi {
     ...args: Parameters<WorkflowChildApi['getExecution']>
   ): ReturnType<WorkflowChildApi['getExecution']> {
     const [scopeId, id, spaceId] = args;
-    this.scopes.get<KibanaRequest>(scopeId);
+    this.assertAdmitted(scopeId, id, spaceId);
     return this.executions.getWorkflowExecutionById(id, spaceId);
   }
 
@@ -105,18 +123,41 @@ export class NativeChildApi implements WorkflowChildApi {
     ...args: Parameters<WorkflowChildApi['getSteps']>
   ): ReturnType<WorkflowChildApi['getSteps']> {
     const [scopeId, id, ids] = args;
-    this.scopes.get<KibanaRequest>(scopeId);
-    return this.steps.getStepExecutionsByWorkflowExecution(id, ids);
+    const state = this.assertAdmitted(scopeId, id);
+    const execution = await this.executions.getWorkflowExecutionById(id, state.spaceId);
+    if (!execution) return [];
+    const allowedIds = execution.stepExecutionIds;
+    if (ids?.some((stepId) => !allowedIds?.includes(stepId)))
+      throw new Error('Workflow step is outside the scoped execution');
+    const steps = await this.steps.getStepExecutionsByWorkflowExecution(id, ids ?? allowedIds);
+    if (steps.some((step) => step.workflowRunId !== id || step.spaceId !== state.spaceId))
+      throw new Error('Workflow step is outside the scoped execution');
+    return steps;
   }
 
   async cancel(
     ...args: Parameters<WorkflowChildApi['cancel']>
   ): ReturnType<WorkflowChildApi['cancel']> {
     const [scopeId, id, spaceId] = args;
+    this.assertAdmitted(scopeId, id, spaceId);
     return this.engine().cancelWorkflowExecution(
       id,
       spaceId,
       this.scopes.get<KibanaRequest>(scopeId)
     );
+  }
+
+  private assertAdmitted(
+    scopeId: string,
+    id: string,
+    spaceId?: string
+  ): ReturnType<ScopeLookup['getRunState']> {
+    this.scopes.get<KibanaRequest>(scopeId);
+    const state = this.scopes.getRunState(scopeId);
+    if (spaceId !== undefined && spaceId !== state.spaceId)
+      throw new Error('Workflow resource is outside the scoped execution');
+    if (id !== state.workflowRunId && !state.admittedChildren.has(id))
+      throw new Error('Workflow execution is not an admitted child');
+    return state;
   }
 }

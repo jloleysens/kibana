@@ -32,8 +32,8 @@ import type { SubActionConnector } from './sub_action_framework/sub_action_conne
 import type { ServiceParams } from './sub_action_framework/types';
 
 export type { ActionTypeExecutorRawResult, ActionTypeExecutorResult } from '../common';
-export { ActionExecutionSourceType } from './lib';
-export { ConnectorUsageCollector } from './usage';
+export { ActionExecutionSourceType } from './lib/action_execution_source';
+export { ConnectorUsageCollector } from './usage/connector_usage_collector';
 export type WithoutQueryAndParams<T> = Pick<T, Exclude<keyof T, 'query' | 'params'>>;
 export type GetServicesFunction = (request: KibanaRequest) => Services;
 export type GetUnsecuredServicesFunction = () => UnsecuredServices;
@@ -47,6 +47,10 @@ export type ConnectorTokenStore = Pick<
   ConnectorTokenClientContract,
   'get' | 'updateOrReplace' | 'deleteConnectorTokens' | 'updateWithRefreshToken'
 > & {
+  readonly refreshEars?: (
+    refreshToken: string
+  ) => Promise<import('./lib/request_oauth_token').OAuthTokenResponse>;
+  readonly withRefreshTransaction?: <T>(id: string, refresh: () => Promise<T>) => Promise<T>;
   readonly withRefreshLock?: <T>(refresh: () => Promise<T>) => Promise<T>;
 };
 
@@ -241,6 +245,9 @@ export interface ActionTypeCoreFields<
   id: string;
   name: string;
   maxAttempts?: number;
+  getEmailExecutionFacts?: (
+    config: Record<string, unknown>
+  ) => Promise<import('./remote/classic_connector_types').EmailExecutionFacts>;
   minimumLicenseRequired: LicenseType;
   supportedFeatureIds: string[];
   isSystemActionType?: boolean;

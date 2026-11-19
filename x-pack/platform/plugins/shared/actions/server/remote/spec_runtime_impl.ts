@@ -22,6 +22,8 @@ import {
   isUserError,
 } from '@kbn/task-manager-plugin/server/task_running/errors';
 import type { Logger } from '@kbn/core/server';
+import { sanitizeConnectorError } from './connector_error';
+import type { ClassicConnectorType } from './classic_connector_types';
 import { ConnectorUsageCollector } from '../usage/connector_usage_collector';
 import type { ConnectorFinalization, NativeActionsApi } from './types';
 import { configSchema } from '../config';
@@ -85,6 +87,7 @@ export class SpecRuntime implements SpecRuntimeApi {
   private readonly localCompletions = new Map<string, Set<() => Promise<void>>>();
   private readonly drains = new Map<string, Promise<void>>();
   private readonly pending = new Map<string, ConnectorFinalization[]>();
+  private readonly retries = new Map<string, string[]>();
   constructor(private readonly actions: NativeActionsApi) {}
 
   async run(
@@ -141,7 +144,10 @@ export class SpecRuntime implements SpecRuntimeApi {
             },
             networkSettings: createConnectorNetworkSettings(configurationUtilities),
             platform: createPlatformServices(configurationUtilities),
-            clientTypes: {},
+            getClientType: async (id) =>
+              (await import('@kbn/connector-specs/src/lib/clients/get_client_type')).getClientType(
+                id
+              ),
             errors: { createTaskRunError, TaskErrorSource, getErrorSource, isUserError },
           });
           let actionType = context.actionTypes.get(spec.metadata.id);
@@ -175,7 +181,8 @@ export class SpecRuntime implements SpecRuntimeApi {
                   connectorTokenClient: createConnectorTokenStore(
                     this.actions,
                     scopeId,
-                    invocationId
+                    invocationId,
+                    prepared.earsTransportAvailable
                   ),
                   params: validatedParams,
                   config: validatedConfig,
@@ -398,6 +405,70 @@ export class SpecRuntime implements SpecRuntimeApi {
     }
   }
 
+  async runClassic<
+    Config extends Record<string, unknown>,
+    Secrets extends Record<string, unknown>,
+    Params extends Record<string, unknown>,
+    Result
+  >(
+    type: string,
+    createConnector: (
+      prepared: PreparedConnector
+    ) => ClassicConnectorType<Config, Secrets, Params, Result>,
+    scopeId: string,
+    input: unknown,
+    signal?: AbortSignal
+  ): Promise<unknown> {
+    return this.runPrepared(
+      type,
+      scopeId,
+      input,
+      signal,
+      async (prepared, context, logger, invocationId, markHandler) => {
+        const connector = createConnector(prepared);
+        if (connector.id.replace(/^\./, '') !== type.replace(/^\./, ''))
+          throw new Error('Classic connector type mismatch');
+        const usage = new ConnectorUsageCollector({ logger, connectorId: prepared.actionId });
+        const runtime = await executeAction(
+          {
+            ...prepared,
+            actionType: {
+              id: connector.id,
+              name: connector.name,
+              minimumLicenseRequired: connector.minimumLicenseRequired,
+              supportedFeatureIds: connector.supportedFeatureIds,
+              validate: connector.validate as ActionType['validate'],
+            },
+            configurationUtilities: context.configurationUtilities,
+            executor: ({ validatedParams, validatedConfig, validatedSecrets }) => {
+              markHandler();
+              recordRemoteTiming('connector_classic_handler', { stepType: connector.id, scopeId });
+              const connectorTokenClient = createConnectorTokenStore(
+                this.actions,
+                scopeId,
+                invocationId
+              );
+              return connector.executor({
+                ...prepared,
+                params: validatedParams as Params,
+                config: validatedConfig as Config,
+                secrets: validatedSecrets as Secrets,
+                configurationUtilities: context.configurationUtilities,
+                services: { connectorTokenClient },
+                connectorTokenClient,
+                connectorUsageCollector: usage,
+                logger,
+                signal,
+              });
+            },
+          },
+          { TaskErrorSource, getErrorSource, isConnectorAuthorizationError }
+        );
+        return { ...runtime, requestBodyBytes: usage.getRequestBodyByte() };
+      }
+    );
+  }
+
   private async runPrepared(
     type: string,
     scopeId: string,
@@ -431,7 +502,17 @@ export class SpecRuntime implements SpecRuntimeApi {
     const executionStartedAt = Date.now();
     const enqueue = (runtime: ConnectorFinalization['runtime']) => {
       const pending = this.pending.get(scopeId) ?? [];
-      pending.push({ invocationId, runtime });
+      const { error, ...result } = runtime.result;
+      pending.push({
+        invocationId,
+        runtime: {
+          ...runtime,
+          result: {
+            ...result,
+            ...(error ? { error: sanitizeConnectorError(error) } : {}),
+          },
+        },
+      });
       this.pending.set(scopeId, pending);
       queued = true;
     };
@@ -505,11 +586,10 @@ export class SpecRuntime implements SpecRuntimeApi {
 
   async close(scopeId: string): Promise<void> {
     try {
-      await this.drain(scopeId);
+      do {
+        await this.drain(scopeId);
+      } while (this.retries.has(scopeId) || this.pending.get(scopeId)?.length);
     } finally {
-      this.pending.delete(scopeId);
-      this.localCompletions.delete(scopeId);
-      this.drains.delete(scopeId);
       this.contexts.delete(scopeId);
     }
   }
@@ -522,10 +602,26 @@ export class SpecRuntime implements SpecRuntimeApi {
     }
     const existing = this.drains.get(scopeId);
     if (existing) return existing;
-    const pending = this.pending.get(scopeId) ?? [];
-    if (pending.length === 0) return;
-    const drain = this.actions.finalize(scopeId, pending).then(() => {
-      this.pending.delete(scopeId);
+    const drain = (async () => {
+      while (true) {
+        const retryIds = this.retries.get(scopeId);
+        if (retryIds) {
+          await this.actions.finalizeRetry(scopeId, retryIds);
+          this.retries.delete(scopeId);
+          continue;
+        }
+        const pending = this.pending.get(scopeId) ?? [];
+        if (pending.length === 0) return;
+        this.pending.delete(scopeId);
+        const invocationIds = pending.map(({ invocationId }) => invocationId);
+        this.retries.set(scopeId, invocationIds);
+        await this.actions
+          .finalize(scopeId, pending)
+          .catch(() => this.actions.finalizeRetry(scopeId, invocationIds));
+        this.retries.delete(scopeId);
+      }
+    })().finally(() => {
+      this.drains.delete(scopeId);
     });
     this.drains.set(scopeId, drain);
     return drain;

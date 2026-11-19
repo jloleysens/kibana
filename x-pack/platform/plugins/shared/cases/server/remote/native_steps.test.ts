@@ -32,7 +32,12 @@ it.each(contributions)(
         modulePath
       )[exportName];
     const api = new CasesClientOperations(
-      { get: jest.fn(), getAbortSignal: () => new AbortController().signal },
+      {
+        get: jest.fn(),
+        getRunState: jest.fn(),
+        admitChild: jest.fn(),
+        getAbortSignal: () => new AbortController().signal,
+      },
       jest.fn(),
       false,
       () => false
@@ -55,7 +60,12 @@ it('executes the original create handler and original lower-level client operati
   client.cases.create.mockResolvedValue(response);
   const request = {};
   const api = new CasesClientOperations(
-    { get: jest.fn().mockReturnValue(request), getAbortSignal: () => new AbortController().signal },
+    {
+      get: jest.fn().mockReturnValue(request),
+      getRunState: jest.fn(),
+      admitChild: jest.fn(),
+      getAbortSignal: () => new AbortController().signal,
+    },
     jest.fn(async () => client),
     false,
     () => false

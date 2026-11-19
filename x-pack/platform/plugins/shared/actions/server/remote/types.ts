@@ -32,6 +32,7 @@ export type ConnectorDashboardResponse =
     };
 
 export interface PreparedConnector {
+  readonly emailExecutionFacts?: import('./classic_connector_types').EmailExecutionFacts;
   readonly inferenceStreamingFacts?: InferenceStreamingFacts;
   readonly kibanaVersion: string;
   readonly actionId: string;
@@ -43,6 +44,7 @@ export interface PreparedConnector {
   readonly runtimeConfig: RuntimeActionsConfig;
   readonly userAgent?: string;
   readonly relayAvailable?: boolean;
+  readonly earsTransportAvailable?: boolean;
   readonly authMode?: AuthMode;
   readonly profileUid?: string;
   readonly connectorVersion?: string;
@@ -80,10 +82,14 @@ export interface NativeActionsApi {
     request: ConnectorTokenRequest
   ): Promise<ConnectorTokenResponse>;
   finalize(scopeId: string, results: ConnectorFinalization[]): Promise<void>;
+  finalizeRetry(scopeId: string, invocationIds: string[]): Promise<void>;
 }
 
 export type ConnectorTokenRequest =
   | { readonly operation: 'acquireRefreshLock' | 'releaseRefreshLock' }
+  | { readonly operation: 'beginRefresh'; readonly id: string }
+  | { readonly operation: 'endRefresh'; readonly refreshLease: string }
+  | { readonly operation: 'refreshEars'; readonly refreshToken: string }
   | {
       readonly operation: 'get';
       readonly options: Pick<
@@ -101,9 +107,12 @@ export type ConnectorTokenRequest =
   | { readonly operation: 'delete' }
   | {
       readonly operation: 'refresh';
+      readonly refreshLease?: string;
       readonly options: Parameters<ConnectorTokenStore['updateWithRefreshToken']>[0];
     };
 export interface ConnectorTokenResponse {
+  readonly refreshLease?: string;
+  readonly earsToken?: import('../lib/request_oauth_token').OAuthTokenResponse;
   readonly hasErrors: boolean;
   readonly connectorToken: Awaited<ReturnType<ConnectorTokenStore['get']>>['connectorToken'];
 }

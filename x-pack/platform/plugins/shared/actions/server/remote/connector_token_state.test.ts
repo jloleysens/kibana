@@ -43,6 +43,7 @@ const setup = (perUser = false) => {
     dashboard: jest.fn(),
     relay: jest.fn(),
     prepare: jest.fn(),
+    finalizeRetry: async () => {},
     finalize: jest.fn(),
     token,
   };
@@ -261,6 +262,7 @@ it('runs the original stored-token strategy under the same lock as ordinary exec
     refreshFn: async () => ({ accessToken: 'refreshed', tokenType: 'Bearer' }),
   });
   try {
+    await Promise.resolve();
     expect(token.mock.calls[0][2]).toEqual({ operation: 'acquireRefreshLock' });
     expect(client.get).not.toHaveBeenCalled();
   } finally {
@@ -269,4 +271,375 @@ it('runs the original stored-token strategy under the same lock as ordinary exec
     await worker;
     state.close();
   }
+});
+
+it('pins deployment-authenticated EARS refresh to a held lock and a refresh token read in this invocation', async () => {
+  const { client, controller } = setup();
+  client.get.mockResolvedValue({
+    hasErrors: false,
+    connectorToken: { ...stored, refreshToken: 'bound-refresh' },
+  });
+  const refreshed = {
+    accessToken: 'Bearer renewed',
+    tokenType: 'Bearer',
+    expiresIn: 3600,
+    refreshToken: 'rotated',
+  };
+  const refresh = jest.fn().mockResolvedValue(refreshed);
+  const state = new ConnectorTokenState(
+    client,
+    { actionId: 'prepared', authMode: 'shared' },
+    controller.signal,
+    refresh
+  );
+  await expect(
+    state.execute({ operation: 'refreshEars', refreshToken: 'bound-refresh' })
+  ).rejects.toThrow('held refresh lock');
+  await state.execute({ operation: 'acquireRefreshLock' });
+  await expect(
+    state.execute({ operation: 'refreshEars', refreshToken: 'bound-refresh' })
+  ).rejects.toThrow('invocation-local token read');
+  await state.execute({ operation: 'get', options: {} });
+  await expect(state.execute({ operation: 'refreshEars', refreshToken: 'forged' })).rejects.toThrow(
+    'invocation-local token read'
+  );
+  expect(
+    (await state.execute({ operation: 'refreshEars', refreshToken: 'bound-refresh' })).earsToken
+  ).toEqual(refreshed);
+  expect(refresh).toHaveBeenCalledTimes(1);
+  expect(refresh).toHaveBeenCalledWith('bound-refresh');
+  await state.execute({
+    operation: 'refresh',
+    options: {
+      id: stored.id ?? '',
+      token: `${refreshed.tokenType} ${refreshed.accessToken}`,
+      refreshToken: refreshed.refreshToken,
+      expiresIn: refreshed.expiresIn,
+      tokenType: 'access_token',
+    },
+  });
+  expect(client.updateWithRefreshToken).toHaveBeenCalledTimes(1);
+  await state.execute({ operation: 'releaseRefreshLock' });
+  state.close();
+  await expect(
+    state.execute({ operation: 'refreshEars', refreshToken: 'bound-refresh' })
+  ).rejects.toThrow('closed');
+});
+
+it('does not export deployment TLS keys, raw Axios configuration or response bodies on EARS failure', async () => {
+  const { client, controller } = setup();
+  client.get.mockResolvedValue({
+    hasErrors: false,
+    connectorToken: { ...stored, refreshToken: 'bound-refresh' },
+  });
+  const refresh = jest.fn().mockRejectedValue(
+    Object.assign(new Error('system-key-in-message'), {
+      config: { privateKey: 'system-key-in-config' },
+    })
+  );
+  const state = new ConnectorTokenState(
+    client,
+    { actionId: 'prepared' },
+    controller.signal,
+    refresh
+  );
+  await state.execute({ operation: 'acquireRefreshLock' });
+  await state.execute({ operation: 'get', options: {} });
+  await expect(
+    state.execute({ operation: 'refreshEars', refreshToken: 'bound-refresh' })
+  ).rejects.toEqual(new Error('Failed to refresh token from auth redirect service'));
+  state.close();
+});
+
+it('serializes concurrent OAuth refreshes within the same invocation', async () => {
+  const { getStoredTokenWithRefresh } = await import('../lib/get_stored_oauth_token_with_refresh');
+  const { loggingSystemMock } = await import('@kbn/core-logging-server-mocks');
+  const { store, state, client } = setup();
+  const order: string[] = [];
+  let current = { ...stored, refreshToken: 'initial' };
+  let generation = 0;
+  client.get.mockImplementation(async () => ({ hasErrors: false, connectorToken: current }));
+  client.updateWithRefreshToken.mockImplementation(async (update) => {
+    current = { ...current, ...update, refreshToken: update.refreshToken ?? current.refreshToken };
+    return current;
+  });
+  const refreshFn = async (refreshToken: string) => {
+    expect(refreshToken).toBe(current.refreshToken);
+    const id = ++generation;
+    order.push(id + ':start');
+    await new Promise((resolve) => setImmediate(resolve));
+    order.push(id + ':end');
+    return { tokenType: 'Bearer', accessToken: 'new-' + id, refreshToken: 'rotated-' + id };
+  };
+  const refresh = () =>
+    getStoredTokenWithRefresh({
+      connectorId: 'prepared',
+      connectorTokenClient: store,
+      logger: loggingSystemMock.createLogger(),
+      authMethod: 'oauth_authorization_code',
+      forceRefresh: true,
+      refreshFn,
+    });
+  await expect(Promise.all([refresh(), refresh()])).resolves.toEqual([
+    'Bearer new-1',
+    'Bearer new-2',
+  ]);
+  expect(order).toEqual(['1:start', '1:end', '2:start', '2:end']);
+  expect(client.updateWithRefreshToken).toHaveBeenCalledTimes(2);
+  state.close();
+});
+
+it.each([false, true])(
+  'persists rotated EARS credentials under the lock after abort (per-user=%s)',
+  async (perUser) => {
+    const { client, controller } = setup();
+    let current = { ...stored, refreshToken: 'initial' };
+    client.get.mockImplementation(async () => ({ hasErrors: false, connectorToken: current }));
+    client.updateWithRefreshToken.mockImplementation(async (options) => {
+      current = { ...current, ...options };
+      return current;
+    });
+    let finish: () => void = () => {};
+    const provider = jest.fn(async (refreshToken: string) => {
+      expect(refreshToken).toBe(current.refreshToken);
+      if (refreshToken === 'initial')
+        await new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+      return { accessToken: 'new', tokenType: 'Bearer', refreshToken: refreshToken + '-rotated' };
+    });
+    const identity = {
+      actionId: 'prepared',
+      authMode: perUser ? ('per-user' as const) : ('shared' as const),
+      profileUid: 'user',
+    };
+    if (perUser)
+      client.get.mockImplementation(async () => ({
+        hasErrors: false,
+        connectorToken: {
+          ...current,
+          profileUid: 'user',
+          credentials: { accessToken: current.token, refreshToken: current.refreshToken },
+        },
+      }));
+    const first = new ConnectorTokenState(client, identity, controller.signal, provider);
+    await first.execute({ operation: 'acquireRefreshLock' });
+    await first.execute({ operation: 'get', options: {} });
+    const pending = first.execute({ operation: 'refreshEars', refreshToken: 'initial' });
+    controller.abort();
+    const aborted = expect(pending).rejects.toThrow();
+    const next = new ConnectorTokenState(client, identity, new AbortController().signal, provider);
+    let acquired = false;
+    const acquisition = next.execute({ operation: 'acquireRefreshLock' }).then(() => {
+      acquired = true;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(acquired).toBe(false);
+    finish();
+    await aborted;
+    await acquisition;
+    expect(current.refreshToken).toBe('initial-rotated');
+    await next.execute({ operation: 'get', options: {} });
+    await next.execute({ operation: 'refreshEars', refreshToken: current.refreshToken });
+    expect(current.refreshToken).toBe('initial-rotated-rotated');
+    expect(client.updateWithRefreshToken).toHaveBeenCalledTimes(2);
+    await next.execute({ operation: 'releaseRefreshLock' });
+    next.close();
+  }
+);
+
+it.each([undefined, 'oauth'])(
+  'deduplicates only the exact EARS persistence acknowledgement (credentialType=%s)',
+  async (credentialType) => {
+    const { client, controller } = setup();
+    client.get.mockResolvedValue({
+      hasErrors: false,
+      connectorToken: { ...stored, refreshToken: 'bound' },
+    });
+    const state = new ConnectorTokenState(
+      client,
+      { actionId: 'prepared' },
+      controller.signal,
+      async () => ({ accessToken: 'new', tokenType: 'Bearer', refreshToken: 'rotated' })
+    );
+    await state.execute({ operation: 'acquireRefreshLock' });
+    await state.execute({ operation: 'get', options: {} });
+    await state.execute({ operation: 'refreshEars', refreshToken: 'bound' });
+    await state.execute({
+      operation: 'refresh',
+      options: {
+        id: stored.id ?? '',
+        token: 'Bearer new',
+        refreshToken: 'rotated',
+        tokenType: 'access_token',
+        credentialType,
+      },
+    });
+    expect(client.updateWithRefreshToken).toHaveBeenCalledTimes(
+      credentialType === undefined ? 1 : 2
+    );
+    await state.execute({ operation: 'releaseRefreshLock' });
+    state.close();
+  }
+);
+
+it.each([false, true])(
+  'persists ordinary authorization-code rotation after abort and serializes the next refresh (per-user=%s)',
+  async (perUser) => {
+    const { getStoredTokenWithRefresh } = await import(
+      '../lib/get_stored_oauth_token_with_refresh'
+    );
+    const { loggingSystemMock } = await import('@kbn/core-logging-server-mocks');
+    const first = setup(perUser);
+    const second = setup(perUser);
+    let current = { ...stored, refreshToken: 'initial' };
+    const read = async () => ({
+      hasErrors: false,
+      connectorToken: perUser
+        ? {
+            ...current,
+            profileUid: 'prepared-user',
+            credentials: { accessToken: current.token, refreshToken: current.refreshToken },
+          }
+        : current,
+    });
+    const persist = async (
+      options: Parameters<ConnectorTokenStore['updateWithRefreshToken']>[0]
+    ) => {
+      current = { ...current, ...options };
+      return current;
+    };
+    for (const instance of [first, second]) {
+      instance.client.get.mockImplementation(read);
+      instance.client.updateWithRefreshToken.mockImplementation(persist);
+    }
+    let release: () => void = () => {};
+    let entered: () => void = () => {};
+    const ready = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const providerGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const provider = jest.fn(async (refreshToken: string) => {
+      expect(refreshToken).toBe(current.refreshToken);
+      if (refreshToken === 'initial') {
+        entered();
+        await providerGate;
+      }
+      return { tokenType: 'Bearer', accessToken: 'new', refreshToken: refreshToken + '-rotated' };
+    });
+    const refresh = (instance: ReturnType<typeof setup>) =>
+      getStoredTokenWithRefresh({
+        connectorId: 'prepared',
+        connectorTokenClient: instance.store,
+        logger: loggingSystemMock.createLogger(),
+        authMethod: 'oauth_authorization_code',
+        forceRefresh: true,
+        isPerUser: perUser,
+        profileUid: 'prepared-user',
+        refreshFn: provider,
+      });
+    const pending = refresh(first).catch(() => null);
+    await ready;
+    first.controller.abort();
+    const next = refresh(second);
+    await new Promise((resolve) => setImmediate(resolve));
+    const callsBeforeRelease = provider.mock.calls.length;
+    release();
+    await pending;
+    await next;
+    expect(callsBeforeRelease).toBe(1);
+    expect(current.refreshToken).toBe('initial-rotated-rotated');
+    expect(first.client.updateWithRefreshToken).toHaveBeenCalledTimes(1);
+    second.state.close();
+  }
+);
+
+it('bounds an abandoned OAuth transaction and logs the lost-response risk before releasing its lease', async () => {
+  const timer = jest.spyOn(
+    jest.requireActual<typeof import('node:timers')>('node:timers'),
+    'setTimeout'
+  );
+  const { client, controller } = setup();
+  const logger = { error: jest.fn() };
+  const first = new ConnectorTokenState(
+    client,
+    { actionId: 'prepared' },
+    controller.signal,
+    undefined,
+    logger
+  );
+  const next = new ConnectorTokenState(
+    client,
+    { actionId: 'prepared' },
+    new AbortController().signal
+  );
+  try {
+    await first.execute({ operation: 'acquireRefreshLock' });
+    await first.execute({ operation: 'get', options: {} });
+    const lease = await first.execute({ operation: 'beginRefresh', id: stored.id ?? '' });
+    expect(timer.mock.calls.some(([, duration]) => duration === 120_000)).toBe(false);
+    controller.abort();
+    let acquired = false;
+    const acquisition = next.execute({ operation: 'acquireRefreshLock' }).then(() => {
+      acquired = true;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(acquired).toBe(false);
+    const expiry = timer.mock.calls.find(([, duration]) => duration === 120_000)?.[0];
+    if (!expiry) throw new Error('Missing OAuth transaction deadline');
+    expiry();
+    await acquisition;
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('credentials may be lost'));
+    await expect(
+      first.execute({
+        operation: 'refresh',
+        refreshLease: lease.refreshLease,
+        options: { id: stored.id ?? '', token: 'late' },
+      })
+    ).rejects.toThrow();
+    expect(client.updateWithRefreshToken).not.toHaveBeenCalled();
+    await next.execute({ operation: 'releaseRefreshLock' });
+  } finally {
+    first.close();
+    next.close();
+    timer.mockRestore();
+  }
+});
+
+it('holds the aborted OAuth lease until an already received provider result finishes persisting', async () => {
+  const { state, client, controller } = setup();
+  let complete: (value: ConnectorToken) => void = () => {};
+  client.updateWithRefreshToken.mockReturnValue(
+    new Promise((resolve) => {
+      complete = resolve;
+    })
+  );
+  await state.execute({ operation: 'acquireRefreshLock' });
+  await state.execute({ operation: 'get', options: {} });
+  const lease = await state.execute({ operation: 'beginRefresh', id: stored.id ?? '' });
+  const persisting = state.execute({
+    operation: 'refresh',
+    refreshLease: lease.refreshLease,
+    options: { id: stored.id ?? '', token: 'Bearer rotated' },
+  });
+  controller.abort();
+  const next = new ConnectorTokenState(
+    client,
+    { actionId: 'prepared' },
+    new AbortController().signal
+  );
+  let acquired = false;
+  const acquisition = next.execute({ operation: 'acquireRefreshLock' }).then(() => {
+    acquired = true;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(acquired).toBe(false);
+  complete(stored);
+  await persisting;
+  await acquisition;
+  expect(acquired).toBe(true);
+  await next.execute({ operation: 'releaseRefreshLock' });
+  next.close();
 });

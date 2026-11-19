@@ -170,7 +170,8 @@ export const createSpecExecutor = ({
   getRelayClient,
   networkSettings,
   platform,
-  clientTypes,
+  clientTypes = {},
+  getClientType,
   errors: { createTaskRunError, TaskErrorSource, getErrorSource, isUserError },
   getJwtSigner,
   onHandler,
@@ -187,7 +188,8 @@ export const createSpecExecutor = ({
   getRelayClient?: () => RelayActionClient | undefined;
   networkSettings: ConnectorNetworkSettings;
   platform: PlatformServices;
-  clientTypes: Readonly<Record<string, ClientTypeSpec<unknown>>>;
+  clientTypes?: Readonly<Record<string, ClientTypeSpec<unknown>>>;
+  getClientType?: (id: string) => Promise<ClientTypeSpec<unknown> | undefined>;
   errors: SpecExecutorErrorServices;
 }) =>
   async function (
@@ -281,7 +283,7 @@ export const createSpecExecutor = ({
     // would then fall back to `shared`.
     const authTypeId = (secrets as { authType?: string }).authType ?? 'none';
     const getClient = async (id: string): Promise<unknown> => {
-      const clientType = clientTypes[id];
+      const clientType = getClientType ? await getClientType(id) : clientTypes[id];
       if (!clientType) {
         throw new Error(`[Action][ExternalService] Unknown client type ${id}.`);
       }

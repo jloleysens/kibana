@@ -79,3 +79,55 @@ it('lazily reuses the coordinator DAL capability for data streams over loopback'
     port2.close();
   }
 });
+
+it('binds coordinator storage reads, writes and scheduling to the dispatch-owned run, even with hidden ownership projections', async () => {
+  const executions = new WorkflowExecutionRepository(createMockWorkflowDataClient());
+  const steps = new StepExecutionRepository(createMockStepDataClient());
+  const update = jest.spyOn(executions, 'updateWorkflowExecution').mockResolvedValue();
+  const foreign = { id: 'foreign-step', workflowRunId: 'other', spaceId: 'default' };
+  const getSteps = jest
+    .spyOn(steps, 'getStepExecutionsByIds')
+    .mockResolvedValue([foreign as import('@kbn/workflows').EsWorkflowStepExecution]);
+  const upsert = jest.spyOn(steps, 'bulkUpsert').mockResolvedValue();
+  const callbacks = { scheduleResume: jest.fn(), executeConnector: jest.fn() };
+  const scopes = {
+    get: jest.fn(),
+    getAbortSignal: () => new AbortController().signal,
+    getRunState: () => ({
+      workflowRunId: 'run',
+      workflowId: 'workflow',
+      workflowName: 'Name',
+      spaceId: 'default',
+      admittedChildren: new Set<string>(),
+    }),
+    admitChild: jest.fn(),
+  };
+  const storage = new WorkflowStorage(executions, steps, loggerMock.create(), callbacks, scopes);
+  await expect(storage.getExecution('scope', 'other', 'default')).rejects.toThrow('scoped');
+  await expect(storage.markRunning('scope', 'run', 'other-space')).rejects.toThrow('scoped');
+  await expect(storage.getCancelState('scope', 'other', 'default')).rejects.toThrow('scoped');
+  await expect(
+    storage.getSteps('scope', ['foreign-step'], ['output'], ['workflowRunId'])
+  ).rejects.toThrow('scoped');
+  await expect(
+    storage.upsertSteps('scope', [{ ...foreign, workflowRunId: 'run' }])
+  ).rejects.toThrow('scoped');
+  await expect(
+    storage.updateExecution('scope', { id: 'other', status: ExecutionStatus.RUNNING })
+  ).rejects.toThrow('scoped');
+  await expect(storage.updateExecution('scope', { id: 'run', managed: true })).rejects.toThrow(
+    'identity'
+  );
+  await expect(
+    storage.complete('scope', { id: 'other', status: ExecutionStatus.COMPLETED })
+  ).rejects.toThrow('scoped');
+  await expect(
+    storage.scheduleResume('scope', 'other', 'default', new Date().toISOString())
+  ).rejects.toThrow('scoped');
+  expect(update).not.toHaveBeenCalled();
+  expect(upsert).not.toHaveBeenCalled();
+  expect(callbacks.scheduleResume).not.toHaveBeenCalled();
+  getSteps.mockResolvedValue([]);
+  await storage.upsertSteps('scope', [{ id: 'new', workflowRunId: 'run', spaceId: 'default' }]);
+  expect(upsert).toHaveBeenCalledTimes(1);
+});

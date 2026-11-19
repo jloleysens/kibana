@@ -14,4 +14,5 @@ export type {
   RemoteSession,
   RemoteSetup,
   ScopeLookup,
+  RemoteRunState,
 } from './src/contracts';

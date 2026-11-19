@@ -6,10 +6,17 @@
  */
 
 import { i18n } from '@kbn/i18n';
-import type { ServiceParams } from '@kbn/actions-plugin/server';
-import { SubActionConnector } from '@kbn/actions-plugin/server';
+import type { Services } from '@kbn/actions-plugin/server/types';
+import type {
+  ServiceParams,
+  SubActionServices,
+} from '@kbn/actions-plugin/server/sub_action_framework/types';
+import { SubActionConnector } from '@kbn/actions-plugin/server/sub_action_framework/sub_action_connector';
 import type { ConnectorUsageCollector } from '@kbn/actions-plugin/server/types';
-import { createTaskRunError, TaskErrorSource } from '@kbn/task-manager-plugin/server';
+import {
+  createTaskRunError,
+  TaskErrorSource,
+} from '@kbn/task-manager-plugin/server/task_running/errors';
 import type { AxiosError } from 'axios';
 import type {
   Config,
@@ -29,7 +36,9 @@ export const CLOUD_API_PATH = '/xsoar/public/v1';
 export const INCIDENT_PATH = '/incident';
 export const PLAYBOOKS_PATH = '/playbook/search';
 
-export class XSOARConnector extends SubActionConnector<Config, Secrets> {
+export class XSOARConnector<
+  ExecutionServices extends SubActionServices = Services
+> extends SubActionConnector<Config, Secrets, ExecutionServices> {
   private urls: {
     playbooks: string;
     incident: string;
@@ -37,7 +46,7 @@ export class XSOARConnector extends SubActionConnector<Config, Secrets> {
   private isCloud: boolean;
   private ConnectorId: string;
 
-  constructor(params: ServiceParams<Config, Secrets>) {
+  constructor(params: ServiceParams<Config, Secrets, ExecutionServices>) {
     super(params);
 
     this.isCloud = this.secrets.apiKeyID !== null && this.secrets.apiKeyID !== '';

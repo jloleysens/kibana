@@ -136,6 +136,7 @@ export type GetTokenOpts =
   | EarsGetTokenOpts;
 
 export interface AuthContext {
+  ensureUriAllowed?: (url: string) => void;
   getCustomHostSettings: (url: string) => CustomHostSettings | undefined;
   getToken: (opts: GetTokenOpts) => Promise<string | null>;
   logger: Logger;

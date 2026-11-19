@@ -9,15 +9,13 @@ import type { AxiosHeaderValue, AxiosInstance } from 'axios';
 import axios from 'axios';
 import { getOAuthClientCredentialsAccessToken } from '@kbn/actions-plugin/server/lib/get_oauth_client_credentials_access_token';
 import { getOAuthPasswordAccessToken } from '@kbn/actions-plugin/server/lib/get_oauth_password_access_token';
-import {
-  combineHeadersWithBasicAuthHeader,
-  getDeleteTokenAxiosInterceptor,
-  mergeConfigHeadersWithSecretHeaders,
-} from '@kbn/actions-plugin/server/lib';
+import { combineHeadersWithBasicAuthHeader } from '@kbn/actions-plugin/server/lib/get_basic_auth_header';
+import { getDeleteTokenAxiosInterceptor } from '@kbn/actions-plugin/server/lib/delete_token_axios_interceptor';
+import { mergeConfigHeadersWithSecretHeaders } from '@kbn/actions-plugin/server/lib/merge_config_headers_with_secret_headers';
 import type { ActionsConfigurationUtilities } from '@kbn/actions-plugin/server/actions_config';
 import type { Logger } from '@kbn/logging/src/logger';
 import type { SSLSettings } from '@kbn/actions-utils';
-import type { ConnectorTokenClientContract, Services } from '@kbn/actions-plugin/server/types';
+import type { ConnectorTokenStore } from '@kbn/actions-plugin/server/types';
 import type {
   ConnectorTypeConfigType,
   ConnectorTypeSecretsType,
@@ -29,7 +27,7 @@ interface GetOAuth2AxiosConfigParams {
   connectorId: string;
   config: ConnectorTypeConfigType;
   secrets: ConnectorTypeSecretsType;
-  services: Services;
+  services: { readonly connectorTokenClient: ConnectorTokenStore };
   configurationUtilities: ActionsConfigurationUtilities;
   logger: Logger;
 }
@@ -38,7 +36,7 @@ interface BuildOAuthAxiosConfigParams {
   connectorId: string;
   headers: ConnectorTypeConfigType['headers'];
   secretQueryParams: ConnectorTypeSecretsType['secretQueryParams'];
-  connectorTokenClient: Services['connectorTokenClient'];
+  connectorTokenClient: ConnectorTokenStore;
   logger: Logger;
   getAccessToken: () => Promise<string | null | undefined>;
 }
@@ -84,7 +82,7 @@ interface GetOAuthAccessTokenParams {
   connectorId: string;
   config: ConnectorTypeConfigType;
   secrets: ConnectorTypeSecretsType;
-  connectorTokenClient?: ConnectorTokenClientContract;
+  connectorTokenClient?: ConnectorTokenStore;
   configurationUtilities: ActionsConfigurationUtilities;
   logger: Logger;
 }
@@ -243,7 +241,7 @@ export interface GetAxiosConfigParams {
   secrets: ConnectorTypeSecretsType;
   connectorId: string;
   logger: Logger;
-  services: Services;
+  services: { readonly connectorTokenClient: ConnectorTokenStore };
   configurationUtilities: ActionsConfigurationUtilities;
 }
 export const getAxiosConfig = async ({

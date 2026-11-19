@@ -21,6 +21,7 @@ import { NativeActions } from './native_actions_api';
 
 const mockPrepare = jest.fn();
 const mockFinalize = jest.fn();
+const mockRefusalEvents = jest.fn();
 const mockConstruct = jest.fn();
 const mockToken = jest.fn();
 const mockRelay = jest.fn();
@@ -34,6 +35,7 @@ jest.mock('@kbn/actions-plugin/server', () => ({
     }
     preparation = mockPrepare();
     finalize = mockFinalize;
+    refusalEvents = mockRefusalEvents;
     token = mockToken;
     relay = mockRelay;
     dashboard = mockDashboard;
@@ -57,12 +59,27 @@ const setup = () => {
   client.finalizeExecutionEvents.mockResolvedValue();
   const request = httpServerMock.createKibanaRequest();
   const getClient = jest.fn(async () => client);
+  const getScope = jest.fn().mockReturnValue(request);
+  const logger = { error: jest.fn() };
   const api = new NativeActions(
-    { get: jest.fn().mockReturnValue(request), getAbortSignal: () => controller.signal },
-    getClient
+    {
+      get: getScope,
+      getAbortSignal: () => controller.signal,
+      getRunState: () => ({
+        workflowRunId: 'run',
+        workflowId: 'workflow',
+        workflowName: 'Workflow',
+        spaceId: 'default',
+        admittedChildren: new Set(),
+      }),
+      admitChild: jest.fn(),
+    },
+    getClient,
+    undefined,
+    logger
   );
   const input = { connectorType: 'jenkins', connectorNameOrId: 'saved-connector', input: {} };
-  return { api, controller, client, request, getClient, input };
+  return { api, controller, client, request, getClient, input, getScope, logger };
 };
 
 const completion: ConnectorFinalization['runtime'] = {
@@ -97,6 +114,11 @@ it('uses the scoped identity and a run-local cache, with one durable finalizatio
     { message: 'original event' },
     { message: 'original event' },
   ]);
+  await api.finalize('scope', [
+    { invocationId: 'first', runtime: completion },
+    { invocationId: 'second', runtime: completion },
+  ]);
+  expect(client.finalizeExecutionEvents).toHaveBeenCalledTimes(1);
   await expect(
     api.finalize('scope', [{ invocationId: 'first', runtime: completion }])
   ).rejects.toThrow('Unknown');
@@ -189,4 +211,169 @@ it('limits dashboard calls to active prepared invocations in the requesting scop
   );
   controller.abort();
   await expect(api.dashboard('scope', 'dashboard', { operation: 'get' })).rejects.toThrow();
+});
+
+it('retries cached events without consuming the continuation twice and deduplicates acknowledgements', async () => {
+  const { api, client, input } = setup();
+  await api.prepare('scope', 'first', input);
+  const batch = [{ invocationId: 'first', runtime: completion }];
+  mockFinalize
+    .mockImplementationOnce(async () => [{ message: 'original event' }])
+    .mockRejectedValue(new Error('continuation consumed'));
+  client.finalizeExecutionEvents
+    .mockRejectedValueOnce(new Error('bulk failed'))
+    .mockResolvedValue();
+  await expect(api.finalize('scope', batch)).rejects.toThrow('bulk failed');
+  await Promise.all([api.finalizeRetry('scope', ['first']), api.finalizeRetry('scope', ['first'])]);
+  await api.finalize('scope', batch);
+  expect(mockFinalize).toHaveBeenCalledTimes(1);
+  expect(client.finalizeExecutionEvents).toHaveBeenCalledTimes(2);
+  expect(client.finalizeExecutionEvents.mock.calls[1][0]).toBe(
+    client.finalizeExecutionEvents.mock.calls[0][0]
+  );
+});
+
+it.each([
+  'prepare',
+  'finalize',
+  'finalizeRetry',
+  'token',
+  'relay',
+  'dashboard',
+  'inference',
+] as const)('exports only allowlisted errors from %s capabilities', async (family) => {
+  const { api, client, input, getScope } = setup();
+  const failure = Object.assign(new TypeError('service unavailable'), {
+    config: { headers: { Authorization: 'Bearer coordinator-only-secret' } },
+    meta: { request: { headers: { Authorization: 'Bearer coordinator-only-secret' } } },
+    cause: new Error('coordinator-only-secret'),
+  });
+  let invoke: () => Promise<object | void>;
+  if (family === 'prepare') {
+    client.get.mockRejectedValue(failure);
+    client.getAll.mockRejectedValue(failure);
+    invoke = () => api.prepare('scope', 'first', input);
+  } else if (family === 'inference') {
+    mockPrepare.mockReturnValue(Promise.reject(failure));
+    invoke = () => api.prepare('scope', 'first', { ...input, connectorType: 'inference' });
+  } else {
+    await api.prepare('scope', 'first', input);
+    if (family === 'finalize') {
+      client.finalizeExecutionEvents.mockRejectedValue(failure);
+      invoke = () => api.finalize('scope', [{ invocationId: 'first', runtime: completion }]);
+    } else if (family === 'finalizeRetry') {
+      getScope.mockImplementationOnce(() => {
+        throw failure;
+      });
+      invoke = () => api.finalizeRetry('scope', ['first']);
+    } else if (family === 'token') {
+      mockToken.mockRejectedValue(failure);
+      invoke = () => api.token('scope', 'first', { operation: 'get', options: {} });
+    } else if (family === 'relay') {
+      mockRelay.mockRejectedValue(failure);
+      invoke = () => api.relay('scope', 'first', { operation: 'listBindings' });
+    } else {
+      mockDashboard.mockRejectedValue(failure);
+      invoke = () => api.dashboard('scope', 'first', { operation: 'get' });
+    }
+  }
+  const error = await invoke().catch((caught: Error) => caught);
+  expect(error).toBeInstanceOf(TypeError);
+  if (!(error instanceof Error)) throw new Error('Expected safe error');
+  expect(error).toMatchObject({ name: 'TypeError', message: 'service unavailable' });
+  expect(Object.getOwnPropertyNames(error).sort()).toEqual(['message', 'name']);
+  const wire = JSON.stringify({ ...error, name: error.name, message: error.message });
+  expect(wire).not.toContain('coordinator-only-secret');
+  expect(wire).not.toContain('Authorization');
+});
+
+it('logs a persistent event loss after one retry without failing the workflow or retrying forever', async () => {
+  const { api, client, input, logger } = setup();
+  await api.prepare('scope', 'first', input);
+  const failure = Object.assign(new Error('event index unavailable'), {
+    meta: { request: { headers: { Authorization: 'coordinator-only-secret' } } },
+  });
+  client.finalizeExecutionEvents.mockRejectedValue(failure);
+  await expect(
+    api.finalize('scope', [{ invocationId: 'first', runtime: completion }])
+  ).rejects.toThrow('event index unavailable');
+  await expect(api.finalizeRetry('scope', ['first'])).resolves.toBeUndefined();
+  await api.finalizeRetry('scope', ['first']);
+  await api.finalize('scope', [{ invocationId: 'first', runtime: completion }]);
+  expect(client.finalizeExecutionEvents).toHaveBeenCalledTimes(2);
+  expect(logger.error).toHaveBeenCalledWith(failure);
+  expect(logger.error).toHaveBeenCalledWith(
+    'Native connector event persistence failed after retry; event loss logged'
+  );
+});
+
+it('returns the original preflight refusal after bounded event persistence failure and logs the loss', async () => {
+  const { api, input, client, logger } = setup();
+  const refusal = {
+    result: { status: 'error', actionId: 'saved-connector', message: 'license refusal' },
+  };
+  mockPrepare.mockResolvedValue(refusal);
+  const events = [{ message: 'preflight refused' }];
+  mockRefusalEvents.mockResolvedValue(events);
+  const failure = new Error('event index unavailable');
+  client.finalizeExecutionEvents.mockRejectedValue(failure);
+  await expect(api.prepare('scope', 'refused', input)).resolves.toBe(refusal);
+  expect(mockRefusalEvents).toHaveBeenCalledTimes(1);
+  expect(client.finalizeExecutionEvents).toHaveBeenCalledTimes(2);
+  expect(client.finalizeExecutionEvents.mock.calls.every(([batch]) => batch === events)).toBe(true);
+  expect(logger.error).toHaveBeenCalledWith(failure);
+  expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('event loss logged'));
+});
+
+it('accepts only lease-bound late OAuth persistence after the requesting scope disappears', async () => {
+  const { api, input, controller, getScope } = setup();
+  await api.prepare('scope', 'invocation', input);
+  mockToken.mockResolvedValue({
+    hasErrors: false,
+    connectorToken: null,
+    refreshLease: 'coordinator-lease',
+  });
+  await api.token('scope', 'invocation', { operation: 'beginRefresh', id: 'read-token' });
+  controller.abort();
+  getScope.mockImplementation(() => {
+    throw new Error('Scope no longer exists');
+  });
+  const update = {
+    operation: 'refresh' as const,
+    refreshLease: 'coordinator-lease',
+    options: { id: 'read-token', token: 'Bearer rotated' },
+  };
+  await expect(api.token('other-scope', 'invocation', update)).rejects.toThrow('lease');
+  await expect(api.token('scope', 'other-invocation', update)).rejects.toThrow('lease');
+  await expect(
+    api.token('scope', 'invocation', { ...update, refreshLease: 'forged' })
+  ).rejects.toThrow('lease');
+  await expect(api.token('scope', 'invocation', update)).resolves.toHaveProperty(
+    'hasErrors',
+    false
+  );
+  await api.token('scope', 'invocation', {
+    operation: 'endRefresh',
+    refreshLease: 'coordinator-lease',
+  });
+  await expect(api.token('scope', 'invocation', update)).rejects.toThrow('lease');
+});
+
+it('starts late OAuth route retention only after the requesting scope closes', async () => {
+  const timer = jest.spyOn(
+    jest.requireActual<typeof import('node:timers')>('node:timers'),
+    'setTimeout'
+  );
+  const { api, input, controller } = setup();
+  try {
+    await api.prepare('scope', 'invocation', input);
+    mockToken.mockResolvedValue({ hasErrors: false, connectorToken: null, refreshLease: 'lease' });
+    await api.token('scope', 'invocation', { operation: 'beginRefresh', id: 'token' });
+    expect(timer.mock.calls.some(([, duration]) => duration === 125_000)).toBe(false);
+    controller.abort();
+    expect(timer.mock.calls.some(([, duration]) => duration === 125_000)).toBe(true);
+    await api.token('scope', 'invocation', { operation: 'endRefresh', refreshLease: 'lease' });
+  } finally {
+    timer.mockRestore();
+  }
 });

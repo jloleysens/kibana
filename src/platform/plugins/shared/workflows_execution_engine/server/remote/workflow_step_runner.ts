@@ -21,6 +21,7 @@ import type {
   WorkflowStepResult,
   WorkflowStepRunnerApi,
 } from './tokens';
+import { assertWorkflowRunScope } from './workflow_run_scope';
 import { ConnectorExecutor } from '../connector_executor';
 import { setupDependencies } from '../execution_functions/setup_dependencies';
 import type { StepExecutionRepository } from '../repositories/step_execution_repository';
@@ -164,6 +165,7 @@ export class WorkflowStepRunner implements WorkflowStepRunnerApi {
             }));
         return { output };
       }
+      assertWorkflowRunScope(this.scopes, request.scopeId, request.executionId, request.spaceId);
       const [description] = await this.describe([request.description.type]);
       if (description.digest !== request.description.digest)
         throw new Error('Workflow step registration changed');

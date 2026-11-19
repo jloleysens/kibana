@@ -52,7 +52,7 @@ export const mssqlClientType: ClientTypeSpec<ConnectionPool> = {
     }
 
     ctx.logger.info(`[mssql] Opening connection pool for ${host}:${port}/${database}`);
-    const lib = await import('mssql');
+    const { default: lib } = await import('mssql');
     const pool = new lib.ConnectionPool({
       server: host,
       port,

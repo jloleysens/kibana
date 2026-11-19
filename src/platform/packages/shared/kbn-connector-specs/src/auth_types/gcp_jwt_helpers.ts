@@ -7,7 +7,11 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-const GCP_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+export const GCP_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+export type GcpTokenTransport = (
+  body: string
+) => Promise<Pick<Response, 'ok' | 'status' | 'text' | 'json'>>;
+
 const JWT_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:jwt-bearer';
 const TOKEN_LIFETIME_SECONDS = 3600;
 
@@ -135,17 +139,22 @@ export function parseServiceAccountKey(json: string): GcpServiceAccountKey {
   return parsed as unknown as GcpServiceAccountKey;
 }
 
-async function exchangeJwtForToken(jwt: string): Promise<Record<string, unknown>> {
+async function exchangeJwtForToken(
+  jwt: string,
+  transport?: GcpTokenTransport
+): Promise<Record<string, unknown>> {
   const body = new URLSearchParams({
     grant_type: JWT_GRANT_TYPE,
     assertion: jwt,
   });
 
-  const response = await fetch(GCP_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body.toString(),
-  });
+  const response = transport
+    ? await transport(body.toString())
+    : await fetch(GCP_TOKEN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      });
 
   if (!response.ok) {
     const errorBody = await response.text();
@@ -168,11 +177,12 @@ async function exchangeJwtForToken(jwt: string): Promise<Record<string, unknown>
 export async function getGcpAccessToken(
   clientEmail: string,
   privateKey: string,
-  scope: string
+  scope: string,
+  transport?: GcpTokenTransport
 ): Promise<GcpAccessToken> {
   const claims = buildJwtClaims(clientEmail, { scope });
   const jwt = await signJwt(privateKey, claims);
-  const data = await exchangeJwtForToken(jwt);
+  const data = await exchangeJwtForToken(jwt, transport);
 
   const accessToken = data.access_token;
   if (typeof accessToken !== 'string') {
@@ -204,11 +214,12 @@ export async function getGcpAccessToken(
 export async function getGcpIdToken(
   clientEmail: string,
   privateKey: string,
-  targetAudience: string
+  targetAudience: string,
+  transport?: GcpTokenTransport
 ): Promise<string> {
   const claims = buildJwtClaims(clientEmail, { targetAudience });
   const jwt = await signJwt(privateKey, claims);
-  const data = await exchangeJwtForToken(jwt);
+  const data = await exchangeJwtForToken(jwt, transport);
 
   const idToken = data.id_token as string | undefined;
   if (!idToken) {

@@ -67,6 +67,8 @@ export const getEarsAccessToken = async ({
     authMode,
     treatRefreshFailureAsAuthError: true,
     refreshFn: (refreshToken) =>
-      requestEarsRefreshToken(provider, logger, { refreshToken }, configurationUtilities),
+      connectorTokenClient.refreshEars
+        ? connectorTokenClient.refreshEars(refreshToken)
+        : requestEarsRefreshToken(provider, logger, { refreshToken }, configurationUtilities),
   });
 };

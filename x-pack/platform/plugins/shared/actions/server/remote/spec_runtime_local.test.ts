@@ -44,6 +44,7 @@ it('completion drain waits for original local stream finalization and the durabl
   });
   const finalize = jest.fn(() => barrier);
   const actions: NativeActionsApi = {
+    finalizeRetry: jest.fn(async () => {}),
     dashboard: jest.fn(),
     token: jest.fn(),
     relay: jest.fn(),

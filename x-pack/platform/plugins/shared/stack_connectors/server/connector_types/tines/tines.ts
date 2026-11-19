@@ -5,8 +5,12 @@
  * 2.0.
  */
 
-import type { ServiceParams } from '@kbn/actions-plugin/server';
-import { SubActionConnector } from '@kbn/actions-plugin/server';
+import type { Services } from '@kbn/actions-plugin/server/types';
+import type {
+  ServiceParams,
+  SubActionServices,
+} from '@kbn/actions-plugin/server/sub_action_framework/types';
+import { SubActionConnector } from '@kbn/actions-plugin/server/sub_action_framework/sub_action_connector';
 import type { ConnectorUsageCollector } from '@kbn/actions-plugin/server/types';
 import type { AxiosError } from 'axios';
 import type { SubActionRequestParams } from '@kbn/actions-plugin/server/sub_action_framework/types';
@@ -62,7 +66,9 @@ const webhooksReducer = ({ agents }: TinesWebhooksApiResponse) => ({
   ),
 });
 
-export class TinesConnector extends SubActionConnector<TinesConfig, TinesSecrets> {
+export class TinesConnector<
+  ExecutionServices extends SubActionServices = Services
+> extends SubActionConnector<TinesConfig, TinesSecrets, ExecutionServices> {
   private urls: {
     stories: string;
     agents: string;
@@ -70,7 +76,7 @@ export class TinesConnector extends SubActionConnector<TinesConfig, TinesSecrets
     getRunWebhookURL: (config: TinesWebhookActionConfig) => string;
   };
 
-  constructor(params: ServiceParams<TinesConfig, TinesSecrets>) {
+  constructor(params: ServiceParams<TinesConfig, TinesSecrets, ExecutionServices>) {
     super(params);
 
     this.logger = params.logger.get('tines');

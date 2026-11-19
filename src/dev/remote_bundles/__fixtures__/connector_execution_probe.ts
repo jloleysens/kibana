@@ -128,6 +128,7 @@ const main = async (): Promise<void> => {
         },
       };
     },
+    finalizeRetry: async () => {},
     finalize: async (_scopeId, results) => {
       finalizes.push(results.length);
     },

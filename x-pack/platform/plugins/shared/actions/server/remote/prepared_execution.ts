@@ -20,6 +20,7 @@ import type {
   ConnectorDashboardResponse,
   InferenceStreamingFacts,
 } from './types';
+import { requestEarsRefreshToken } from '../lib/ears/request_ears_refresh_token';
 import { ConnectorTokenState } from './connector_token_state';
 
 /** Keeps live authorization and final event production on the coordinator without executing a handler. */
@@ -85,28 +86,65 @@ export class PreparedExecution {
           }
           signal.throwIfAborted();
           if (!options.runtimeConfig) throw new Error('Missing connector network policy');
+          const earsSsl =
+            options.secrets.authType === 'ears'
+              ? options.configurationUtilities.getEARSSSLSettings()
+              : undefined;
+          const hasEarsDeploymentIdentity = Boolean(
+            options.runtimeConfig.auth.ears?.ssl?.certificate ||
+              options.runtimeConfig.auth.ears?.ssl?.key ||
+              earsSsl?.cert ||
+              earsSsl?.key
+          );
+          const earsTransportAvailable =
+            options.secrets.authType === 'ears' && hasEarsDeploymentIdentity;
+          const earsProvider =
+            typeof options.secrets.provider === 'string' ? options.secrets.provider : undefined;
+          if (earsTransportAvailable && !earsProvider)
+            throw new Error('Prepared EARS provider is missing');
+          const refreshEars =
+            earsTransportAvailable && earsProvider
+              ? (refreshToken: string) =>
+                  requestEarsRefreshToken(
+                    earsProvider,
+                    options.logger,
+                    { refreshToken },
+                    options.configurationUtilities
+                  )
+              : undefined;
           if (options.connectorTokenClient) {
             this.tokenState = new ConnectorTokenState(
               options.connectorTokenClient,
               options,
-              signal
+              signal,
+              refreshEars,
+              options.logger
             );
           }
           if (options.relayClient) {
-            this.relayTransport = new ConnectorRelayTransport(options.relayClient, options, signal);
+            this.relayTransport = new ConnectorRelayTransport(
+              options.relayClient,
+              options,
+              signal,
+              options.logger
+            );
           }
           this.dashboardState = new ConnectorDashboardState(
             options.services.savedObjectsClient,
             options.actionType.id,
             options.params,
             signal,
-            options.actionType.getDashboardAttributes
+            options.actionType.getDashboardAttributes,
+            options.logger
           );
           const inferenceStreamingFacts = getInferenceFacts ? await getInferenceFacts() : undefined;
           signal.throwIfAborted();
           ready({
             prepared: {
               inferenceStreamingFacts,
+              emailExecutionFacts: await options.actionType.getEmailExecutionFacts?.(
+                options.config
+              ),
               kibanaVersion: kibanaPackageJson.version,
               actionId: options.actionId,
               actionTypeId: options.actionType.id,
@@ -114,7 +152,20 @@ export class PreparedExecution {
               params: options.params,
               config: options.config,
               secrets: options.secrets,
-              runtimeConfig: options.runtimeConfig,
+              runtimeConfig: {
+                ...options.runtimeConfig,
+                auth: {
+                  ...options.runtimeConfig.auth,
+                  ears: options.runtimeConfig.auth.ears
+                    ? {
+                        ...options.runtimeConfig.auth.ears,
+                        // EARS deployment mTLS authenticates AS KIBANA and stays on the coordinator.
+                        ...(hasEarsDeploymentIdentity ? { ssl: undefined } : {}),
+                      }
+                    : undefined,
+                },
+              },
+              earsTransportAvailable,
               userAgent: options.runtimeUserAgent,
               relayAvailable: Boolean(options.relayClient),
               authMode: options.authMode,
@@ -146,7 +197,10 @@ export class PreparedExecution {
   }
 
   async token(request: ConnectorTokenRequest): Promise<ConnectorTokenResponse> {
-    if (this.completed || !this.tokenState)
+    const persistence =
+      (request.operation === 'refresh' || request.operation === 'endRefresh') &&
+      request.refreshLease;
+    if ((this.completed && !persistence) || !this.tokenState)
       throw new Error('Connector token state is not available');
     return this.tokenState.execute(request);
   }

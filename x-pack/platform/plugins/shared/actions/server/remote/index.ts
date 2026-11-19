@@ -11,6 +11,72 @@ export const remoteModule: RemoteModule = {
   contributions: [
     {
       kind: WorkflowConnectorKind,
+      stepType: 'slack2',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/slack2'),
+      exportName: 'SlackConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'gmail',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/gmail'),
+      exportName: 'GmailConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'sharepoint-online',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/sharepoint_online'),
+      exportName: 'SharepointOnlineConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'microsoft-teams',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/microsoft_teams'),
+      exportName: 'MicrosoftTeamsConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'google_calendar',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/google_calendar'),
+      exportName: 'GoogleCalendarConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'google_drive',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/google_drive'),
+      exportName: 'GoogleDriveConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'gcp_iam',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/gcp_iam'),
+      exportName: 'GcpIamConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'gcp_secret_manager',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/gcp_secret_manager'),
+      exportName: 'GcpSecretManagerConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'bigquery',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/bigquery'),
+      exportName: 'BigQueryConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'gcp_cloud_functions',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/gcp_cloud_functions'),
+      exportName: 'GcpCloudFunctionsConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'kubernetes',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/kubernetes'),
+      exportName: 'KubernetesConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
       stepType: 'github',
       modulePath: require.resolve('@kbn/connector-specs/server/remote/github'),
       exportName: 'GithubConnector',
