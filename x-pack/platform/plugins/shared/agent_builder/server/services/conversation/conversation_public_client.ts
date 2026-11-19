@@ -12,8 +12,7 @@ import {
 } from '@kbn/agent-builder-common';
 import type { ConversationWriteSource } from '@kbn/agent-builder-common';
 import type { ConversationPublicClient } from '@kbn/agent-builder-server';
-import type { ConversationClient } from './client/client';
-import type { AgentRegistry } from '../agents/agent_registry';
+import type { ConversationClient, ConversationAgentRegistry } from './client/client';
 
 /**
  * The `source` recorded on `ai.conversation.updated` for writes made through the public client.
@@ -34,7 +33,7 @@ export const createConversationPublicClient = ({
   source,
 }: {
   client: ConversationClient;
-  agentRegistry: AgentRegistry;
+  agentRegistry: ConversationAgentRegistry;
   source: ConversationPublicClientSource;
 }): ConversationPublicClient => {
   return {

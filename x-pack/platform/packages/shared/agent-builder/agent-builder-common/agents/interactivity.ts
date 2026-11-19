@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { uniqBy } from 'lodash';
+import uniqBy from 'lodash/uniqBy';
 import type { WithRequiredProperty } from '@kbn/utility-types';
 import type { ApiTarget } from '../apis';
 import { apiTargets, matchesApiSelector } from '../apis';

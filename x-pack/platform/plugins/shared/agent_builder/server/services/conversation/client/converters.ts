@@ -35,7 +35,7 @@ import {
   normalizeConversationAccessControl,
 } from '@kbn/agent-builder-common';
 import { isInternalTool } from '@kbn/agent-builder-common/tools';
-import { getToolResultId } from '@kbn/agent-builder-server';
+import { getToolResultId } from '@kbn/agent-builder-server/tools';
 import type {
   ConversationPermissions,
   ConversationWithPermissions,

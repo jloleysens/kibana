@@ -15,6 +15,7 @@ import type {
 import { OccWriter, isElasticsearchWriteConflict } from '@kbn/occ';
 import type { Logger, ElasticsearchClient } from '@kbn/core/server';
 import type {
+  ConversationTemplate,
   ConversationOrigin,
   ConversationRoundAuthor,
   ConversationRoundAuthorDecoration,
@@ -63,6 +64,12 @@ import type {
   UpdateConversationAccessControlRequestBody,
 } from '../../../../common/http_api/conversations';
 import type { AgentRegistry } from '../../agents/agent_registry';
+
+export type ConversationAgentRegistry = Pick<AgentRegistry, 'getIds'> & {
+  get(
+    ...args: Parameters<AgentRegistry['get']>
+  ): Promise<Awaited<ReturnType<AgentRegistry['get']>> | void>;
+};
 import {
   buildPinnedFilter,
   buildReadAccessFilter,
@@ -113,7 +120,6 @@ import { serializeMetadataValue, buildMetadataFromTemplate } from '../templates/
 import { reconcileAttachments } from './round_writes';
 import { updateReadBy } from './read_by';
 import { updatePinnedBy } from './pinned_by';
-import { buildSearchSort, compileConversationFilter } from '../search';
 import {
   fromEs,
   fromEsWithoutRounds,
@@ -293,6 +299,16 @@ interface ConversationListEsResponse {
 
 export type OnConversationCreated = (params: { conversationId: string; agentId: string }) => void;
 
+type ConversationEventValidator = (
+  events: ConversationAddEventInput[]
+) => Promise<ConversationAddEventInput[]>;
+type ConversationEventValidation =
+  | {
+      conversationEvents: ConversationEventsServiceStart;
+      validateEvents?: ConversationEventValidator;
+    }
+  | { conversationEvents?: undefined; validateEvents: ConversationEventValidator };
+
 export const createClient = ({
   space,
   logger,
@@ -303,17 +319,19 @@ export const createClient = ({
   eventEmitter,
   onConversationCreated,
   reportFieldsChange,
+  templateLookup,
+  validateEvents,
 }: {
   space: string;
   logger: Logger;
   esClient: ElasticsearchClient;
   user: CurrentUser;
-  agentRegistry: AgentRegistry;
-  conversationEvents: ConversationEventsServiceStart;
+  agentRegistry: ConversationAgentRegistry;
   eventEmitter?: ScopedConversationEventEmitter;
   onConversationCreated?: OnConversationCreated;
   reportFieldsChange?: ConversationFieldsChangeReporter;
-}): ConversationClient => {
+  templateLookup?: (id: string) => ConversationTemplate | undefined;
+} & ConversationEventValidation): ConversationClient => {
   const storage = createStorage({ logger, esClient });
   return new ConversationClientImpl({
     storage,
@@ -326,6 +344,8 @@ export const createClient = ({
     eventEmitter,
     onConversationCreated,
     reportFieldsChange,
+    templateLookup,
+    validateEvents,
   });
 };
 
@@ -390,12 +410,15 @@ class ConversationClientImpl implements ConversationClient {
   private readonly storage: ConversationStorage;
   private readonly esClient: ElasticsearchClient;
   private readonly user: CurrentUser;
-  private readonly agentRegistry: AgentRegistry;
-  private readonly conversationEvents: ConversationEventsServiceStart;
+  private readonly agentRegistry: ConversationAgentRegistry;
   private readonly logger: Logger;
   private readonly eventEmitter?: ScopedConversationEventEmitter;
   private readonly onConversationCreated?: OnConversationCreated;
   private readonly reportFieldsChange?: ConversationFieldsChangeReporter;
+  private readonly templateLookup: (id: string) => ConversationTemplate | undefined;
+  private readonly validateEvents: (
+    events: ConversationAddEventInput[]
+  ) => Promise<ConversationAddEventInput[]>;
 
   constructor({
     storage,
@@ -408,28 +431,40 @@ class ConversationClientImpl implements ConversationClient {
     eventEmitter,
     onConversationCreated,
     reportFieldsChange,
+    templateLookup,
+    validateEvents,
   }: {
     storage: ConversationStorage;
     esClient: ElasticsearchClient;
     user: CurrentUser;
     space: string;
-    agentRegistry: AgentRegistry;
-    conversationEvents: ConversationEventsServiceStart;
+    agentRegistry: ConversationAgentRegistry;
+    conversationEvents?: ConversationEventsServiceStart;
     logger: Logger;
     eventEmitter?: ScopedConversationEventEmitter;
     onConversationCreated?: OnConversationCreated;
     reportFieldsChange?: ConversationFieldsChangeReporter;
+    templateLookup?: (id: string) => ConversationTemplate | undefined;
+    validateEvents?: (events: ConversationAddEventInput[]) => Promise<ConversationAddEventInput[]>;
   }) {
     this.storage = storage;
     this.esClient = esClient;
     this.user = user;
     this.space = space;
     this.agentRegistry = agentRegistry;
-    this.conversationEvents = conversationEvents;
     this.logger = logger;
     this.eventEmitter = eventEmitter;
     this.onConversationCreated = onConversationCreated;
     this.reportFieldsChange = reportFieldsChange;
+    this.templateLookup = templateLookup ?? getTemplate;
+    if (validateEvents) this.validateEvents = validateEvents;
+    else if (conversationEvents)
+      this.validateEvents = (events) =>
+        Promise.resolve(validateConversationEvents(events, conversationEvents));
+    else
+      throw new Error(
+        'Conversation client requires its original event registry or a scoped event validator'
+      );
   }
 
   /** The agent's `title_updated` for a title generated by a run; empty when absent or unchanged. */
@@ -638,6 +673,7 @@ class ConversationClientImpl implements ConversationClient {
       perPage = MAX_CONVERSATION_SEARCH_PER_PAGE,
     } = options;
 
+    const { buildSearchSort, compileConversationFilter } = await import('../search');
     const compiledFilter = compileConversationFilter(filter);
 
     const agentIds = await this.resolveAccessibleAgentIds(agentId);
@@ -734,7 +770,7 @@ class ConversationClientImpl implements ConversationClient {
     const conversation = await toResponseConversation({
       document,
       user: this.getUser(),
-      resolveTemplate: getTemplate,
+      resolveTemplate: this.templateLookup,
     });
     const isOwner = hasConversationOwnerAccess({ conversation, user: this.getUser() });
     if (!isOwner) {
@@ -821,7 +857,7 @@ class ConversationClientImpl implements ConversationClient {
       return toConversationResponseFromDocument({
         document,
         user: this.getUser(),
-        resolveTemplate: getTemplate,
+        resolveTemplate: this.templateLookup,
       });
     } catch (error) {
       if (isConversationNotFoundError(error)) {
@@ -849,7 +885,7 @@ class ConversationClientImpl implements ConversationClient {
       );
     }
     if (templateId) {
-      const template = getTemplate(templateId);
+      const template = this.templateLookup(templateId);
       if (!template) {
         throw createBadRequestError(`Template not found: ${templateId}`);
       }
@@ -957,7 +993,7 @@ class ConversationClientImpl implements ConversationClient {
     this.notifyFieldChanges(id, () =>
       describeConversationFieldsChanged({
         after: readCreated(),
-        resolveTemplate: getTemplate,
+        resolveTemplate: this.templateLookup,
         source,
       })
     );
@@ -1025,7 +1061,7 @@ class ConversationClientImpl implements ConversationClient {
     { source }: ConversationWriteOptions
   ): Promise<ConversationEvent[]> {
     const actor = currentUserActor(this.getUser());
-    const validatedEvents = validateConversationEvents(inputs, this.conversationEvents);
+    const validatedEvents = await this.validateEvents(inputs);
     const materialized = materializeConversationEvents({
       events: validatedEvents,
       actor,
@@ -1240,7 +1276,7 @@ class ConversationClientImpl implements ConversationClient {
       return toResponseConversationWithoutRounds({
         document: hit,
         user: this.getUser(),
-        resolveTemplate: getTemplate,
+        resolveTemplate: this.templateLookup,
       });
     });
 
@@ -1439,7 +1475,7 @@ class ConversationClientImpl implements ConversationClient {
     templateId: string,
     { source, activity }: ConversationWriteOptions & { activity?: ActivityContext }
   ): Promise<Conversation> {
-    const template = getTemplate(templateId);
+    const template = this.templateLookup(templateId);
     if (!template) {
       throw createBadRequestError(`Template not found: ${templateId}`);
     }
@@ -1522,7 +1558,7 @@ class ConversationClientImpl implements ConversationClient {
           );
         }
 
-        const template = getTemplate(current.template_id);
+        const template = this.templateLookup(current.template_id);
         if (!template) {
           throw createBadRequestError(
             `Template "${current.template_id}" referenced by this conversation was not found`
@@ -1781,17 +1817,20 @@ class ConversationClientImpl implements ConversationClient {
           describeConversationFieldsChanged({
             after: document,
             before: previous,
-            resolveTemplate: getTemplate,
+            resolveTemplate: this.templateLookup,
             source,
           })
         );
       }
-      return toConversationResponse({ conversation: document, resolveTemplate: getTemplate });
+      return toConversationResponse({
+        conversation: document,
+        resolveTemplate: this.templateLookup,
+      });
     } catch (error) {
       if (isWriteSkipped(error)) {
         return toConversationResponse({
           conversation: error.current,
-          resolveTemplate: getTemplate,
+          resolveTemplate: this.templateLookup,
         });
       }
       // retries are exhausted

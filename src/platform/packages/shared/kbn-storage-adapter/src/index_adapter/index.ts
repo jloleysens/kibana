@@ -20,11 +20,12 @@ import type {
 } from '@elastic/elasticsearch/lib/api/types';
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
 import { isResponseError } from '@kbn/es-errors';
-import { last, mapValues, padStart } from 'lodash';
+import last from 'lodash/last';
+import mapValues from 'lodash/mapValues';
+import padStart from 'lodash/padStart';
 import type { DiagnosticResult } from '@elastic/elasticsearch';
 import { errors } from '@elastic/elasticsearch';
 import type { TransportRequestOptions } from '@elastic/transport';
-import { esql } from '@elastic/esql';
 import type { ESQLSearchResponse } from '@kbn/es-types';
 import type {
   IndexStorageSettings,
@@ -750,6 +751,7 @@ export class StorageIndexAdapter<
     transportOptions
   ) =>
     this.ensureMappingsBeforeReading(async () => {
+      const { esql } = await import('@elastic/esql');
       const emptyResponse: ESQLSearchResponse = { columns: [], values: [] };
 
       // Build the adapter-owned FROM clause; callers supply only the pipeline.

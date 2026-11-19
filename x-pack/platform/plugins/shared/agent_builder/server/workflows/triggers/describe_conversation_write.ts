@@ -5,7 +5,8 @@
  * 2.0.
  */
 
-import { isEqual, uniq } from 'lodash';
+import isEqual from 'lodash/isEqual';
+import uniq from 'lodash/uniq';
 import type {
   Conversation,
   ConversationAccessControl,

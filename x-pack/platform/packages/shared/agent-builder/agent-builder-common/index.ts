@@ -584,3 +584,5 @@ export type {
   MetadataFieldValue,
   SerializedMetadataValue,
 } from './templates';
+
+export { chatSystemIndex, chatSystemIndexPrefix } from './indices';

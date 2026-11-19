@@ -29,7 +29,7 @@ directory; retains failed attempts. Workflows, Cases, Notes, fingerprints and
 outcome docs remain for independent review; all identifiers have a lane-B prefix.
 
 `--smoke` runs only three instrumented profiles (ordinary Kibana, child_process,
-in_process), two runs per family: **18 real persisted runs**. Not a timing claim.
+in_process), two runs per family: **24 real persisted runs**. Not a timing claim.
 The full matrix intentionally runs serially and restarts Kibana many times.
 
 ## Fixed method / outputs
@@ -38,19 +38,20 @@ The full matrix intentionally runs serially and restarts Kibana many times.
   source/config/Node/machine identity and dirty status. Captures process CPU/RSS
   contention snapshots before/after each profile. Build is outside timing cells.
 - Original idle probe records three fresh workers, idle roots/RSS/post-GC heap.
-  Compiled original inference/Cases/Security execution fixtures run three fresh
+  Compiled original inference/Cases/Security/conversation execution fixtures run three fresh
   processes each, retaining lazy shared-capability first-use JS/heap/latency and
   exclusive per-step curves. They execute valid original business responses, not
   just module imports. These are separate from end-to-end timing cells.
 - Same actual definitions for ordinary in-Kibana and runner: extension-heavy
   entity resolution + exact exception filter + **nonempty fingerprint write** +
   Note create/read; Cases create/update/comment/find/get; inference prompt,
-  summarize and classify via a local OpenAI-compatible fake ES inference endpoint.
-  Every run persists an ES outcome; independent Case/comment/fingerprint/outcome
-  reads validate it. No mocked business service or empty fingerprint fast path.
+  summarize and classify via a local OpenAI-compatible fake ES inference endpoint;
+  conversation create/metadata patch/registered event/read through the original
+  native ES/OCC/ACL client. Every run persists an ES outcome; independent
+  Case/comment/fingerprint/conversation/event/outcome reads validate it. No mocked business service or empty fingerprint fast path.
 - Uninstrumented timing: ordinary Kibana (`remoteExecution.enabled:false`) vs
   child_process; delays **0/1/5/30ms one-way per outbound IPC frame** for extension
-  and Cases. Inference measured at delay0. Three independent fresh-Kibana+worker
+  and Cases. Inference and conversation measured at delay0. Three independent fresh-Kibana+worker
   cold blocks per family/cell, five subsequent warm leases per block. Raw engine
   execution `duration` and submission-to-terminal-observation retained; latter
   includes 100ms polling quantization, not independent verification GETs. Cold
@@ -60,7 +61,7 @@ The full matrix intentionally runs serially and restarts Kibana many times.
   forced GC, seam logging and load hooks explicitly absent from timing profiles.
   `finalTimingClaims:false` is deliberate: a harness cannot certify a quiet laptop.
 - Separate instrumented memory/callback profiles: baseline, child_process and
-  in_process, fixed family order extensions -> Cases -> inference. Per-step Core
+  in_process, fixed family order extensions -> Cases -> inference -> conversation. Per-step Core
   heap markers + 100ms per-process RSS/heap/cumulative process CPU samples.
   Acknowledged SIGUSR2 samples force GC in **each owned process** before/after each
   run. `memory-curve.jsonl` retains individual PIDs and combined Kibana+worker RSS/
@@ -84,6 +85,7 @@ The full matrix intentionally runs serially and restarts Kibana many times.
 | Original Cases validation + first valid response |8.21–8.43MB|1,538,894B|9MiB /1.7MB /65ms median3|
 | Original native ES `ExecutorDataPlane.open` |4.77–5.12MB|2,567,898B|5.6MB /2.8MB /45ms median3|
 | Original EntityStore entity resolution, valid Painless+parse |5.98–6.23MB|1,431,802B|6.8MB /1.56MB /45ms median3|
+| Original conversation client + first valid native read |6.08MB|1,575,390B|6.6MB /1.73MB /45ms median3|
 
 Entity resolution is genuinely shared by getAlertEntities and fingerprint
 matching. Exclusive execution increments remain <=2MiB and static closures
@@ -92,6 +94,14 @@ synchronous built-in object exports eagerly construct definitions; main entity
 schemas already lazy, original condition schemas eager. Lazy-per-type conversion
 would change several public synchronous exports/identity; not a contained fix.
 No allowance silently raised to hide it.
+
+Conversation storage, OCC and ACL checks execute in the worker; dedicated ES
+indices are not saved objects. Original request-derived identity/space/template
+facts and opaque client references are per client, not cross-step cached. Live
+agent registry checks and original event validation stay coordinator-side;
+validation precedes OCC. Original audit/event/telemetry/log hooks batch on drain;
+client references release on drain or run abort. Safe typed error DTOs preserve
+original AgentBuilder error prototypes without private request/header metadata.
 
 ## Pre-existing product safety finding — upstream owner decision
 

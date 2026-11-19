@@ -190,7 +190,15 @@ const execute = async (
     return found._source.output;
   };
   const persisted = await api<{
-    _source: { caseId?: string; entityId?: string; prompt?: string; category?: string };
+    _source: {
+      caseId?: string;
+      conversationId?: string;
+      status?: string;
+      summary?: string;
+      entityId?: string;
+      prompt?: string;
+      category?: string;
+    };
   }>(`${es}/lane-b-quiet-outcomes/_doc/${step('persist')._id}`);
   save(join(directory, `${workflowExecutionId}-business.json`), persisted);
   if (family === 'cases') {
@@ -206,6 +214,19 @@ const execute = async (
     );
     assert.equal(comment.comment, id);
     assert.equal(persisted._source.caseId, caseId);
+  } else if (family === 'conversation') {
+    const conversationId = persisted._source.conversationId;
+    assert(conversationId);
+    assert.equal(persisted._source.status, 'closed');
+    assert.equal(persisted._source.summary, id);
+    await api(`/api/agent_builder/conversations/${conversationId}`);
+    const stored = await api<{
+      _source: { events: Array<{ type: string; data: { text?: string } }> };
+    }>(`${es}/.chat-conversations/_doc/${conversationId}`);
+    assert(
+      stored._source.events.some((event) => event.type === 'text_note' && event.data.text === id)
+    );
+    save(join(directory, `${workflowExecutionId}-conversation.json`), stored);
   } else if (family === 'extensions') {
     assert.equal(persisted._source.entityId, 'host:lane-b-host-id');
     assert.equal(step('fingerprints').reviews?.[0]?.title, id);
@@ -314,7 +335,7 @@ export const runLaneBMeasurements = async (): Promise<void> => {
     format: 'cjs',
     outfile: metrics,
   });
-  for (const family of ['inference', 'cases', 'security_three']) {
+  for (const family of ['inference', 'cases', 'security_three', 'conversation']) {
     const probe = join(output, `${family}-probe.mjs`);
     await build({
       entryPoints: [resolve(__dirname, `__fixtures__/${family}_execution_probe.ts`)],
@@ -436,7 +457,7 @@ export const runLaneBMeasurements = async (): Promise<void> => {
     for (const cell of smoke ? memoryCells : [...timingCells, ...memoryCells]) {
       const families: LaneBFamily[] =
         cell.memory || cell.delayMs === 0
-          ? ['extensions', 'cases', 'inference']
+          ? ['extensions', 'cases', 'inference', 'conversation']
           : ['extensions', 'cases'];
       const groups = cell.memory ? [families] : families.map((family) => [family]);
       for (const group of groups)

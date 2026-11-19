@@ -9,7 +9,7 @@ import type { Logger, ElasticsearchClient } from '@kbn/core/server';
 import type { Optional } from '@kbn/utility-types';
 import type { IndexStorageSettings } from '@kbn/storage-adapter';
 import { StorageIndexAdapter, types } from '@kbn/storage-adapter';
-import { chatSystemIndex } from '@kbn/agent-builder-server';
+import { chatSystemIndex } from '@kbn/agent-builder-common';
 import type { VersionedAttachment } from '@kbn/agent-builder-common/attachments';
 import type {
   ConversationAccessControl,

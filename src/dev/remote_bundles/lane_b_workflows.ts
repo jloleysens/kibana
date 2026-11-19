@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-export type LaneBFamily = 'extensions' | 'cases' | 'inference';
+export type LaneBFamily = 'extensions' | 'cases' | 'inference' | 'conversation';
 
 /** Uses the same original business steps for ordinary Kibana and each worker backend. */
 export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: string) => {
@@ -78,6 +78,40 @@ export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: s
         with: { case_id: '{{ steps.create.output.case.id }}', include_comments: true },
       },
     ],
+    conversation: [
+      {
+        name: 'create',
+        type: 'ai.conversation.create',
+        with: {
+          conversation_id: '{{ execution.id }}',
+          title: id,
+          template_id: 'investigation',
+          access_control: { access_mode: 'public', entries: [] },
+        },
+      },
+      {
+        name: 'patch',
+        type: 'ai.conversation.metadata.patch',
+        with: {
+          conversation_id: '{{ steps.create.output.conversation_id }}',
+          updates: { status: 'closed', summary: id },
+        },
+      },
+      {
+        name: 'event',
+        type: 'ai.conversation.add_event',
+        with: {
+          conversation_id: '{{ steps.create.output.conversation_id }}',
+          type: 'text_note',
+          data: { text: id },
+        },
+      },
+      {
+        name: 'read',
+        type: 'ai.conversation.metadata.read',
+        with: { conversation_id: '{{ steps.create.output.conversation_id }}' },
+      },
+    ],
     inference: [
       {
         name: 'prompt',
@@ -100,6 +134,11 @@ export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: s
     ],
   }[family];
   const document = {
+    conversation: {
+      conversationId: '{{ steps.create.output.conversation_id }}',
+      status: '{{ steps.read.output.metadata.status }}',
+      summary: '{{ steps.read.output.metadata.summary }}',
+    },
     extensions: {
       entityId: '{{ steps.entities.output.entities[0].id }}',
       noteId: '{{ steps.note.output.note_id }}',

@@ -5,7 +5,9 @@
  * 2.0.
  */
 
-import { isEqual, sortBy, uniq } from 'lodash';
+import isEqual from 'lodash/isEqual';
+import sortBy from 'lodash/sortBy';
+import uniq from 'lodash/uniq';
 import type { ApiTarget } from '../apis';
 import { apiTargets } from '../apis';
 import type { AgentApprovals } from './definition';

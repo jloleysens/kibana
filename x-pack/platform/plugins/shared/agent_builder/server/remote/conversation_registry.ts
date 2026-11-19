@@ -1,0 +1,225 @@
+/*
+ * Copyright Elasticsearch B.V. and/or licensed to Elasticsearch B.V. under one
+ * or more contributor license agreements. Licensed under the Elastic License
+ * 2.0; you may not use this file except in compliance with the Elastic License
+ * 2.0.
+ */
+
+import { randomUUID } from 'node:crypto';
+import { chatSystemIndex, isAgentBuilderError } from '@kbn/agent-builder-common';
+import type { KibanaRequest } from '@kbn/core/server';
+import { remotable, recordRemoteTiming } from '@kbn/core-remote-common';
+import type { ScopeLookup } from '@kbn/core-remote-server';
+import { serializeExecutionError } from '../services/execution/utils/serialize_execution_error';
+import type { createClient } from '../services/conversation/client/client';
+import { listTemplates } from '../services/conversation/templates/registry';
+import { validateConversationEvents } from '../services/conversation_events/validation';
+import type {
+  ConversationRegistryApi,
+  ConversationNotification,
+  ConversationPolicy,
+} from './conversation_tokens';
+import { CONVERSATION_LOG_LEVELS } from './conversation_tokens';
+
+type ClientOptions = Parameters<typeof createClient>[0];
+
+/** Keeps live registry validation and original notification hooks scoped to the authenticated run. */
+@remotable()
+export class ConversationRegistry implements ConversationRegistryApi {
+  readonly #clients = new Map<
+    string,
+    { scopeId: string; context: ClientOptions; release(): void }
+  >();
+  readonly #scopeClients = new Map<string, { ids: Set<string>; cleanup(): void }>();
+  constructor(
+    private readonly scopes: ScopeLookup,
+    private readonly getOptions: (request: KibanaRequest) => Promise<ClientOptions>
+  ) {}
+
+  async #call<T>(
+    scopeId: string,
+    operation: string,
+    payload: object,
+    run: (context: ClientOptions, signal: AbortSignal) => Promise<T>,
+    clientLeaseId?: string
+  ): Promise<T> {
+    const started = performance.now();
+    const cpu = process.cpuUsage();
+    try {
+      const signal = this.scopes.getAbortSignal(scopeId);
+      signal.throwIfAborted();
+      const request = this.scopes.get<KibanaRequest>(scopeId);
+      let context: ClientOptions;
+      if (operation === 'read') context = await this.getOptions(request);
+      else {
+        const client = clientLeaseId ? this.#clients.get(clientLeaseId) : undefined;
+        if (!client || client.scopeId !== scopeId)
+          throw new Error('Conversation client lease is not owned by this run');
+        context = client.context;
+      }
+      signal.throwIfAborted();
+      const result = await run(context, signal);
+      signal.throwIfAborted();
+      return result;
+    } catch (error) {
+      const serialized = serializeExecutionError(error);
+      const ErrorType =
+        [EvalError, RangeError, ReferenceError, SyntaxError, TypeError, URIError].find(
+          (Constructor) => error instanceof Constructor
+        ) ?? Error;
+      const transportError =
+        error instanceof AggregateError
+          ? new AggregateError([], serialized.message)
+          : new ErrorType(serialized.message);
+      Object.assign(transportError, {
+        workflowAgentBuilderErrorName: error instanceof Error ? error.name : 'Error',
+        workflowAgentBuilderWasTyped: isAgentBuilderError(error),
+        workflowAgentBuilderError: serialized,
+      });
+      throw transportError;
+    } finally {
+      const elapsed = process.cpuUsage(cpu);
+      recordRemoteTiming('agent_builder_registry', {
+        scopeId,
+        stepType: operation,
+        durationMs: performance.now() - started,
+        payloadBytes: Buffer.byteLength(JSON.stringify(payload)),
+        cpuMicros: elapsed.user + elapsed.system,
+      });
+    }
+  }
+  read(scopeId: string): ReturnType<ConversationRegistryApi['read']> {
+    return this.#call(scopeId, 'read', {}, async (context, signal) => {
+      const clientLeaseId = randomUUID();
+      const policy: ConversationPolicy = {
+        clientLeaseId,
+        user: structuredClone(context.user),
+        space: context.space,
+        templates: listTemplates(),
+        logging: {
+          client: Object.fromEntries(
+            CONVERSATION_LOG_LEVELS.map((level) => [level, context.logger.isLevelEnabled(level)])
+          ) as ConversationPolicy['logging']['client'],
+          storage: Object.fromEntries(
+            CONVERSATION_LOG_LEVELS.map((level) => [
+              level,
+              context.logger
+                .get('storage')
+                .get(chatSystemIndex('conversations'))
+                .isLevelEnabled(level),
+            ])
+          ) as ConversationPolicy['logging']['storage'],
+        },
+        emitsEvents: context.eventEmitter !== undefined,
+        reportsCreation: context.onConversationCreated !== undefined,
+        reportsFieldChanges: context.reportFieldsChange !== undefined,
+      };
+      let group = this.#scopeClients.get(scopeId);
+      if (!group) {
+        const ids = new Set<string>();
+        const cleanup = () => {
+          for (const id of ids) this.#clients.delete(id);
+          ids.clear();
+          this.#scopeClients.delete(scopeId);
+          signal.removeEventListener('abort', cleanup);
+        };
+        group = { ids, cleanup };
+        this.#scopeClients.set(scopeId, group);
+        signal.addEventListener('abort', cleanup, { once: true });
+      }
+      const owner = group;
+      const release = () => {
+        this.#clients.delete(clientLeaseId);
+        owner.ids.delete(clientLeaseId);
+        if (owner.ids.size === 0) owner.cleanup();
+      };
+      this.#clients.set(clientLeaseId, { scopeId, context, release });
+      owner.ids.add(clientLeaseId);
+      return policy;
+    });
+  }
+  assertAgentUse(scopeId: string, clientLeaseId: string, agentId: string): Promise<void> {
+    return this.#call(
+      scopeId,
+      'assertAgentUse',
+      { agentId },
+      async (context) => {
+        await context.agentRegistry.get(agentId, { access: 'use' });
+      },
+      clientLeaseId
+    );
+  }
+  accessibleAgentIds(scopeId: string, clientLeaseId: string): Promise<string[]> {
+    return this.#call(
+      scopeId,
+      'accessibleAgentIds',
+      {},
+      (context) => context.agentRegistry.getIds(),
+      clientLeaseId
+    );
+  }
+  validateEvents(
+    ...[scopeId, clientLeaseId, events]: Parameters<ConversationRegistryApi['validateEvents']>
+  ): ReturnType<ConversationRegistryApi['validateEvents']> {
+    return this.#call(
+      scopeId,
+      'validateEvents',
+      events,
+      async (context) => {
+        if (!context.conversationEvents)
+          throw new Error('Original conversation event registry is unavailable');
+        return validateConversationEvents(events, context.conversationEvents);
+      },
+      clientLeaseId
+    );
+  }
+  notify(
+    scopeId: string,
+    clientLeaseId: string,
+    notifications: ConversationNotification[]
+  ): Promise<void> {
+    return this.#call(
+      scopeId,
+      'notify',
+      notifications,
+      async (context) => {
+        try {
+          for (const notification of notifications) {
+            try {
+              switch (notification.operation) {
+                case 'log': {
+                  const target =
+                    notification.payload.namespace === 'storage'
+                      ? context.logger.get('storage').get(chatSystemIndex('conversations'))
+                      : context.logger;
+                  target[notification.payload.level](notification.payload.message);
+                  break;
+                }
+                case 'created':
+                  context.onConversationCreated?.(notification.payload);
+                  break;
+                case 'fieldsChanged':
+                  context.reportFieldsChange?.(notification.payload);
+                  break;
+                case 'emitAttachmentEvents':
+                  context.eventEmitter?.emitAttachmentEvents(notification.payload);
+                  break;
+                case 'emitConversationUpdated':
+                  context.eventEmitter?.emitConversationUpdated(notification.payload);
+                  break;
+                case 'emitMetadataPatched':
+                  context.eventEmitter?.emitMetadataPatched(notification.payload);
+                  break;
+              }
+            } catch (error) {
+              context.logger.warn(`Failed to notify conversation write: ${error}`);
+            }
+          }
+        } finally {
+          this.#clients.get(clientLeaseId)?.release();
+        }
+      },
+      clientLeaseId
+    );
+  }
+}

@@ -86,6 +86,7 @@ export const createConversationClientMock = (): ConversationClientMock => {
 
 export const createConversationServiceMock = (): ConversationServiceMock => {
   return {
+    getScopedClientOptions: jest.fn(),
     getScopedClient: jest.fn().mockImplementation(async () => createConversationClientMock()),
     getScopedClientAsUser: jest.fn().mockImplementation(async () => createConversationClientMock()),
   };

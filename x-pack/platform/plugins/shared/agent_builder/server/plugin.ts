@@ -56,6 +56,8 @@ import { runToolIdBackfill } from './backfills/tool_id_backfill';
 import { RecommendedEndpointsPoller } from './recommended_endpoints_poller';
 import { registerDeductiveAgent } from './services/execution/run_agent/deductive/register_deductive_agent';
 import { getDeploymentInfo } from './utils/deployment_info';
+import { ConversationRegistryToken } from './remote/conversation_tokens';
+import { ConversationRegistry } from './remote/conversation_registry';
 
 export class AgentBuilderPlugin
   implements
@@ -177,6 +179,16 @@ export class AgentBuilderPlugin
       getRunAgentStepDefinition(this.serviceManager)
     );
     setupDeps.workflowsExtensions.registerStepDefinition(rerankStepDefinition);
+
+    coreSetup.remote.bind(
+      ConversationRegistryToken,
+      (scopes) =>
+        new ConversationRegistry(scopes, async (request) => {
+          const services = this.serviceManager.internalStart;
+          if (!services) throw new Error('Conversation service is not started');
+          return services.conversations.getScopedClientOptions({ request });
+        })
+    );
 
     registerConversationWorkflowSteps(setupDeps.workflowsExtensions, {
       getConversationClient: async (request) => {
