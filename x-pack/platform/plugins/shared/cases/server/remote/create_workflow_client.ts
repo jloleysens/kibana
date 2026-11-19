@@ -9,7 +9,8 @@ import type { ActionSource } from '../../common/types/domain';
 import type { WorkflowCasesClient } from '../workflows/types';
 import type { CasesClientOperationsApi } from './client_operations_tokens';
 
-const restoreCasesErrorName = async <T>(result: Promise<T>): Promise<T> => {
+/** Restores the original error projection after safe Cases capability transport. */
+export const restoreCasesErrorName = async <T>(result: Promise<T>): Promise<T> => {
   try {
     return await result;
   } catch (error) {

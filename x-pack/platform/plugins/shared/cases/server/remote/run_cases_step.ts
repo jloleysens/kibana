@@ -12,7 +12,7 @@ import type {
 } from '@kbn/workflows-extensions/server';
 import type { GetWorkflowCasesClient } from '../workflows/types';
 import type { CasesClientOperationsApi } from './client_operations_tokens';
-import { createWorkflowCasesClient } from './create_workflow_client';
+import { createWorkflowCasesClient, restoreCasesErrorName } from './create_workflow_client';
 
 /** Runs the original handler locally; only enumerated authenticated Cases client operations cross. */
 export const runCasesStep = async (
@@ -27,8 +27,12 @@ export const runCasesStep = async (
   const { handlerContext } = context;
   if (!handlerContext) throw new Error('Cases requires executor-local handler context');
   handlerContext.abortSignal.throwIfAborted();
-  const definition = await factory(async (_request, options) =>
-    createWorkflowCasesClient(api, scopeId, options?.actionSource)
+  const definition = await restoreCasesErrorName(
+    Promise.resolve(
+      factory(async (_request, options) =>
+        createWorkflowCasesClient(api, scopeId, options?.actionSource)
+      )
+    )
   );
   if (!('handler' in definition)) throw new Error('Cases requires an ordinary handler');
   recordRemoteTiming('cases_native_handler', {

@@ -12,6 +12,18 @@ import type { GetCasesClientFn } from '../client/types';
 import type { ActionSource } from '../../common/types/domain';
 import type { CasesClientOperationsApi } from './client_operations_tokens';
 
+const createCasesTransportError = (error: Error): Error => {
+  const ErrorType =
+    [EvalError, RangeError, ReferenceError, SyntaxError, TypeError, URIError].find(
+      (Constructor) => error instanceof Constructor
+    ) ?? Error;
+  const transportError =
+    error instanceof AggregateError
+      ? new AggregateError([], error.message)
+      : new ErrorType(error.message);
+  return Object.assign(transportError, { workflowCasesErrorName: error.name });
+};
+
 /** Binds enumerated Cases client operations to the original authenticated workflow client. */
 @remotable()
 export class CasesClientOperations implements CasesClientOperationsApi {
@@ -26,17 +38,25 @@ export class CasesClientOperations implements CasesClientOperationsApi {
     scopeId: string,
     stepType: 'cases.addAttachments' | 'cases.setExtendedFields'
   ): Promise<void> {
-    this.scopes.getAbortSignal(scopeId).throwIfAborted();
-    this.scopes.get<KibanaRequest>(scopeId);
-    const enabled =
-      stepType === 'cases.addAttachments' ? this.canAddAttachments() : this.isTemplatesEnabled;
-    if (!enabled) throw new Error(`${stepType} is not registered for this deployment`);
+    try {
+      this.scopes.getAbortSignal(scopeId).throwIfAborted();
+      this.scopes.get<KibanaRequest>(scopeId);
+      const enabled =
+        stepType === 'cases.addAttachments' ? this.canAddAttachments() : this.isTemplatesEnabled;
+      if (!enabled) throw new Error(`${stepType} is not registered for this deployment`);
+    } catch (error) {
+      throw createCasesTransportError(error instanceof Error ? error : new Error(String(error)));
+    }
   }
 
   async templatesEnabled(scopeId: string): Promise<boolean> {
-    this.scopes.getAbortSignal(scopeId).throwIfAborted();
-    this.scopes.get<KibanaRequest>(scopeId);
-    return this.isTemplatesEnabled;
+    try {
+      this.scopes.getAbortSignal(scopeId).throwIfAborted();
+      this.scopes.get<KibanaRequest>(scopeId);
+      return this.isTemplatesEnabled;
+    } catch (error) {
+      throw createCasesTransportError(error instanceof Error ? error : new Error(String(error)));
+    }
   }
 
   async #call<T>(
@@ -46,12 +66,12 @@ export class CasesClientOperations implements CasesClientOperationsApi {
     source: ActionSource | undefined,
     run: (client: Awaited<ReturnType<GetCasesClientFn>>) => Promise<T>
   ): Promise<T> {
-    const signal = this.scopes.getAbortSignal(scopeId);
-    signal.throwIfAborted();
-    const request = this.scopes.get<KibanaRequest>(scopeId);
     const start = performance.now();
     const cpu = process.cpuUsage();
     try {
+      const signal = this.scopes.getAbortSignal(scopeId);
+      signal.throwIfAborted();
+      const request = this.scopes.get<KibanaRequest>(scopeId);
       const client = await this.getCasesClient(
         request,
         source ? { actionSource: source } : undefined
@@ -61,17 +81,7 @@ export class CasesClientOperations implements CasesClientOperationsApi {
       signal.throwIfAborted();
       return result;
     } catch (error) {
-      if (!(error instanceof Error)) throw new Error(String(error));
-      const ErrorType =
-        [EvalError, RangeError, ReferenceError, SyntaxError, TypeError, URIError].find(
-          (Constructor) => error instanceof Constructor
-        ) ?? Error;
-      const transportError =
-        error instanceof AggregateError
-          ? new AggregateError([], error.message)
-          : new ErrorType(error.message);
-      Object.assign(transportError, { workflowCasesErrorName: error.name });
-      throw transportError;
+      throw createCasesTransportError(error instanceof Error ? error : new Error(String(error)));
     } finally {
       const elapsed = process.cpuUsage(cpu);
       recordRemoteTiming('cases_client_operation', {
