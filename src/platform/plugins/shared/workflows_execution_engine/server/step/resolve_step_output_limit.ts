@@ -12,12 +12,14 @@ import { DEFAULT_MAX_STEP_SIZE, parseByteSize } from './errors';
 
 /** Shares local output-size precedence with coordinator-owned step policies. */
 export const resolveStepOutputLimit = (
-  stepLimit: string | undefined,
-  workflowLimit: string | undefined,
+  getStepLimit: () => string | undefined,
+  getWorkflowLimit: () => string | undefined,
   getPluginLimit: () => number | ByteSizeValue | undefined
 ): number => {
   try {
+    const stepLimit = getStepLimit();
     if (stepLimit) return parseByteSize(stepLimit);
+    const workflowLimit = getWorkflowLimit();
     if (workflowLimit) return parseByteSize(workflowLimit);
     const pluginLimit = getPluginLimit();
     if (pluginLimit !== undefined)

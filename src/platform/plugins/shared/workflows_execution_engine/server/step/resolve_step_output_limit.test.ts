@@ -20,18 +20,68 @@ it.each([
   ['0b', '2kb', 3072, 0],
   [undefined, undefined, 0, 0],
 ] as const)('shares exact local precedence (%s / %s / %s)', (step, workflow, plugin, expected) => {
-  expect(resolveStepOutputLimit(step, workflow, () => plugin)).toBe(expected);
+  expect(
+    resolveStepOutputLimit(
+      () => step,
+      () => workflow,
+      () => plugin
+    )
+  ).toBe(expected);
 });
 it('uses original ByteSizeValue plugin configuration and preserves fallback on a configuration failure', () => {
-  expect(resolveStepOutputLimit(undefined, undefined, () => ByteSizeValue.parse('4kb'))).toBe(4096);
   expect(
-    resolveStepOutputLimit(undefined, undefined, () => {
-      throw new Error('unavailable');
-    })
+    resolveStepOutputLimit(
+      () => undefined,
+      () => undefined,
+      () => ByteSizeValue.parse('4kb')
+    )
+  ).toBe(4096);
+  expect(
+    resolveStepOutputLimit(
+      () => undefined,
+      () => undefined,
+      () => {
+        throw new Error('unavailable');
+      }
+    )
   ).toBe(10 * 1024 * 1024);
 });
 it('does not read plugin configuration if a more specific limit applies', () => {
   const plugin = jest.fn(() => 3072);
-  expect(resolveStepOutputLimit('1kb', '2kb', plugin)).toBe(1024);
+  expect(
+    resolveStepOutputLimit(
+      () => '1kb',
+      () => '2kb',
+      plugin
+    )
+  ).toBe(1024);
   expect(plugin).not.toHaveBeenCalled();
+});
+
+it('keeps definition/config access inside the original fallback boundary and short-circuits unused levels', () => {
+  const unavailable = jest.fn((): string | undefined => {
+    throw new Error('unavailable');
+  });
+  expect(
+    resolveStepOutputLimit(
+      () => '1kb',
+      unavailable,
+      () => 3072
+    )
+  ).toBe(1024);
+  expect(unavailable).not.toHaveBeenCalled();
+  expect(
+    resolveStepOutputLimit(
+      unavailable,
+      () => '2kb',
+      () => 3072
+    )
+  ).toBe(10 * 1024 * 1024);
+  expect(
+    resolveStepOutputLimit(
+      () => undefined,
+      unavailable,
+      () => 3072
+    )
+  ).toBe(10 * 1024 * 1024);
 });

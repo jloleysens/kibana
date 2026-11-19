@@ -99,8 +99,8 @@ export const dispatchWorkflow = async ({
         stepOutputLimits.set(
           step.name,
           resolveStepOutputLimit(
-            step['max-step-size'],
-            execution.workflowDefinition.settings?.['max-step-size'],
+            () => step['max-step-size'],
+            () => execution.workflowDefinition.settings?.['max-step-size'],
             () => facts.maxResponseSizeBytes
           )
         );

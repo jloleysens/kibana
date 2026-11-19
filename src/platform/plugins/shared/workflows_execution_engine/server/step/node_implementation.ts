@@ -264,8 +264,11 @@ export abstract class BaseAtomicNodeImplementation<TStep extends BaseStep>
    */
   protected getMaxResponseBytes(): number {
     return resolveStepOutputLimit(
-      this.step['max-step-size'],
-      this.stepExecutionRuntime.workflowExecution?.workflowDefinition?.settings?.['max-step-size'],
+      () => this.step['max-step-size'],
+      () =>
+        this.stepExecutionRuntime.workflowExecution?.workflowDefinition?.settings?.[
+          'max-step-size'
+        ],
       () => {
         const { config: pluginConfig, dispatchFacts } =
           this.stepExecutionRuntime.contextManager.getDependencies();
