@@ -60,6 +60,7 @@ import type { ConnectorRateLimiter } from './connector_rate_limiter';
 const Millis2Nanos = 1000 * 1000;
 
 export interface ActionExecutorContext {
+  getRelayClient?: () => import('@kbn/connector-specs').RelayActionClient | undefined;
   runtimeUserAgent?: string;
   runtimeConfig?: import('../actions_config').RuntimeActionsConfig;
   logger: Logger;
@@ -613,6 +614,7 @@ export class ActionExecutor {
                   authorize: ignoredAuthorize,
                   runtimeConfig: ignoredConfig,
                   runtimeUserAgent: ignoredUserAgent,
+                  relayClient: ignoredRelayClient,
                   ...executorOptions
                 } = options;
                 recordRemoteTiming('action_executor_handler', { stepType: actionTypeId });
@@ -635,6 +637,7 @@ export class ActionExecutor {
           config,
           secrets,
           taskInfo,
+          ...(runtime ? { relayClient: this.actionExecutorContext?.getRelayClient?.() } : {}),
           runtimeConfig: this.actionExecutorContext?.runtimeConfig,
           runtimeUserAgent: this.actionExecutorContext?.runtimeUserAgent,
           authorize: checkCanExecuteFn ? () => checkCanExecuteFn(actionTypeId) : undefined,

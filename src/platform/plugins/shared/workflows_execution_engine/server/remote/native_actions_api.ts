@@ -102,6 +102,18 @@ export class NativeActions implements NativeActionsApi {
     }
   }
 
+  async relay(
+    scopeId: string,
+    invocationId: string,
+    request: Parameters<NativeActionsApi['relay']>[2]
+  ): ReturnType<NativeActionsApi['relay']> {
+    this.scopes.getAbortSignal(scopeId).throwIfAborted();
+    this.scopes.get<KibanaRequest>(scopeId);
+    const execution = this.scopesState.get(scopeId)?.pending.get(invocationId);
+    if (!execution) throw new Error('Unknown native connector invocation');
+    return execution.relay(request);
+  }
+
   async token(
     scopeId: string,
     invocationId: string,

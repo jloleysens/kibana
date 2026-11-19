@@ -23,6 +23,7 @@ const mockPrepare = jest.fn();
 const mockFinalize = jest.fn();
 const mockConstruct = jest.fn();
 const mockToken = jest.fn();
+const mockRelay = jest.fn();
 
 jest.mock('@kbn/actions-plugin/server', () => ({
   ...jest.requireActual('@kbn/actions-plugin/server'),
@@ -33,6 +34,7 @@ jest.mock('@kbn/actions-plugin/server', () => ({
     preparation = mockPrepare();
     finalize = mockFinalize;
     token = mockToken;
+    relay = mockRelay;
   },
 }));
 
@@ -148,4 +150,22 @@ it('binds token calls to an active prepared invocation and refuses scope closure
   await expect(api.token('scope', 'first', request)).rejects.toThrow('Unknown');
   controller.abort();
   await expect(api.token('scope', 'first', request)).rejects.toThrow();
+});
+
+it('exposes Relay transport only through an active invocation in the requesting scope', async () => {
+  const { api, input, controller } = setup();
+  const request = { operation: 'listBindings' } as const;
+  await expect(api.relay('scope', 'missing', request)).rejects.toThrow('Unknown');
+  await api.prepare('scope', 'first', input);
+  mockRelay.mockResolvedValue({ operation: 'listBindings', result: { bindings: [] } });
+  await expect(api.relay('scope', 'first', request)).resolves.toEqual({
+    operation: 'listBindings',
+    result: { bindings: [] },
+  });
+  expect(mockRelay).toHaveBeenCalledWith(request);
+  await expect(api.relay('other', 'first', request)).rejects.toThrow('Unknown');
+  await api.finalize('scope', [{ invocationId: 'first', runtime: completion }]);
+  await expect(api.relay('scope', 'first', request)).rejects.toThrow('Unknown');
+  controller.abort();
+  await expect(api.relay('scope', 'first', request)).rejects.toThrow();
 });

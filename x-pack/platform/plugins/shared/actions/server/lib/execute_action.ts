@@ -18,6 +18,7 @@ export type ActionRuntimeOptions = ActionTypeExecutorOptions<
   Record<string, unknown>,
   Record<string, unknown>
 > & {
+  readonly relayClient?: import('@kbn/connector-specs').RelayActionClient;
   readonly actionType: ActionType;
   readonly name: string;
   readonly runtimeConfig?: RuntimeActionsConfig;

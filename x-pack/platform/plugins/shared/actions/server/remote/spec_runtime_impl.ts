@@ -26,6 +26,7 @@ import { configSchema } from '../config';
 import { getActionsConfigurationUtilities } from '../actions_config';
 import { createAxiosTransport, createCredentialAccessor } from '../lib/create_axios_transport';
 import { getAxiosAuthStrategy } from '../lib/axios_auth_strategies/get_axios_auth_strategy';
+import { createConnectorRelayClient } from './connector_relay_client';
 import { createConnectorTokenStore } from './connector_token_store';
 import { executeAction, getActionRuntimeError } from '../lib/execute_action';
 import { createSpecExecutor } from '../lib/single_file_connectors/create_spec_executor';
@@ -144,6 +145,10 @@ export class SpecRuntime implements SpecRuntimeApi {
           });
         },
         actions: spec.actions,
+        getRelayClient: () =>
+          prepared.relayAvailable
+            ? createConnectorRelayClient(this.actions, scopeId, invocationId)
+            : undefined,
         getAxiosInstanceWithAuth: createAxiosTransport(transportDeps),
         getCredential: createCredentialAccessor(transportDeps),
         getClientLeasePool: () => {

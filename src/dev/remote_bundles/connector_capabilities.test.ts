@@ -111,7 +111,9 @@ it('bounds the shared native Actions capability without importing any connector 
   ).toBeLessThanOrEqual(6.5 * 1024 * 1024);
   expect(
     Object.keys(result.metafile.inputs).filter((path) =>
-      /all_specs|kbn-connector-specs\/src\/specs\//.test(path)
+      /all_specs|kbn-connector-specs\/src\/specs\/|\/lib\/relay\/relay_client\.ts|connector_relay_transport\.ts/.test(
+        path
+      )
     )
   ).toEqual([]);
 });

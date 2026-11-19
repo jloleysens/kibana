@@ -845,6 +845,7 @@ export class ActionsPlugin
       getCurrentUserProfileIdFromRequest(requestWithAuth, plugins.security, logger);
 
     actionExecutor!.initialize({
+      getRelayClient: () => this.relayClient,
       runtimeConfig: serializeActionsConfiguration(actionsConfig),
       runtimeUserAgent: this.runtimeUserAgent,
       logger,

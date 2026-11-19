@@ -39,7 +39,12 @@ const setup = (perUser = false) => {
     ReturnType<NativeActionsApi['token']>,
     Parameters<NativeActionsApi['token']>
   >(async (_scope, _invocation, request) => state.execute(request));
-  const actions: NativeActionsApi = { prepare: jest.fn(), finalize: jest.fn(), token };
+  const actions: NativeActionsApi = {
+    relay: jest.fn(),
+    prepare: jest.fn(),
+    finalize: jest.fn(),
+    token,
+  };
   return {
     state,
     client,
