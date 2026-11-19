@@ -26,6 +26,10 @@ export type ActionRuntimeOptions = ActionTypeExecutorOptions<
   readonly authorize?: () => Promise<void>;
 };
 export interface ActionRuntimeResult {
+  readonly requestBodyBytes?: number;
+  readonly genAiTokenTracking?: Awaited<
+    ReturnType<typeof import('./token_tracking/gen_ai_token_tracking').getGenAiTokenTracking>
+  >;
   readonly validatedParams: Record<string, unknown>;
   readonly result: ActionTypeExecutorRawResult<unknown>;
   readonly errorType: ConnectorExecuteErrorType;

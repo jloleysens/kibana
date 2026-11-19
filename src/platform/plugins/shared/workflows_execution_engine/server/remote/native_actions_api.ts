@@ -29,12 +29,18 @@ export class NativeActions implements NativeActionsApi {
       readonly actionInfo: NonNullable<ConstructorParameters<typeof PreparedExecution>[5]>;
       readonly pending: Map<string, PreparedExecution>;
       readonly invocations: Set<string>;
+      inferenceFacts?: Promise<
+        import('@kbn/actions-plugin/server/remote/types').InferenceStreamingFacts
+      >;
       readonly resolver: Promise<ConnectorExecutor>;
     }
   >();
   constructor(
     private readonly scopes: ScopeLookup,
-    private readonly getClient: (request: KibanaRequest) => Promise<ActionsClient>
+    private readonly getClient: (request: KibanaRequest) => Promise<ActionsClient>,
+    private readonly getInferenceFacts?: (
+      request: KibanaRequest
+    ) => Promise<import('@kbn/actions-plugin/server/remote/types').InferenceStreamingFacts>
   ) {}
 
   async prepare(
@@ -73,13 +79,24 @@ export class NativeActions implements NativeActionsApi {
     state.invocations.add(invocationId);
     const actionId = await (await state.resolver).resolveConnectorId(request.connectorNameOrId);
     signal.throwIfAborted();
+    const preparedState = state;
+    const getInferenceFacts = this.getInferenceFacts;
     const execution = new PreparedExecution(
       await state.client,
       actionId,
       request.connectorType,
       request.input,
       signal,
-      state.actionInfo
+      state.actionInfo,
+      request.connectorType.replace(/^\./, '') === 'inference' && getInferenceFacts
+        ? () => {
+            if (!preparedState.inferenceFacts)
+              preparedState.inferenceFacts = getInferenceFacts(
+                this.scopes.get<KibanaRequest>(scopeId)
+              );
+            return preparedState.inferenceFacts;
+          }
+        : undefined
     );
     state.pending.set(invocationId, execution);
     try {
@@ -100,6 +117,17 @@ export class NativeActions implements NativeActionsApi {
         durationMs: performance.now() - start,
       });
     }
+  }
+
+  async dashboard(
+    scopeId: string,
+    invocationId: string,
+    request: Parameters<NativeActionsApi['dashboard']>[2]
+  ): ReturnType<NativeActionsApi['dashboard']> {
+    this.scopes.getAbortSignal(scopeId).throwIfAborted();
+    const execution = this.scopesState.get(scopeId)?.pending.get(invocationId);
+    if (!execution) throw new Error('Unknown native connector invocation');
+    return execution.dashboard(request);
   }
 
   async relay(

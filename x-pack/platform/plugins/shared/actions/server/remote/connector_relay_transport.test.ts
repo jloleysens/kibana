@@ -70,6 +70,7 @@ const setup = (useSystemIdentity = false, subAction = 'sendMessage') => {
     Parameters<NativeActionsApi['relay']>
   >(async (_scope, _invocation, input) => transport.execute(input));
   const actions: NativeActionsApi = {
+    dashboard: jest.fn(),
     prepare: jest.fn(async () => ({ prepared })),
     token: jest.fn(),
     relay,

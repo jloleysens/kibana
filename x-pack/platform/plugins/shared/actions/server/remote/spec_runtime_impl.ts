@@ -13,6 +13,7 @@ import type {
   SpecRuntimeApi,
   SpecRuntimeServices,
 } from '@kbn/connector-specs';
+import { isConnectorAuthorizationError } from '@kbn/connector-specs/server/remote/connector_authorization_error';
 import { recordRemoteTiming } from '@kbn/core-remote-common';
 import {
   createTaskRunError,
@@ -21,6 +22,7 @@ import {
   isUserError,
 } from '@kbn/task-manager-plugin/server/task_running/errors';
 import type { Logger } from '@kbn/core/server';
+import { ConnectorUsageCollector } from '../usage/connector_usage_collector';
 import type { ConnectorFinalization, NativeActionsApi } from './types';
 import { configSchema } from '../config';
 import { getActionsConfigurationUtilities } from '../actions_config';
@@ -39,6 +41,12 @@ import {
 } from '../lib/single_file_connectors/create_connector_network_settings';
 import { LeasePool } from '../lib/lease_pool';
 import type { ActionType } from '../types';
+import { createConnectorDashboardStore } from './connector_dashboard_store';
+import { buildExecutor } from '../sub_action_framework/executor';
+import { buildValidators } from '../sub_action_framework/validators';
+import type { SubActionConnectorType, SubActionServices } from '../sub_action_framework/types';
+import type { PreparedConnector } from './types';
+import type { ActionRuntimeResult } from '../lib/execute_action';
 
 const requestSchema = lazySchema(() =>
   z.object({
@@ -84,18 +92,226 @@ export class SpecRuntime implements SpecRuntimeApi {
     input: unknown,
     signal?: AbortSignal
   ): Promise<unknown> {
+    return this.runPrepared(
+      spec.metadata.id,
+      scopeId,
+      input,
+      signal,
+      async (prepared, context, logger, invocationId, markHandler) => {
+        const pool = new LeasePool<unknown>(logger);
+        let handlerStarted = false;
+        const { configurationUtilities } = context;
+        try {
+          const transportDeps = {
+            userAgent: prepared.userAgent,
+            authTypeRegistry: {
+              get: (id: string): NormalizedAuthType => {
+                const authType = services.authTypes.find((candidate) => candidate.id === id);
+                if (!authType)
+                  throw new Error(`Unsupported native connector authentication: ${id}`);
+                return authType;
+              },
+            },
+            getAuthStrategy: getAxiosAuthStrategy,
+            configurationUtilities,
+            logger,
+          };
+          const executor = createSpecExecutor({
+            kibanaVersion: prepared.kibanaVersion,
+            connectorTypeId: spec.metadata.id,
+            onHandler: (subAction) => {
+              handlerStarted = true;
+              markHandler();
+              recordRemoteTiming('connector_spec_handler', {
+                stepType: spec.metadata.id + '.' + subAction,
+                scopeId,
+              });
+            },
+            actions: spec.actions,
+            getRelayClient: () =>
+              prepared.relayAvailable
+                ? createConnectorRelayClient(this.actions, scopeId, invocationId)
+                : undefined,
+            getAxiosInstanceWithAuth: createAxiosTransport(transportDeps),
+            getCredential: createCredentialAccessor(transportDeps),
+            getClientLeasePool: () => {
+              return pool;
+            },
+            networkSettings: createConnectorNetworkSettings(configurationUtilities),
+            platform: createPlatformServices(configurationUtilities),
+            clientTypes: {},
+            errors: { createTaskRunError, TaskErrorSource, getErrorSource, isUserError },
+          });
+          let actionType = context.actionTypes.get(spec.metadata.id);
+          if (!actionType) {
+            actionType = {
+              id: spec.metadata.id,
+              name: spec.metadata.displayName,
+              minimumLicenseRequired: spec.metadata.minimumLicense,
+              supportedFeatureIds: spec.metadata.supportedFeatureIds,
+              validate: {
+                params: lazyImmutableGCableObject(() => generateParamsSchema(spec.actions)),
+                config: lazyImmutableGCableObject(() =>
+                  generateConfigSchema(spec.schema, Object.keys(spec.actions))
+                ),
+                secrets: lazyImmutableGCableObject(() =>
+                  generateSecretsSchema(spec.auth, configurationUtilities)
+                ),
+              },
+            };
+
+            context.actionTypes.set(spec.metadata.id, actionType);
+          }
+          const runtime = await executeAction(
+            {
+              ...prepared,
+              actionType,
+              configurationUtilities,
+              executor: ({ validatedParams, validatedConfig, validatedSecrets }) =>
+                executor({
+                  ...prepared,
+                  connectorTokenClient: createConnectorTokenStore(
+                    this.actions,
+                    scopeId,
+                    invocationId
+                  ),
+                  params: validatedParams,
+                  config: validatedConfig,
+                  secrets: validatedSecrets,
+                  logger,
+                  signal,
+                  globalAuthHeaders: spec.auth?.headers,
+                }),
+            },
+            {
+              TaskErrorSource,
+              getErrorSource,
+              isConnectorAuthorizationError: services.isConnectorAuthorizationError,
+            }
+          );
+
+          return { ...runtime, handlerStarted };
+        } finally {
+          await pool.evict(prepared.actionId);
+        }
+      }
+    );
+  }
+
+  async runLegacy<Config extends Record<string, unknown>, Secrets extends Record<string, unknown>>(
+    connector: SubActionConnectorType<Config, Secrets, SubActionServices>,
+    services: Pick<SubActionServices, 'scopedClusterClient'>,
+    scopeId: string,
+    input: unknown,
+    signal?: AbortSignal
+  ): Promise<unknown> {
+    return this.runPrepared(
+      connector.id,
+      scopeId,
+      input,
+      signal,
+      async (prepared, context, logger, invocationId, markHandler) => {
+        const { configurationUtilities } = context;
+        const executor = buildExecutor({ connector, configurationUtilities, logger, signal });
+        const actionType = {
+          id: connector.id,
+          name: connector.name,
+          minimumLicenseRequired: connector.minimumLicenseRequired,
+          supportedFeatureIds: connector.supportedFeatureIds,
+          validate: buildValidators({
+            connector,
+            configurationUtilities,
+          }) as ActionType['validate'],
+        };
+        const usage = new ConnectorUsageCollector({ logger, connectorId: prepared.actionId });
+        const runtime = await executeAction(
+          {
+            ...prepared,
+            actionType,
+            configurationUtilities,
+            executor: ({ validatedParams, validatedConfig, validatedSecrets }) => {
+              markHandler();
+              recordRemoteTiming('connector_legacy_handler', { stepType: connector.id, scopeId });
+              return executor({
+                actionId: prepared.actionId,
+                params: validatedParams as import('../sub_action_framework/types').ExecutorParams,
+                config: validatedConfig as Config,
+                secrets: validatedSecrets as Secrets,
+                configurationUtilities,
+                services: {
+                  ...services,
+                  inferenceStreamingFacts: prepared.inferenceStreamingFacts,
+                  savedObjectsClient: createConnectorDashboardStore(
+                    this.actions,
+                    scopeId,
+                    invocationId
+                  ),
+                  connectorTokenClient: createConnectorTokenStore(
+                    this.actions,
+                    scopeId,
+                    invocationId
+                  ),
+                },
+                logger,
+                connectorUsageCollector: usage,
+                signal,
+                connectorVersion: prepared.connectorVersion,
+              });
+            },
+          },
+          { TaskErrorSource, getErrorSource, isConnectorAuthorizationError }
+        );
+        const { getGenAiTokenTracking } = await import(
+          '../lib/token_tracking/gen_ai_token_tracking'
+        );
+        const tracking =
+          runtime.result.status === 'ok'
+            ? getGenAiTokenTracking({
+                actionTypeId: connector.id,
+                logger,
+                result: runtime.result,
+                validatedParams: runtime.validatedParams,
+              })
+            : Promise.resolve(null);
+        // Match ordinary step persistence: streams become JSON descriptors, not a new output API.
+        const result =
+          runtime.result.status === 'ok'
+            ? (JSON.parse(JSON.stringify(runtime.result)) as typeof runtime.result)
+            : runtime.result;
+        return {
+          ...runtime,
+          result,
+          genAiTokenTracking: await tracking,
+          requestBodyBytes: usage.getRequestBodyByte(),
+        };
+      }
+    );
+  }
+
+  private async runPrepared(
+    type: string,
+    scopeId: string,
+    input: unknown,
+    signal: AbortSignal | undefined,
+    execute: (
+      prepared: PreparedConnector,
+      context: {
+        readonly configurationUtilities: ReturnType<typeof getActionsConfigurationUtilities>;
+        readonly actionTypes: Map<string, ActionType>;
+      },
+      logger: Logger,
+      invocationId: string,
+      markHandler: () => void
+    ) => Promise<ActionRuntimeResult>
+  ): Promise<unknown> {
     signal?.throwIfAborted();
     const request = requestSchema.parse(input);
-    if (
-      request.system ||
-      spec.metadata.id.replace(/^\./, '') !== request.connectorType.replace(/^\./, '')
-    )
-      throw new Error('Native spec connector type mismatch');
+    if (request.system || type.replace(/^\./, '') !== request.connectorType.replace(/^\./, ''))
+      throw new Error('Native connector type mismatch');
     const invocationId = randomUUID();
     const preparation = await this.actions.prepare(scopeId, invocationId, request);
     if ('result' in preparation) return preparation.result;
     const { prepared } = preparation;
-    let pool: LeasePool<unknown> | undefined;
     let queued = false;
     let handlerStarted = false;
     const executionStartedAt = Date.now();
@@ -118,94 +334,13 @@ export class SpecRuntime implements SpecRuntimeApi {
         };
         this.contexts.set(scopeId, context);
       }
-      const { configurationUtilities } = context;
       const logger = createLogger();
-      pool = new LeasePool<unknown>(logger);
-      const transportDeps = {
-        userAgent: prepared.userAgent,
-        authTypeRegistry: {
-          get: (id: string): NormalizedAuthType => {
-            const authType = services.authTypes.find((candidate) => candidate.id === id);
-            if (!authType) throw new Error(`Unsupported native connector authentication: ${id}`);
-            return authType;
-          },
-        },
-        getAuthStrategy: getAxiosAuthStrategy,
-        configurationUtilities,
-        logger,
-      };
-      const executor = createSpecExecutor({
-        kibanaVersion: prepared.kibanaVersion,
-        connectorTypeId: spec.metadata.id,
-        onHandler: (subAction) => {
-          handlerStarted = true;
-          recordRemoteTiming('connector_spec_handler', {
-            stepType: spec.metadata.id + '.' + subAction,
-            scopeId,
-          });
-        },
-        actions: spec.actions,
-        getRelayClient: () =>
-          prepared.relayAvailable
-            ? createConnectorRelayClient(this.actions, scopeId, invocationId)
-            : undefined,
-        getAxiosInstanceWithAuth: createAxiosTransport(transportDeps),
-        getCredential: createCredentialAccessor(transportDeps),
-        getClientLeasePool: () => {
-          if (!pool) throw new Error('Connector lease pool is not initialized');
-          return pool;
-        },
-        networkSettings: createConnectorNetworkSettings(configurationUtilities),
-        platform: createPlatformServices(configurationUtilities),
-        clientTypes: {},
-        errors: { createTaskRunError, TaskErrorSource, getErrorSource, isUserError },
+      const runtime = await execute(prepared, context, logger, invocationId, () => {
+        handlerStarted = true;
       });
-      let actionType = context.actionTypes.get(spec.metadata.id);
-      if (!actionType) {
-        actionType = {
-          id: spec.metadata.id,
-          name: spec.metadata.displayName,
-          minimumLicenseRequired: spec.metadata.minimumLicense,
-          supportedFeatureIds: spec.metadata.supportedFeatureIds,
-          validate: {
-            params: lazyImmutableGCableObject(() => generateParamsSchema(spec.actions)),
-            config: lazyImmutableGCableObject(() =>
-              generateConfigSchema(spec.schema, Object.keys(spec.actions))
-            ),
-            secrets: lazyImmutableGCableObject(() =>
-              generateSecretsSchema(spec.auth, configurationUtilities)
-            ),
-          },
-        };
-
-        context.actionTypes.set(spec.metadata.id, actionType);
-      }
-      const runtime = await executeAction(
-        {
-          ...prepared,
-          actionType,
-          configurationUtilities,
-          executor: ({ validatedParams, validatedConfig, validatedSecrets }) =>
-            executor({
-              ...prepared,
-              connectorTokenClient: createConnectorTokenStore(this.actions, scopeId, invocationId),
-              params: validatedParams,
-              config: validatedConfig,
-              secrets: validatedSecrets,
-              logger,
-              signal,
-              globalAuthHeaders: spec.auth?.headers,
-            }),
-        },
-        {
-          TaskErrorSource,
-          getErrorSource,
-          isConnectorAuthorizationError: services.isConnectorAuthorizationError,
-        }
-      );
       enqueue({ ...runtime, handlerStarted });
       recordRemoteTiming('connector_handler', {
-        stepType: spec.metadata.id,
+        stepType: type,
         durationMs: performance.now() - started,
       });
       const { error, ...result } = runtime.result;
@@ -225,7 +360,7 @@ export class SpecRuntime implements SpecRuntimeApi {
             {
               TaskErrorSource,
               getErrorSource,
-              isConnectorAuthorizationError: services.isConnectorAuthorizationError,
+              isConnectorAuthorizationError,
             }
           ),
           validatedParams: prepared.params,
@@ -234,8 +369,6 @@ export class SpecRuntime implements SpecRuntimeApi {
           handlerStarted,
         });
       throw error;
-    } finally {
-      await pool?.evict(prepared.actionId);
     }
   }
 

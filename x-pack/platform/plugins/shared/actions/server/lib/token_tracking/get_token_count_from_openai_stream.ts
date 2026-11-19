@@ -6,7 +6,8 @@
  */
 
 import { encode } from 'gpt-tokenizer';
-import { isEmpty, omitBy } from 'lodash';
+import isEmpty from 'lodash/isEmpty';
+import omitBy from 'lodash/omitBy';
 import type { Readable } from 'stream';
 import { finished } from 'stream/promises';
 import type OpenAI from 'openai';

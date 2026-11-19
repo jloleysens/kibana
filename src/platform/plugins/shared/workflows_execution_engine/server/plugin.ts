@@ -21,6 +21,7 @@ import type {
 } from '@kbn/core/server';
 import { recordRemoteTiming } from '@kbn/core-remote-common';
 import type { ScopeLookup } from '@kbn/core-remote-server';
+import { GEN_AI_SETTINGS_INFERENCE_STREAMING } from '@kbn/management-settings-ids';
 import {
   ExecutionStatus,
   isTerminalStatus,
@@ -1449,8 +1450,33 @@ export class WorkflowsExecutionEnginePlugin
       this.coreSetup.remote.bind(
         NativeActionsToken,
         (scopes) =>
-          new NativeActions(scopes, (request) =>
-            plugins.actions.getActionsClientWithRequest(request)
+          new NativeActions(
+            scopes,
+            (request) => plugins.actions.getActionsClientWithRequest(request),
+            async (request) => {
+              try {
+                const enabled = await coreStart.uiSettings
+                  .asScopedToClient(coreStart.savedObjects.getScopedClient(request))
+                  .get<boolean>(GEN_AI_SETTINGS_INFERENCE_STREAMING);
+                const services =
+                  enabled === false
+                    ? await coreStart.elasticsearch.client.asInternalUser.transport.request<
+                        Array<
+                          Pick<
+                            import('@kbn/inference-common').InferenceProvider,
+                            'service' | 'features'
+                          >
+                        >
+                      >({ method: 'GET', path: '/_inference/_services' })
+                    : undefined;
+                return { enabled, services };
+              } catch (error) {
+                this.logger.warn(
+                  `Could not resolve native inference streaming facts: ${error.message}`
+                );
+                return {};
+              }
+            }
           )
       );
       this.coreSetup.remote.bind(

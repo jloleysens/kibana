@@ -5,13 +5,16 @@
  * 2.0.
  */
 
-import type { ServiceParams } from '@kbn/actions-plugin/server';
+import type { Services } from '@kbn/actions-plugin/server/types';
+import type {
+  ServiceParams,
+  SubActionServices,
+} from '@kbn/actions-plugin/server/sub_action_framework/types';
 import { SubActionConnector } from '@kbn/actions-plugin/server/sub_action_framework/sub_action_connector';
 import { trace } from '@opentelemetry/api';
 import aws from 'aws4';
-import { BedrockRuntimeClient } from '@aws-sdk/client-bedrock-runtime';
+import type { BedrockRuntimeClient } from '@aws-sdk/client-bedrock-runtime';
 import type { SmithyMessageDecoderStream } from '@smithy/eventstream-codec';
-import { NodeHttpHandler } from '@smithy/node-http-handler';
 import type { AxiosError, Method } from 'axios';
 import type { IncomingMessage } from 'http';
 import { PassThrough, Readable } from 'stream';
@@ -70,13 +73,17 @@ interface SignedRequest {
   path: string;
 }
 
-export class BedrockConnector extends SubActionConnector<Config, Secrets> {
+export class BedrockConnector<
+  ExecutionServices extends SubActionServices = Services
+> extends SubActionConnector<Config, Secrets, ExecutionServices> {
   private url;
   private model;
   private bedrockClient;
   private region;
+  private sdkClient?: Promise<BedrockRuntimeClient>;
+  private readonly sdkOptions;
 
-  constructor(params: ServiceParams<Config, Secrets>) {
+  constructor(params: ServiceParams<Config, Secrets, ExecutionServices>) {
     super(params);
 
     this.url = this.config.apiUrl;
@@ -88,15 +95,35 @@ export class BedrockConnector extends SubActionConnector<Config, Secrets> {
       this.url
     );
     const isHttps = this.url.toLowerCase().startsWith('https');
-    this.bedrockClient = new BedrockRuntimeClient({
+    const options = {
       region: this.region,
       credentials: {
         accessKeyId: this.secrets.accessKey,
         secretAccessKey: this.secrets.secret,
       },
-      requestHandler: new NodeHttpHandler(isHttps ? { httpsAgent } : { httpAgent }),
-    });
+      agents: isHttps ? { httpsAgent } : { httpAgent },
+    };
+    this.sdkOptions = options;
+    this.bedrockClient = {
+      send: async (
+        command: ConverseActionParams['command'],
+        sendOptions: { abortSignal?: AbortSignal }
+      ) => (await this.getBedrockClient()).send(command, sendOptions),
+    };
     this.registerSubActions();
+  }
+
+  private getBedrockClient(): Promise<BedrockRuntimeClient> {
+    if (!this.sdkClient) {
+      const pending = import('./bedrock_sdk').then(({ createBedrockClient }) =>
+        createBedrockClient(this.sdkOptions)
+      );
+      this.sdkClient = pending;
+      void pending.catch(() => {
+        if (this.sdkClient === pending) this.sdkClient = undefined;
+      });
+    }
+    return this.sdkClient;
   }
 
   private registerSubActions() {

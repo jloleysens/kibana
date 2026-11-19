@@ -4,18 +4,20 @@
  * 2.0; you may not use this file except in compliance with the Elastic License
  * 2.0.
  */
+import type { Agent } from 'https';
 import type { Logger } from '@kbn/core/server';
-import { GoogleAuth } from 'google-auth-library';
-import type { ConnectorToken, ConnectorTokenClientContract } from '../types';
+import type { ConnectorToken, ConnectorTokenStore } from '../types';
 
 interface GetOAuthJwtAccessTokenOpts {
   connectorId?: string;
+  requestAgent?: Agent;
   logger: Logger;
   credentials: object;
-  connectorTokenClient?: ConnectorTokenClientContract;
+  connectorTokenClient?: Pick<ConnectorTokenStore, 'get' | 'updateOrReplace'>;
 }
 export const getGoogleOAuthJwtAccessToken = async ({
   connectorId,
+  requestAgent,
   logger,
   credentials,
   connectorTokenClient,
@@ -47,13 +49,9 @@ export const getGoogleOAuthJwtAccessToken = async ({
     const requestTokenStart = Date.now();
 
     // Request access token with service account credentials file
-    const auth = new GoogleAuth({
-      credentials,
-      scopes: 'https://www.googleapis.com/auth/cloud-platform',
-    });
-
     try {
-      accessToken = await auth.getAccessToken();
+      const { getGoogleAccessToken } = await import('./google_auth_sdk');
+      accessToken = await getGoogleAccessToken(credentials, requestAgent);
     } catch (error) {
       throw new Error(
         `Unable to retrieve access token. Ensure the service account has the right permissions and the Vertex AI endpoint is enabled in the GCP project. Error: ${error.message}`

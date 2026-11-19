@@ -11,7 +11,28 @@ import type { RuntimeActionsConfig } from '../actions_config';
 import type { ActionRuntimeResult } from '../lib/execute_action';
 import type { ActionTypeExecutorResult, ConnectorTokenStore } from '../types';
 
+export interface InferenceStreamingFacts {
+  readonly enabled?: boolean;
+  readonly services?: Array<
+    Pick<import('@kbn/inference-common').InferenceProvider, 'service' | 'features'>
+  >;
+}
+
+export type ConnectorDashboardRequest =
+  | { readonly operation: 'get' }
+  | { readonly operation: 'create' };
+export type ConnectorDashboardResponse =
+  | { readonly value: import('@kbn/core-saved-objects-server').SavedObject }
+  | {
+      readonly error: {
+        readonly message: string;
+        readonly statusCode: number;
+        readonly error: string;
+      };
+    };
+
 export interface PreparedConnector {
+  readonly inferenceStreamingFacts?: InferenceStreamingFacts;
   readonly kibanaVersion: string;
   readonly actionId: string;
   readonly actionTypeId: string;
@@ -34,6 +55,11 @@ export interface ConnectorFinalization {
   readonly runtime: ActionRuntimeResult;
 }
 export interface NativeActionsApi {
+  dashboard(
+    scopeId: string,
+    invocationId: string,
+    request: ConnectorDashboardRequest
+  ): Promise<ConnectorDashboardResponse>;
   prepare(
     scopeId: string,
     invocationId: string,

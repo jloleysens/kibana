@@ -7,7 +7,7 @@
 
 import type { AxiosError, AxiosResponse } from 'axios';
 import type { Logger } from '@kbn/core/server';
-import { isUndefined } from 'lodash';
+import isUndefined from 'lodash/isUndefined';
 
 interface ConnectorUsage {
   requestBodyBytes: number;

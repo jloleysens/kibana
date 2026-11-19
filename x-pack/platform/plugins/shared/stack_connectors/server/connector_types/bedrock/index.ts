@@ -5,58 +5,20 @@
  * 2.0.
  */
 
-import { i18n } from '@kbn/i18n';
-import type { SubActionConnectorType } from '@kbn/actions-plugin/server/sub_action_framework/types';
-import { ValidatorType } from '@kbn/actions-plugin/server/sub_action_framework/types';
-import {
-  GenerativeAIForObservabilityConnectorFeatureId,
-  GenerativeAIForSecurityConnectorFeatureId,
-  WorkflowsConnectorFeatureId,
-} from '@kbn/actions-plugin/common';
-import type { ValidatorServices } from '@kbn/actions-plugin/server/types';
-import {
-  assertURL,
-  urlAllowListValidator,
-} from '@kbn/actions-plugin/server/sub_action_framework/helpers/validators';
-import { CONNECTOR_ID, CONNECTOR_NAME } from '@kbn/connector-schemas/bedrock';
-import { ConfigSchema, SecretsSchema } from '@kbn/connector-schemas/bedrock';
+import type {
+  SubActionConnectorType,
+  SubActionServices,
+} from '@kbn/actions-plugin/server/sub_action_framework/types';
+import type { Services } from '@kbn/actions-plugin/server/types';
 import type { Config, Secrets } from '@kbn/connector-schemas/bedrock';
-import { BedrockConnector } from './bedrock';
+import { getConnectorType as getExecutionConnectorType } from './get_connector_type';
 import { renderParameterTemplates } from './render';
 
-export const getConnectorType = (): SubActionConnectorType<Config, Secrets> => ({
-  id: CONNECTOR_ID,
-  name: CONNECTOR_NAME,
-  getService: (params) => new BedrockConnector(params),
-  schema: {
-    config: ConfigSchema,
-    secrets: SecretsSchema,
-  },
-  validators: [{ type: ValidatorType.CONFIG, validator: configValidator }],
-  supportedFeatureIds: [
-    GenerativeAIForSecurityConnectorFeatureId,
-    GenerativeAIForObservabilityConnectorFeatureId,
-    WorkflowsConnectorFeatureId,
-  ],
-  minimumLicenseRequired: 'enterprise' as const,
-  isDeprecated: true,
+export { configValidator } from './get_connector_type';
+
+export const getConnectorType = <
+  ExecutionServices extends SubActionServices = Services
+>(): SubActionConnectorType<Config, Secrets, ExecutionServices> => ({
+  ...getExecutionConnectorType<ExecutionServices>(),
   renderParameterTemplates,
 });
-
-export const configValidator = (configObject: Config, validatorServices: ValidatorServices) => {
-  try {
-    assertURL(configObject.apiUrl);
-    urlAllowListValidator('apiUrl')(configObject, validatorServices);
-
-    return configObject;
-  } catch (err) {
-    throw new Error(
-      i18n.translate('xpack.stackConnectors.bedrock.configurationErrorApiProvider', {
-        defaultMessage: 'Error configuring Amazon Bedrock action: {err}',
-        values: {
-          err: err.toString(),
-        },
-      })
-    );
-  }
-};

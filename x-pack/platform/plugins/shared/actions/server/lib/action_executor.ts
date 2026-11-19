@@ -727,7 +727,7 @@ export class ActionExecutor {
           set(
             event,
             'kibana.action.execution.usage.request_body_bytes',
-            connectorUsageCollector.getRequestBodyByte()
+            runtimeResult.requestBodyBytes ?? connectorUsageCollector.getRequestBodyByte()
           );
 
           if (result.status === 'ok') {
@@ -799,12 +799,10 @@ export class ActionExecutor {
           result.status === 'ok' &&
           shouldTrackGenAiToken(actionTypeId, `${validatedParams.subAction}`)
         ) {
-          getGenAiTokenTracking({
-            actionTypeId,
-            logger,
-            result,
-            validatedParams,
-          })
+          (runtimeResult.genAiTokenTracking !== undefined
+            ? Promise.resolve(runtimeResult.genAiTokenTracking)
+            : getGenAiTokenTracking({ actionTypeId, logger, result, validatedParams })
+          )
             .then((tokenTracking) => {
               if (tokenTracking != null) {
                 set(event, 'kibana.action.execution.gen_ai.usage', {

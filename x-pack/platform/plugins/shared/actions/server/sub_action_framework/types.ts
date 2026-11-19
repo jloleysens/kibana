@@ -11,7 +11,10 @@ import type { LicenseType } from '@kbn/licensing-types';
 
 import type { Method, AxiosRequestConfig } from 'axios';
 import type { KibanaRequest } from '@kbn/core-http-server';
+import type { SavedObjectsClientContract } from '@kbn/core-saved-objects-api-server';
+import type { ElasticsearchClient } from '@kbn/core-elasticsearch-server';
 import type { SSLSettings } from '@kbn/actions-utils';
+import type { ConnectorTokenStore } from '../types';
 import type { ActionsConfigurationUtilities } from '../actions_config';
 import type {
   ActionTypeParams,
@@ -24,7 +27,18 @@ import type { SubActionConnector } from './sub_action_connector';
 import type { HookServices } from '../types';
 import type { ActionExecutionSourceType } from '../lib';
 
-export interface ServiceParams<Config, Secrets> {
+export interface SubActionServices {
+  readonly inferenceStreamingFacts?: import('../remote/types').InferenceStreamingFacts;
+  savedObjectsClient: Pick<SavedObjectsClientContract, 'get' | 'create'>;
+  scopedClusterClient: ElasticsearchClient;
+  connectorTokenClient: ConnectorTokenStore;
+}
+
+export interface ServiceParams<
+  Config,
+  Secrets,
+  ExecutionServices extends SubActionServices = Services
+> {
   /**
    * The type is the connector type id. For example ".servicenow"
    * The id is the connector's SavedObject UUID.
@@ -34,7 +48,7 @@ export interface ServiceParams<Config, Secrets> {
   configurationUtilities: ActionsConfigurationUtilities;
   logger: Logger;
   secrets: Secrets;
-  services: Services;
+  services: ExecutionServices;
   request?: KibanaRequest;
   /** Saved-object version of the connector, or IN_MEMORY_CONNECTOR_REVISION for preconfigured connectors. */
   connectorVersion?: string;
@@ -112,7 +126,11 @@ export interface PostDeleteConnectorHookParams<Config, Secrets> {
   request: KibanaRequest;
 }
 
-export interface SubActionConnectorType<Config, Secrets> {
+export interface SubActionConnectorType<
+  Config,
+  Secrets,
+  ExecutionServices extends SubActionServices = Services
+> {
   id: string;
   name: string;
   minimumLicenseRequired: LicenseType;
@@ -122,8 +140,13 @@ export interface SubActionConnectorType<Config, Secrets> {
     secrets: z4.ZodType<Secrets | undefined>;
   };
   validators?: Array<ConfigValidator<Config> | SecretsValidator<Secrets>>;
-  getService: (params: ServiceParams<Config, Secrets>) => SubActionConnector<Config, Secrets>;
+  getService: (
+    params: ServiceParams<Config, Secrets, ExecutionServices>
+  ) => SubActionConnector<Config, Secrets, ExecutionServices>;
   renderParameterTemplates?: RenderParameterTemplates<ExecutorParams>;
+  getDashboardAttributes?: (
+    dashboardId: string
+  ) => import('@kbn/core/server').SavedObjectAttributes;
   isSystemActionType?: boolean;
   isDeprecated?: boolean;
   subFeature?: SubFeature;

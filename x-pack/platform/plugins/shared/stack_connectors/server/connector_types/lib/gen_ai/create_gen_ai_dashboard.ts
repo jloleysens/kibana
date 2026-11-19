@@ -21,7 +21,7 @@ export const initDashboard = async ({
   genAIProvider,
 }: {
   logger: Logger;
-  savedObjectsClient: SavedObjectsClientContract;
+  savedObjectsClient: Pick<SavedObjectsClientContract, 'get' | 'create'>;
   dashboardId: string;
   genAIProvider: 'OpenAI' | 'Bedrock' | 'Gemini' | 'Inference';
 }): Promise<{

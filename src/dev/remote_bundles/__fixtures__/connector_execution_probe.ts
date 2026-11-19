@@ -87,6 +87,9 @@ const main = async (): Promise<void> => {
   const prepares: string[] = [];
   const finalizes: number[] = [];
   const actions: NativeActionsApi = {
+    dashboard: async () => {
+      throw new Error('No dashboard invocation in spec fixture');
+    },
     relay: async () => ({ error: {} }),
     token: async () => ({ hasErrors: false, connectorToken: null }),
     prepare: async (_scopeId, invocationId, request) => {

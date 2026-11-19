@@ -40,6 +40,7 @@ const setup = (perUser = false) => {
     Parameters<NativeActionsApi['token']>
   >(async (_scope, _invocation, request) => state.execute(request));
   const actions: NativeActionsApi = {
+    dashboard: jest.fn(),
     relay: jest.fn(),
     prepare: jest.fn(),
     finalize: jest.fn(),

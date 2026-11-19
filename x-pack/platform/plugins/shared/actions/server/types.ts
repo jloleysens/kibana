@@ -314,6 +314,9 @@ export interface ActionTypeCoreFields<
   // Headers that should be added to every Axios request made by this action type
   globalAuthHeaders?: Record<string, AxiosHeaderValue>;
   renderParameterTemplates?: RenderParameterTemplates<Params>;
+  getDashboardAttributes?: (
+    dashboardId: string
+  ) => import('@kbn/core/server').SavedObjectAttributes;
   getService?: (params: ServiceParams<Config, Secrets>) => SubActionConnector<Config, Secrets>;
   preSaveHook?: (params: PreSaveConnectorHookParams<Config, Secrets>) => Promise<void>;
   postSaveHook?: (params: PostSaveConnectorHookParams<Config, Secrets>) => Promise<void>;
