@@ -10,7 +10,7 @@ import axios from 'axios';
 import type { Logger } from '@kbn/core/server';
 import type { ActionsConfigurationUtilities } from '@kbn/actions-plugin/server/actions_config';
 import { request } from '@kbn/actions-plugin/server/lib/axios_utils';
-import { combineHeadersWithBasicAuthHeader } from '@kbn/actions-plugin/server/lib';
+import { combineHeadersWithBasicAuthHeader } from '@kbn/actions-plugin/server/lib/get_basic_auth_header';
 import type { ConnectorUsageCollector } from '@kbn/actions-plugin/server/types';
 
 interface PostXmattersOptions {

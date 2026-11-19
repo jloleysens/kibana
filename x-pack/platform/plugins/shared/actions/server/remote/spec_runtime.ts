@@ -7,6 +7,8 @@
 
 import { inject } from 'inversify';
 import type { SpecRuntimeApi } from '@kbn/connector-specs';
+import type { ClassicConnectorType } from './classic_connector_types';
+import type { PreparedConnector } from './types';
 import { NativeActionsToken } from './tokens';
 import type { SubActionConnectorType, SubActionServices } from '../sub_action_framework/types';
 import type { SpecRuntime as Implementation } from './spec_runtime_impl';
@@ -42,6 +44,29 @@ export class SpecRuntime implements SpecRuntimeApi {
     signal?: AbortSignal
   ): Promise<unknown> {
     return (await this.getImplementation()).runLegacy(connector, services, scopeId, input, signal);
+  }
+
+  async runClassic<
+    Config extends Record<string, unknown>,
+    Secrets extends Record<string, unknown>,
+    Params extends Record<string, unknown>,
+    Result
+  >(
+    type: string,
+    createConnector: (
+      prepared: PreparedConnector
+    ) => ClassicConnectorType<Config, Secrets, Params, Result>,
+    scopeId: string,
+    input: unknown,
+    signal?: AbortSignal
+  ): Promise<unknown> {
+    return (await this.getImplementation()).runClassic(
+      type,
+      createConnector,
+      scopeId,
+      input,
+      signal
+    );
   }
 
   async drain(scopeId: string): Promise<void> {

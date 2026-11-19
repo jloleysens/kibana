@@ -22,6 +22,7 @@ import {
   isUserError,
 } from '@kbn/task-manager-plugin/server/task_running/errors';
 import type { Logger } from '@kbn/core/server';
+import type { ClassicConnectorType } from './classic_connector_types';
 import { ConnectorUsageCollector } from '../usage/connector_usage_collector';
 import type { ConnectorFinalization, NativeActionsApi } from './types';
 import { configSchema } from '../config';
@@ -285,6 +286,70 @@ export class SpecRuntime implements SpecRuntimeApi {
           genAiTokenTracking: await tracking,
           requestBodyBytes: usage.getRequestBodyByte(),
         };
+      }
+    );
+  }
+
+  async runClassic<
+    Config extends Record<string, unknown>,
+    Secrets extends Record<string, unknown>,
+    Params extends Record<string, unknown>,
+    Result
+  >(
+    type: string,
+    createConnector: (
+      prepared: PreparedConnector
+    ) => ClassicConnectorType<Config, Secrets, Params, Result>,
+    scopeId: string,
+    input: unknown,
+    signal?: AbortSignal
+  ): Promise<unknown> {
+    return this.runPrepared(
+      type,
+      scopeId,
+      input,
+      signal,
+      async (prepared, context, logger, invocationId, markHandler) => {
+        const connector = createConnector(prepared);
+        if (connector.id.replace(/^\./, '') !== type.replace(/^\./, ''))
+          throw new Error('Classic connector type mismatch');
+        const usage = new ConnectorUsageCollector({ logger, connectorId: prepared.actionId });
+        const runtime = await executeAction(
+          {
+            ...prepared,
+            actionType: {
+              id: connector.id,
+              name: connector.name,
+              minimumLicenseRequired: connector.minimumLicenseRequired,
+              supportedFeatureIds: connector.supportedFeatureIds,
+              validate: connector.validate as ActionType['validate'],
+            },
+            configurationUtilities: context.configurationUtilities,
+            executor: ({ validatedParams, validatedConfig, validatedSecrets }) => {
+              markHandler();
+              recordRemoteTiming('connector_classic_handler', { stepType: connector.id, scopeId });
+              const connectorTokenClient = createConnectorTokenStore(
+                this.actions,
+                scopeId,
+                invocationId
+              );
+              return connector.executor({
+                ...prepared,
+                params: validatedParams as Params,
+                config: validatedConfig as Config,
+                secrets: validatedSecrets as Secrets,
+                configurationUtilities: context.configurationUtilities,
+                services: { connectorTokenClient },
+                connectorTokenClient,
+                connectorUsageCollector: usage,
+                logger,
+                signal,
+              });
+            },
+          },
+          { TaskErrorSource, getErrorSource, isConnectorAuthorizationError }
+        );
+        return { ...runtime, requestBodyBytes: usage.getRequestBodyByte() };
       }
     );
   }

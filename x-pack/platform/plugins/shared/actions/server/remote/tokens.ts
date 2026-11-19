@@ -10,7 +10,7 @@ import type { SpecRuntimeApi } from '@kbn/connector-specs';
 import type { NativeActionsApi } from './types';
 export const NativeActionsToken = createToken<NativeActionsApi>('actions.native');
 export const SpecRuntimeToken = createToken<
-  SpecRuntimeApi & Pick<import('./spec_runtime_impl').SpecRuntime, 'runLegacy'>
+  SpecRuntimeApi & Pick<import('./spec_runtime_impl').SpecRuntime, 'runLegacy' | 'runClassic'>
 >('actions.specRuntime');
 
 export const WorkflowConnectorKind = createToken<unknown>('workflows.connector');

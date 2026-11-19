@@ -150,3 +150,205 @@ export const legacyConnectorResponse = (
     };
   }
 };
+
+export const classicConnectorCases = (url: string, smtpPort: number) => [
+  {
+    type: 'http',
+    op: '',
+    legacy: true,
+    config: { url: url + '/legacy/http', hasAuth: false, authType: null },
+    secrets: {},
+    params: { method: 'POST', body: { marker: 'local-business' } },
+  },
+  {
+    type: 'email',
+    op: '',
+    legacy: true,
+    config: {
+      service: 'other',
+      host: '127.0.0.1',
+      port: smtpPort,
+      secure: false,
+      from: 'fake@runner.invalid',
+      hasAuth: false,
+    },
+    secrets: {},
+    params: {
+      to: ['recipient@runner.invalid'],
+      subject: 'local-business',
+      message: 'local-business',
+    },
+  },
+  {
+    type: 'slack',
+    op: '',
+    legacy: true,
+    config: {},
+    secrets: { webhookUrl: url + '/legacy/slack' },
+    params: { message: 'local-business' },
+  },
+  {
+    type: 'slack_api',
+    op: 'postMessage',
+    legacy: true,
+    config: { allowedChannels: [{ id: 'CFAKE', name: 'fake' }] },
+    secrets: { token: 'fake-key' },
+    params: { channelIds: ['CFAKE'], text: 'local-business' },
+  },
+  {
+    type: 'teams',
+    op: '',
+    legacy: true,
+    config: {},
+    secrets: { webhookUrl: url + '/legacy/teams' },
+    params: { message: 'local-business' },
+  },
+  {
+    type: 'pagerduty',
+    op: '',
+    legacy: true,
+    config: { apiUrl: url + '/legacy/pagerduty' },
+    secrets: { routingKey: 'fake-key' },
+    params: {
+      eventAction: 'trigger',
+      summary: 'local-business',
+      severity: 'info',
+      source: 'local-business',
+    },
+  },
+  {
+    type: 'torq',
+    op: '',
+    legacy: true,
+    config: { webhookIntegrationUrl: 'https://hooks.torq.io/legacy/torq' },
+    secrets: { token: 'fake-key' },
+    params: { body: '{"marker":"local-business"}' },
+  },
+  {
+    type: 'xmatters',
+    op: '',
+    legacy: true,
+    config: { configUrl: url + '/legacy/xmatters', usesBasic: true },
+    secrets: { user: 'fake-key', password: 'fake-secret' },
+    params: { severity: 'local-business' },
+  },
+  {
+    type: 'jira',
+    op: 'issueTypes',
+    legacy: true,
+    config: { apiUrl: url + '/legacy/jira', projectKey: 'FAKE' },
+    secrets: { email: 'fake-key', apiToken: 'fake-secret' },
+    params: {},
+  },
+  {
+    type: 'servicenow',
+    op: '',
+    legacy: true,
+    config: { apiUrl: url + '/legacy/servicenow', usesTableApi: true },
+    secrets: { username: 'fake-key', password: 'fake-secret' },
+    params: { subAction: 'getChoices', subActionParams: { fields: ['state'] } },
+  },
+  {
+    type: 'servicenow-itom',
+    op: 'getChoices',
+    legacy: true,
+    config: { apiUrl: url + '/legacy/servicenow-itom' },
+    secrets: { username: 'fake-key', password: 'fake-secret' },
+    params: { fields: ['state'] },
+  },
+  {
+    type: 'servicenow-sir',
+    op: 'getChoices',
+    legacy: true,
+    config: { apiUrl: url + '/legacy/servicenow-sir', usesTableApi: true },
+    secrets: { username: 'fake-key', password: 'fake-secret' },
+    params: { fields: ['state'] },
+  },
+  {
+    type: 'swimlane',
+    op: 'pushToService',
+    legacy: true,
+    config: {
+      apiUrl: url + '/legacy/swimlane',
+      appId: 'fake',
+      connectorType: 'all',
+      mappings: {
+        descriptionConfig: {
+          id: 'fake',
+          key: 'description',
+          name: 'description',
+          fieldType: 'text',
+        },
+      },
+    },
+    secrets: { apiToken: 'fake-key' },
+    params: {
+      incident: {
+        ruleName: 'local-business',
+        alertId: 'local-business',
+        description: 'local-business',
+      },
+      comments: [],
+    },
+  },
+];
+
+export const classicConnectorResponse = (
+  request: IncomingMessage,
+  text: string
+): object | undefined => {
+  const path = request.url ?? '';
+  if (path === '/legacy/http') {
+    assert(text.includes('local-business'));
+    return { marker: 'local-business' };
+  }
+  if (path === '/legacy/slack' || path === '/legacy/teams') {
+    assert(text.includes('local-business'));
+    return { marker: 'local-business' };
+  }
+  if (request.headers.host === 'slack.com' && path.startsWith('/api/chat.postMessage')) {
+    assert.equal(request.headers.authorization, 'Bearer fake-key');
+    return { ok: true, channel: 'CFAKE', ts: '1', message: { text: 'local-business' } };
+  }
+  if (path === '/legacy/pagerduty') {
+    assert.equal(request.headers['x-routing-key'], 'fake-key');
+    assert(text.includes('local-business'));
+    return { status: 'success', dedup_key: 'local-business' };
+  }
+  if (path === '/legacy/torq') {
+    assert.equal(request.headers['x-torq-token'], 'fake-key');
+    assert(text.includes('local-business'));
+    return { marker: 'local-business' };
+  }
+  if (
+    path === '/legacy/xmatters' ||
+    path.startsWith('/legacy/jira/') ||
+    path.startsWith('/legacy/servicenow')
+  ) {
+    assert.equal(
+      request.headers.authorization,
+      'Basic ' + Buffer.from('fake-key:fake-secret').toString('base64')
+    );
+    if (path.startsWith('/legacy/jira/'))
+      return { issueTypes: [{ id: 'local-business', name: 'local-business' }] };
+    if (path.startsWith('/legacy/servicenow'))
+      return {
+        result: [{ element: 'state', value: '1', label: 'local-business', dependent_value: '' }],
+      };
+    assert(text.includes('local-business'));
+    return { marker: 'local-business' };
+  }
+  if (path.startsWith('/legacy/swimlane/')) {
+    assert(text.includes('local-business'));
+    return { id: 'local-business', name: 'local-business', createdDate: 1700000000000 };
+  }
+};
+
+export const mcpConnectorCase = (url: string) => ({
+  type: 'mcp',
+  op: 'callTool',
+  legacy: true,
+  config: { serverUrl: url + '/mcp', hasAuth: true, authType: 'bearer' },
+  secrets: { token: 'fake-key' },
+  params: { name: 'local-business', arguments: {} },
+});

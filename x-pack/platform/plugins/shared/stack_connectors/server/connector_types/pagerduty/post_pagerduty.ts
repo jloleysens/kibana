@@ -8,7 +8,10 @@
 import type { AxiosResponse } from 'axios';
 import axios from 'axios';
 import type { Logger } from '@kbn/core/server';
-import type { ConnectorUsageCollector, Services } from '@kbn/actions-plugin/server/types';
+import type {
+  ConnectorUsageCollector,
+  ConnectorTokenStore,
+} from '@kbn/actions-plugin/server/types';
 import type { ActionsConfigurationUtilities } from '@kbn/actions-plugin/server/actions_config';
 import { request } from '@kbn/actions-plugin/server/lib/axios_utils';
 
@@ -16,7 +19,7 @@ interface PostPagerdutyOptions {
   apiUrl: string;
   data: unknown;
   headers: Record<string, string>;
-  services: Services;
+  services: { readonly connectorTokenClient: ConnectorTokenStore };
 }
 
 // post an event to pagerduty

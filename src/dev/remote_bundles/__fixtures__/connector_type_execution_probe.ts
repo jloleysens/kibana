@@ -30,7 +30,15 @@ import type { Metafile } from 'esbuild';
 import type { SpecRuntimeApi } from '@kbn/connector-specs';
 import type { NativeActionsApi } from '@kbn/actions-plugin/server';
 import type { RemoteWorkerSpec } from '@kbn/core-remote-common';
-import { legacyConnectorCases, legacyConnectorResponse } from './legacy_connector_cases';
+import type { Client } from '@elastic/elasticsearch';
+import { createLegacySmtpFake } from './legacy_smtp_fake';
+import {
+  mcpConnectorCase,
+  classicConnectorCases,
+  classicConnectorResponse,
+  legacyConnectorCases,
+  legacyConnectorResponse,
+} from './legacy_connector_cases';
 
 interface Graph {
   spec: RemoteWorkerSpec;
@@ -47,7 +55,7 @@ interface Case {
   op: string;
   config: Record<string, unknown>;
   secrets: Record<string, unknown>;
-  params?: Record<string, string>;
+  params?: Record<string, unknown>;
 }
 
 const main = async (): Promise<void> => {
@@ -94,6 +102,7 @@ const main = async (): Promise<void> => {
   const temp = mkdtempSync(join(tmpdir(), 'connector-type-fake-'));
   const domains = [
     'slack.com',
+    'hooks.torq.io',
     'gmail.googleapis.com',
     'www.googleapis.com',
     'oauth2.googleapis.com',
@@ -287,10 +296,12 @@ const main = async (): Promise<void> => {
       );
       return;
     }
-    const legacyBody = legacyConnectorResponse(req, text);
+    const legacyBody = legacyConnectorResponse(req, text) ?? classicConnectorResponse(req, text);
     if (legacyBody) {
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify(legacyBody));
+      res.writeHead(req.url === '/legacy/pagerduty' ? 202 : 200, {
+        'content-type': req.url === '/legacy/slack' ? 'text/plain' : 'application/json',
+      });
+      res.end(req.url === '/legacy/slack' ? 'ok' : JSON.stringify(legacyBody));
       return;
     }
     let body: object = {
@@ -375,7 +386,7 @@ const main = async (): Promise<void> => {
               serverInfo: { name: 'local-fake', version: '1' },
             }
           : rpc.method === 'tools/list'
-          ? { tools: [] }
+          ? { tools: [{ name: 'local-business', inputSchema: { type: 'object' } }] }
           : { content: [{ type: 'text', text: JSON.stringify({ marker: 'local-business' }) }] };
       body = { jsonrpc: '2.0', id: rpc.id, result };
     }
@@ -411,6 +422,14 @@ const main = async (): Promise<void> => {
     assert(address && typeof address !== 'string');
     return address.port;
   };
+  const smtp = await createLegacySmtpFake((text) => {
+    requests++;
+    if (process.argv[3] === '--serve')
+      appendFileSync(
+        process.argv[4] + '.smtp.jsonl',
+        JSON.stringify({ at: new Date().toISOString(), pid: process.pid, text }) + '\n'
+      );
+  });
   const url = `http://127.0.0.1:${port(fake)}`;
   const tlsUrl = `https://127.0.0.1:${port(tlsFake)}`;
   const tlsSecrets = {
@@ -976,6 +995,7 @@ const main = async (): Promise<void> => {
       prepares++;
       return {
         prepared: {
+          connectorVersion: 'fake-version',
           kibanaVersion: '9.7.0',
           authMode: ['oauth_authorization_code', 'ears'].includes(String(current.secrets.authType))
             ? 'per-user'
@@ -988,7 +1008,10 @@ const main = async (): Promise<void> => {
           actionId: current.type,
           actionTypeId: '.' + current.type,
           name: current.type,
-          config: { ...current.config, selectedActions: [current.op] },
+          config:
+            'legacy' in current
+              ? current.config
+              : { ...current.config, selectedActions: [current.op] },
           secrets: current.secrets,
           params: request.input,
           runtimeConfig: {
@@ -1034,6 +1057,7 @@ const main = async (): Promise<void> => {
     },
   };
   const runtime = new SpecRuntime(actions);
+  let esClient: Client | undefined;
   const events: Array<{
     type: string;
     operation: string;
@@ -1043,6 +1067,10 @@ const main = async (): Promise<void> => {
   }> = [];
   try {
     await sample('fake_setup');
+    if (['--legacy', '--serve'].includes(process.argv[3])) {
+      const { Client: ElasticsearchClient } = await import('@elastic/elasticsearch');
+      esClient = new ElasticsearchClient({ node: url });
+    }
     if (process.argv[3] === '--serve') {
       const result = await actions.prepare('fixture', 'fixture', {
         connectorType: current.type,
@@ -1052,6 +1080,8 @@ const main = async (): Promise<void> => {
       assert('prepared' in result);
       const measurementCases = [
         ...legacyConnectorCases(url),
+        ...classicConnectorCases(url, smtp.port),
+        mcpConnectorCase(url),
         ...cases.map((entry) =>
           entry.secrets.authType === 'ears'
             ? {
@@ -1141,16 +1171,42 @@ const main = async (): Promise<void> => {
       await new Promise<void>((done) => process.once('SIGTERM', done));
       return;
     }
-    for (const entry of cases) {
+    const executionCases =
+      process.argv[3] === '--legacy'
+        ? [
+            ...legacyConnectorCases(url),
+            ...classicConnectorCases(url, smtp.port),
+            mcpConnectorCase(url),
+          ]
+        : cases;
+    if (process.argv[3] === '--legacy') {
+      for (const suffix of ['/token_tracking/gen_ai_token_tracking.ts', '/email/send_email.ts']) {
+        const capability = Object.entries(metadata.outputs).find(([, output]) =>
+          output.entryPoint?.endsWith(suffix)
+        );
+        assert(capability);
+        await import(pathToFileURL(resolve(capability[0])).href);
+      }
+      await sample('legacy_shared_capabilities');
+    }
+    for (const entry of executionCases) {
       current = entry;
       const contribution = graph.spec.contributions.find((c) => c.stepType === entry.type);
       assert(contribution);
       const before = samples[samples.length - 1];
       const started = performance.now();
       const mod = await graph.implementations[contribution.modulePath]();
-      const klass = mod[contribution.exportName] as new (service: SpecRuntimeApi) => Connector;
+      const klass = mod[contribution.exportName] as new (
+        service: SpecRuntimeApi,
+        data: { user(): Client }
+      ) => Connector;
       assert(klass);
-      const connector = new klass(runtime);
+      const connector = new klass(runtime, {
+        user: () => {
+          assert(esClient);
+          return esClient;
+        },
+      });
       const beforeRequests = requests;
       const result = await connector.run(
         'scope',
@@ -1158,7 +1214,9 @@ const main = async (): Promise<void> => {
           connectorType: entry.type,
           connectorNameOrId: entry.type,
           system: false,
-          input: { subAction: entry.op, subActionParams: entry.params ?? {} },
+          input: entry.op
+            ? { subAction: entry.op, subActionParams: entry.params ?? {} }
+            : entry.params ?? {},
         },
         {}
       );
@@ -1189,6 +1247,8 @@ const main = async (): Promise<void> => {
       })
     );
   } finally {
+    await esClient?.close();
+    await smtp.close();
     for (const s of sockets) s.destroy();
     fake.closeAllConnections();
     tlsFake.closeAllConnections();

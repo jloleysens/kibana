@@ -11,6 +11,7 @@ import { SpecRuntime } from './spec_runtime';
 
 const mockConstruct = jest.fn();
 const mockRun = jest.fn();
+const mockRunClassic = jest.fn();
 const mockDrain = jest.fn();
 const mockClose = jest.fn();
 
@@ -20,6 +21,7 @@ jest.mock('./spec_runtime_impl', () => ({
       mockConstruct(actions);
     }
     run = mockRun;
+    runClassic = mockRunClassic;
     drain = mockDrain;
     close = mockClose;
   },
@@ -70,4 +72,16 @@ it('surfaces a failed first use without poisoning the next attempt', async () =>
   await runtime.run(connectorsSpecs.Jenkins, services, 'scope', {});
   expect(mockConstruct).toHaveBeenCalledTimes(2);
   expect(mockRun).toHaveBeenCalledTimes(1);
+});
+
+it('forwards classic factories through the same lazy implementation without changing run', async () => {
+  const runtime = new SpecRuntime(actions);
+  const create = jest.fn();
+  const controller = new AbortController();
+  mockRunClassic.mockResolvedValue({ status: 'ok' });
+  await expect(
+    runtime.runClassic('email', create, 'scope', {}, controller.signal)
+  ).resolves.toEqual({ status: 'ok' });
+  expect(mockRunClassic).toHaveBeenCalledWith('email', create, 'scope', {}, controller.signal);
+  expect(mockConstruct).toHaveBeenCalledTimes(1);
 });

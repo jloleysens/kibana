@@ -7,7 +7,7 @@
 
 import { LRUCache } from 'lru-cache';
 import hash from 'object-hash';
-import { SubActionConnector } from '@kbn/actions-plugin/server';
+import { SubActionConnector } from '@kbn/actions-plugin/server/sub_action_framework/sub_action_connector';
 import type { MCPConnectorConfig, MCPConnectorSecrets } from '@kbn/connector-schemas/mcp';
 import {
   TestConnectorRequestSchema,
@@ -15,13 +15,17 @@ import {
   CallToolRequestSchema,
 } from '@kbn/connector-schemas/mcp/schemas/v1';
 import { SUB_ACTION } from '@kbn/connector-schemas/mcp';
-import type { ServiceParams } from '@kbn/actions-plugin/server/sub_action_framework/types';
-import type { LeasePool } from '@kbn/actions-plugin/server/lib';
+import type { Services } from '@kbn/actions-plugin/server/types';
+import type {
+  ServiceParams,
+  SubActionServices,
+} from '@kbn/actions-plugin/server/sub_action_framework/types';
+import type { LeasePool } from '@kbn/actions-plugin/server/lib/lease_pool';
+import { buildClientLeaseKey } from '@kbn/actions-plugin/server/lib/single_file_connectors/build_client_lease_key';
 import {
-  buildClientLeaseKey,
   createConnectorNetworkSettings,
   createPlatformServices,
-} from '@kbn/actions-plugin/server/lib';
+} from '@kbn/actions-plugin/server/lib/single_file_connectors/create_connector_network_settings';
 import type { AxiosError } from 'axios';
 import type { z } from '@kbn/zod/v4';
 import {
@@ -34,13 +38,16 @@ import {
   UnauthorizedError,
 } from '@kbn/mcp-client';
 import type { ConnectorUsageCollector } from '@kbn/actions-plugin/server/usage';
-import { clientTypes } from '@kbn/connector-specs/server';
+import { mcpClientType } from '@kbn/connector-specs/server/mcp_client_type';
 import type {
   CredentialAccessor,
   ConnectorNetworkSettings,
   PlatformServices,
 } from '@kbn/connector-specs';
-import { createTaskRunError, TaskErrorSource } from '@kbn/task-manager-plugin/server';
+import {
+  createTaskRunError,
+  TaskErrorSource,
+} from '@kbn/task-manager-plugin/server/task_running/errors';
 import { buildHeadersFromSecrets } from './auth_helpers';
 
 // TTL for list_tools cache: 15 minutes
@@ -72,7 +79,9 @@ export interface McpTestConnectorResponse {
  * survive across executions until idle TTL, connector update/delete eviction, invalidation,
  * or plugin shutdown.
  */
-export class McpConnector extends SubActionConnector<MCPConnectorConfig, MCPConnectorSecrets> {
+export class McpConnector<
+  ExecutionServices extends SubActionServices = Services
+> extends SubActionConnector<MCPConnectorConfig, MCPConnectorSecrets, ExecutionServices> {
   private readonly pool: LeasePool<McpClient>;
   private readonly connectorVersion: string | undefined;
   private readonly networkSettings: ConnectorNetworkSettings;
@@ -81,7 +90,7 @@ export class McpConnector extends SubActionConnector<MCPConnectorConfig, MCPConn
   private readonly authHeaders: Record<string, string>;
 
   constructor(
-    params: ServiceParams<MCPConnectorConfig, MCPConnectorSecrets>,
+    params: ServiceParams<MCPConnectorConfig, MCPConnectorSecrets, ExecutionServices>,
     pool: LeasePool<unknown>
   ) {
     super(params);
@@ -148,13 +157,13 @@ export class McpConnector extends SubActionConnector<MCPConnectorConfig, MCPConn
 
     return buildClientLeaseKey({
       connectorId: this.connector.id,
-      clientTypeId: clientTypes.mcp.id,
+      clientTypeId: mcpClientType.id,
       connectorVersion: this.connectorVersion,
     });
   }
 
   private buildClient(): Promise<McpClient> {
-    return clientTypes.mcp.build({
+    return mcpClientType.build({
       logger: this.logger,
       config: {
         serverUrl: this.config.serverUrl,
@@ -179,7 +188,7 @@ export class McpConnector extends SubActionConnector<MCPConnectorConfig, MCPConn
     const { promise, release } = this.pool.acquire(
       key,
       () => this.buildClient(),
-      (client) => clientTypes.mcp.terminate(client)
+      (client) => mcpClientType.terminate(client)
     );
 
     try {
@@ -187,7 +196,7 @@ export class McpConnector extends SubActionConnector<MCPConnectorConfig, MCPConn
     } catch (err) {
       // Release first: invalidate waits for every active use, including this one, to finish.
       release();
-      const isConnectionError = clientTypes.mcp.shouldInvalidateOnError?.(err) ?? false;
+      const isConnectionError = mcpClientType.shouldInvalidateOnError?.(err) ?? false;
       if (isConnectionError) {
         await this.pool.invalidate(key, promise);
       }
@@ -203,7 +212,7 @@ export class McpConnector extends SubActionConnector<MCPConnectorConfig, MCPConn
     err: unknown,
     { redact = false }: { redact?: boolean } = {}
   ): never {
-    const isUserError = clientTypes.mcp.isUserError?.(err) ?? false;
+    const isUserError = mcpClientType.isUserError?.(err) ?? false;
     const detail = err instanceof Error ? err.message : String(err);
     const message =
       redact && !isUserError ? `MCP ${operation} failed` : `MCP ${operation} failed: ${detail}`;
@@ -246,7 +255,7 @@ export class McpConnector extends SubActionConnector<MCPConnectorConfig, MCPConn
       return this.throwClassified('test', err);
     } finally {
       try {
-        await clientTypes.mcp.terminate(client);
+        await mcpClientType.terminate(client);
       } catch (err) {
         this.logger.debug(
           `MCP test client terminate failed: ${err instanceof Error ? err.message : String(err)}`

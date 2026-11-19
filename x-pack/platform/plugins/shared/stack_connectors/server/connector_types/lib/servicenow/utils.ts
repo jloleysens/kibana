@@ -10,14 +10,17 @@ import axios, { AxiosError, AxiosHeaders } from 'axios';
 import type { Logger } from '@kbn/core/server';
 import { addTimeZoneToDate, getErrorMessage } from '@kbn/actions-plugin/server/lib/axios_utils';
 import type { ActionsConfigurationUtilities } from '@kbn/actions-plugin/server/actions_config';
-import type { ConnectorTokenClientContract } from '@kbn/actions-plugin/server/types';
+import type { ConnectorTokenStore } from '@kbn/actions-plugin/server/types';
 import { getOAuthJwtAccessToken } from '@kbn/actions-plugin/server/lib/get_oauth_jwt_access_token';
-import { getBasicAuthHeader } from '@kbn/actions-plugin/server';
+import { getBasicAuthHeader } from '@kbn/actions-plugin/server/lib/get_basic_auth_header';
 import type {
   ServiceNowSecretConfigurationType,
   ServiceNowPublicConfigurationType,
 } from '@kbn/connector-schemas/servicenow';
-import { createTaskRunError, TaskErrorSource } from '@kbn/task-manager-plugin/server';
+import {
+  createTaskRunError,
+  TaskErrorSource,
+} from '@kbn/task-manager-plugin/server/task_running/errors';
 import type {
   ExternalServiceCredentials,
   Incident,
@@ -199,7 +202,7 @@ export interface GetAxiosInstanceOpts {
   configurationUtilities: ActionsConfigurationUtilities;
   credentials: ExternalServiceCredentials;
   snServiceUrl: string;
-  connectorTokenClient: ConnectorTokenClientContract;
+  connectorTokenClient: ConnectorTokenStore;
 }
 
 export const getAxiosInstance = ({

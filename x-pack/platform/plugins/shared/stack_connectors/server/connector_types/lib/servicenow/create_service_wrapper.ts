@@ -8,7 +8,7 @@
 import type { Logger } from '@kbn/core/server';
 import type {
   ConnectorUsageCollector,
-  ConnectorTokenClientContract,
+  ConnectorTokenStore,
 } from '@kbn/actions-plugin/server/types';
 import type { ActionsConfigurationUtilities } from '@kbn/actions-plugin/server/actions_config';
 import type { ServiceNowPublicConfigurationType } from '@kbn/connector-schemas/servicenow';
@@ -23,7 +23,7 @@ interface CreateServiceWrapperOpts<T = ExternalService> {
   logger: Logger;
   configurationUtilities: ActionsConfigurationUtilities;
   serviceConfig: SNProductsConfigValue;
-  connectorTokenClient: ConnectorTokenClientContract;
+  connectorTokenClient: ConnectorTokenStore;
   createServiceFn: ServiceFactory<T>;
   connectorUsageCollector: ConnectorUsageCollector;
 }

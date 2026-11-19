@@ -135,6 +135,9 @@ export class PreparedExecution {
           ready({
             prepared: {
               inferenceStreamingFacts,
+              emailExecutionFacts: await options.actionType.getEmailExecutionFacts?.(
+                options.config
+              ),
               kibanaVersion: kibanaPackageJson.version,
               actionId: options.actionId,
               actionTypeId: options.actionType.id,

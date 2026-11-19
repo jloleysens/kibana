@@ -17,16 +17,17 @@ import type { CustomHostSettings, ProxySettings } from '@kbn/actions-utils';
 import { getNodeSSLOptions, getSSLSettingsFromConfig } from '@kbn/actions-utils';
 import type {
   ConnectorUsageCollector,
-  ConnectorTokenClientContract,
+  ConnectorTokenStore,
 } from '@kbn/actions-plugin/server/types';
 import { getOAuthClientCredentialsAccessToken } from '@kbn/actions-plugin/server/lib/get_oauth_client_credentials_access_token';
 import type { Attachment } from '@kbn/connector-schemas/email';
-import { getDeleteTokenAxiosInterceptor } from '@kbn/actions-plugin/server/lib';
+import { getDeleteTokenAxiosInterceptor } from '@kbn/actions-plugin/server/lib/delete_token_axios_interceptor';
 import { AdditionalEmailServices } from '../../../common';
 import { sendEmailGraphApi } from './send_email_graph_api';
 
 // an email "service" which doesn't actually send, just returns what it would send
-export const JSON_TRANSPORT_SERVICE = '__json';
+export { JSON_TRANSPORT_SERVICE } from './constants';
+import { JSON_TRANSPORT_SERVICE } from './constants';
 // The value is the resource identifier (Application ID URI) of the resource you want, affixed with the .default suffix. For Microsoft Graph, the value is https://graph.microsoft.com/.default. This value informs the Microsoft identity platform endpoint that of all the application permissions you have configured for your app in the app registration portal, it should issue a token for the ones associated with the resource you want to use.
 
 export interface SendEmailOptions {
@@ -71,7 +72,7 @@ export interface Content {
 export async function sendEmail(
   logger: Logger,
   options: SendEmailOptions,
-  connectorTokenClient: ConnectorTokenClientContract,
+  connectorTokenClient: ConnectorTokenStore,
   connectorUsageCollector: ConnectorUsageCollector
 ): Promise<unknown> {
   const { transport, content } = options;
@@ -104,7 +105,7 @@ export async function sendEmailWithExchange(
   logger: Logger,
   options: SendEmailOptions,
   messageHTML: string,
-  connectorTokenClient: ConnectorTokenClientContract,
+  connectorTokenClient: ConnectorTokenStore,
   connectorUsageCollector: ConnectorUsageCollector,
   attachments: Attachment[]
 ): Promise<unknown> {

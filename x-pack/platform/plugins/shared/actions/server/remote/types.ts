@@ -32,6 +32,7 @@ export type ConnectorDashboardResponse =
     };
 
 export interface PreparedConnector {
+  readonly emailExecutionFacts?: import('./classic_connector_types').EmailExecutionFacts;
   readonly inferenceStreamingFacts?: InferenceStreamingFacts;
   readonly kibanaVersion: string;
   readonly actionId: string;

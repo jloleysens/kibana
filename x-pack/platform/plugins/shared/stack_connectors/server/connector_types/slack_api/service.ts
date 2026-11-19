@@ -16,7 +16,7 @@ import { pipe } from 'fp-ts/pipeable';
 import { map, getOrElse } from 'fp-ts/Option';
 import type { ActionTypeExecutorResult as ConnectorTypeExecutorResult } from '@kbn/actions-plugin/server/types';
 import type { ConnectorUsageCollector } from '@kbn/actions-plugin/server/types';
-import { getErrorSource } from '@kbn/task-manager-plugin/server/task_running';
+import { getErrorSource } from '@kbn/task-manager-plugin/server/task_running/errors';
 import type {
   PostBlockkitSubActionParams,
   PostMessageSubActionParams,
