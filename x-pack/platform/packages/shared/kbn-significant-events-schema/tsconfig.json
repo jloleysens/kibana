@@ -9,7 +9,7 @@
     "@kbn/alerting-v2-schemas",
     "@kbn/zod",
     "@kbn/zod-helpers",
-    "@kbn/streamlang",
+    "@kbn/streamlang-conditions",
     "@kbn/inference-common",
     "@kbn/i18n"
   ],
