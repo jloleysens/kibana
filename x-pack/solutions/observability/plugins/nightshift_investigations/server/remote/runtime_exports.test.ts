@@ -5,6 +5,8 @@
  * 2.0.
  */
 
+import { hydrateDecisionTreeWorkspace as originalHydrate } from '../decision_trees/register_decision_trees';
+import { hydrateDecisionTreeWorkspace } from '../decision_trees/hydrate_workspace';
 import { prepareReinforcementTurn as originalPrepare } from '../decision_trees/register_decision_trees';
 import { prepareReinforcementTurn } from '../decision_trees/prepare_reinforcement_turn';
 import { withToolResults as originalJoin } from '../investigation_round/round_loader';
@@ -33,6 +35,7 @@ import {
 import { DECISION_TREE_SUBMIT_TOOL_ID } from '../tools/decision_tree/submit_optimizer_result_tool';
 
 it('preserves original helper/schema/constants exports and registered prompt tool identities', () => {
+  expect(originalHydrate).toBe(hydrateDecisionTreeWorkspace);
   expect(originalPrepare).toBe(prepareReinforcementTurn);
   expect(originalJoin).toBe(withToolResults);
   expect(originalPhase).toBe(notificationPhaseSchema);

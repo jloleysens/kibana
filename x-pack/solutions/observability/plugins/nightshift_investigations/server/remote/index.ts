@@ -7,6 +7,7 @@
 
 import { createToken } from '@kbn/core-di';
 import type { RemoteModule } from '@kbn/core-remote-common';
+import { SandboxWorkspacesToken } from './sandbox_workspaces_tokens';
 import { AgentInstallationToken } from './agent_installation_tokens';
 import { InvestigationsToken } from './investigations_tokens';
 import { DecisionTreePolicyToken } from './decision_tree_policy_tokens';
@@ -14,6 +15,12 @@ import { ModelSelectionToken } from './model_selection_tokens';
 
 export const remoteModule: RemoteModule = {
   providers: [
+    {
+      token: SandboxWorkspacesToken,
+      placement: 'coordinator',
+      modulePath: require.resolve('./sandbox_workspaces'),
+      exportName: 'SandboxWorkspaces',
+    },
     {
       token: AgentInstallationToken,
       placement: 'coordinator',
@@ -40,6 +47,20 @@ export const remoteModule: RemoteModule = {
     },
   ],
   contributions: [
+    {
+      kind: createToken('workflows.step'),
+      stepType: 'nightshift.decisionTreeHydrate',
+      needs: [SandboxWorkspacesToken, DecisionTreePolicyToken],
+      modulePath: require.resolve('./decision_tree_hydrate_step'),
+      exportName: 'DecisionTreeHydrateStep',
+    },
+    {
+      kind: createToken('workflows.step'),
+      stepType: 'nightshift.obtainSandbox',
+      needs: [SandboxWorkspacesToken],
+      modulePath: require.resolve('./obtain_sandbox_step'),
+      exportName: 'ObtainSandboxStep',
+    },
     {
       kind: createToken('workflows.step'),
       stepType: 'nightshift.renderSlackMessage',

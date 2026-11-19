@@ -101,6 +101,27 @@ const main = async (): Promise<void> => {
       );
       return;
     }
+    if (path.includes('ai-index-idx-nightshift-decision-trees') && path.includes('/_doc/')) {
+      response.end(
+        JSON.stringify({
+          found: true,
+          _source: {
+            '@timestamp': new Date().toISOString(),
+            type: 'decision_tree',
+            title: 'Fixture tree',
+            content: '# Fixture populated tree',
+            attributes: {
+              tree_id: 'symptom:fixture',
+              symptom: 'fixture',
+              version: 2,
+              status: 'established',
+            },
+            learnings: [],
+          },
+        })
+      );
+      return;
+    }
     if (path.includes('/_inference/') && request.method === 'POST') {
       const input = JSON.parse(body);
       assert.deepEqual(input.input, ['First', 'Second']);
@@ -381,6 +402,11 @@ const main = async (): Promise<void> => {
           ],
         },
       ],
+      [
+        'nightshift.decisionTreeHydrate',
+        { sandbox_id: 'default__fixture-conversation', agent_id: 'nightshift.investigation' },
+      ],
+      ['nightshift.obtainSandbox', { conversation_id: 'fixture-conversation' }],
       ['nightshift.ensureInvestigationAgent', {}],
       ['nightshift.renderSlackMessage', { investigation_id: 'investigation', phase: 'completed' }],
       ['nightshift.resolveModel', { step: 'investigation', connector_id: 'fixture-model' }],
@@ -440,12 +466,32 @@ const main = async (): Promise<void> => {
         },
       };
       const operations =
-        type === 'nightshift.decisionTreePrepare' ? { read: registry.readTreePolicy } : registry;
-      const result = (await new Ctor(operations, { internal: () => fakeClient }, attachments).run(
-        'scope',
-        {},
-        { handlerContext: context }
-      )) as {
+        type === 'nightshift.decisionTreeHydrate'
+          ? {
+              openDecisionTreeWorkspace: async () => 'workspace-ref',
+              mkdirs: async () => [true],
+              writeFiles: async (
+                scope: string,
+                reference: string,
+                files: Array<{ path: string; content: string }>
+              ) =>
+                files.map(({ content }) => ({
+                  bytes_written: Buffer.byteLength(content),
+                  success: true,
+                })),
+            }
+          : type === 'nightshift.obtainSandbox'
+          ? { allocate: async () => ({}) }
+          : type === 'nightshift.decisionTreePrepare'
+          ? { read: registry.readTreePolicy }
+          : registry;
+      const result = (await new Ctor(
+        operations,
+        type === 'nightshift.decisionTreeHydrate'
+          ? { read: registry.readTreePolicy }
+          : { internal: () => fakeClient },
+        attachments
+      ).run('scope', {}, { handlerContext: context })) as {
         output?: object;
         error?: Error;
       };
@@ -468,6 +514,13 @@ const main = async (): Promise<void> => {
         assert.equal(prepared.turn_kind, 'feedback_reinforcement');
         assert(prepared.message.includes('Fixture learning'));
       }
+      if (type === 'nightshift.decisionTreeHydrate')
+        assert.equal((result.output as { tree_count: number }).tree_count, 1);
+      if (type === 'nightshift.obtainSandbox')
+        assert.deepEqual(result.output, {
+          sandbox_id: 'default__fixture-conversation',
+          conversation_id: 'fixture-conversation',
+        });
       if (type === 'nightshift.ensureInvestigationAgent')
         assert.deepEqual(result.output, {
           space_id: 'default',

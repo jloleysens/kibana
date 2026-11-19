@@ -20,11 +20,36 @@ export type LaneBFamily =
   | 'nightshift_recovery'
   | 'nightshift_trees'
   | 'nightshift_agents'
-  | 'nightshift_render';
+  | 'nightshift_render'
+  | 'nightshift_sandbox'
+  | 'nightshift_tree_hydrate';
 
 /** Uses the same original business steps for ordinary Kibana and each worker backend. */
 export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: string) => {
   const steps = {
+    nightshift_tree_hydrate: [
+      {
+        name: 'obtain',
+        type: 'nightshift.obtainSandbox',
+        with: { conversation_id: '{{ execution.id }}' },
+      },
+      {
+        name: 'hydrate',
+        type: 'nightshift.decisionTreeHydrate',
+        with: {
+          sandbox_id: '{{ steps.obtain.output.sandbox_id }}',
+          agent_id: 'nightshift.investigation',
+          prompt: '<!-- nightshift-accessed-trees:' + id + ' -->',
+        },
+      },
+    ],
+    nightshift_sandbox: [
+      {
+        name: 'obtain',
+        type: 'nightshift.obtainSandbox',
+        with: { conversation_id: '{{ execution.id }}' },
+      },
+    ],
     nightshift_render: [
       {
         name: 'create',
@@ -347,6 +372,15 @@ export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: s
     ],
   }[family];
   const document = {
+    nightshift_tree_hydrate: {
+      sandboxId: '{{ steps.hydrate.output.sandbox_id }}',
+      treeCount: '{{ steps.hydrate.output.tree_count }}',
+      conversationId: '{{ steps.hydrate.output.conversation_id }}',
+    },
+    nightshift_sandbox: {
+      sandboxId: '{{ steps.obtain.output.sandbox_id }}',
+      conversationId: '{{ steps.obtain.output.conversation_id }}',
+    },
     nightshift_render: {
       slackText: '{{ steps.render.output.text }}',
       startedText: '{{ steps.started.output.text }}',

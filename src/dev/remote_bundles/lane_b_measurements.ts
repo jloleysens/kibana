@@ -28,6 +28,7 @@ import { parse, stringify } from 'yaml';
 import { buildRemoteBundle } from './build';
 import { discoverRemoteManifests } from './discover';
 import { nearestRank } from './load_statistics';
+import { startLaneBSandboxFixture } from './lane_b_sandbox_fixture';
 import { createLaneBWorkflow, type LaneBFamily } from './lane_b_workflows';
 
 interface Hit<T> {
@@ -203,6 +204,7 @@ const execute = async (
   const persisted = await api<{
     _source: {
       modelContext?: string;
+      sandboxId?: string;
       selectedModel?: string;
       slackText?: string;
       startedText?: string;
@@ -234,7 +236,17 @@ const execute = async (
     };
   }>(`${es}/lane-b-quiet-outcomes/_doc/${step('persist')._id}`);
   save(join(directory, `${workflowExecutionId}-business.json`), persisted);
-  if (family === 'nightshift_render') {
+  if (family === 'nightshift_sandbox' || family === 'nightshift_tree_hydrate') {
+    assert.equal(persisted._source.sandboxId, 'default__' + workflowExecutionId);
+    assert.equal(persisted._source.conversationId, workflowExecutionId);
+    if (family === 'nightshift_tree_hydrate') {
+      assert.equal(persisted._source.treeCount, '1');
+      const tree = await api<{ _source: { attributes: { tree_id: string; version: number } } }>(`${es}/ai-index-idx-nightshift-decision-trees/_doc/default:dtree_${id}`);
+      assert.equal(tree._source.attributes.tree_id, 'symptom:' + id);
+      assert.equal(tree._source.attributes.version, 2);
+      save(join(directory, `${workflowExecutionId}-tree.json`), tree);
+    }
+  } else if (family === 'nightshift_render') {
     const { slackText } = persisted._source;
     assert(slackText);
     assert(slackText?.startsWith('*' + id + '* — Investigation completed'));
@@ -639,6 +651,9 @@ export const runLaneBMeasurements = async (): Promise<void> => {
       })}\n\ndata: [DONE]\n\n`
     );
   });
+  const sandbox = args.includes('--sandbox-stat-fixture')
+    ? await startLaneBSandboxFixture(join(output, 'sandbox-stat-requests.jsonl'))
+    : undefined;
   let child: ChildProcess | undefined;
   let endpointCreated = false;
   let rerankEndpointCreated = false;
@@ -703,6 +718,8 @@ export const runLaneBMeasurements = async (): Promise<void> => {
               'nightshift_trees',
               'nightshift_agents',
               'nightshift_render',
+              'nightshift_sandbox',
+              'nightshift_tree_hydrate',
             ]
           : ['extensions', 'cases'];
       const selectedFamilies = args.includes('--families')
@@ -740,6 +757,15 @@ export const runLaneBMeasurements = async (): Promise<void> => {
                     'xpack.sandbox.host': '127.0.0.1',
                     'xpack.sandbox.port': address.port,
                     'xpack.sandbox.api_key': 'lane-b-configuration-only-fixture',
+                  }
+                : {}),
+              ...(sandbox
+                ? {
+                    'xpack.sandbox.enabled': true,
+                    'xpack.sandbox.host': 'localhost',
+                    'xpack.sandbox.port': sandbox.port,
+                    'xpack.sandbox.api_key': 'lane-b-stat-only-fixture',
+                    'xpack.sandbox.ssl.certificate_authorities': sandbox.caPath,
                   }
                 : {}),
               'workflowsExecutionEngine.remoteExecution.enabled': cell.backend !== 'baseline',
@@ -825,7 +851,7 @@ export const runLaneBMeasurements = async (): Promise<void> => {
           );
           for (const family of group) {
             const id = `lane-b-quiet-${family.replaceAll('_', '-')}-${Date.now()}`;
-            if (family === 'nightshift_trees') {
+            if (family === 'nightshift_trees' || family === 'nightshift_tree_hydrate') {
               const index = es + '/ai-index-idx-nightshift-decision-trees/_doc/';
               await api(
                 index + 'default:dtree_' + id + '?refresh=true',
@@ -877,6 +903,38 @@ export const runLaneBMeasurements = async (): Promise<void> => {
               const before = lines<Seam>(join(directory, 'seams.jsonl')).length;
               const timingBefore = lines<AuthorizationRead>(join(directory, 'timing.jsonl')).length;
               const result = await execute(family, id, directory);
+              if (family === 'nightshift_sandbox' || family === 'nightshift_tree_hydrate') {
+                assert(sandbox, 'Allocation proof requires --sandbox-stat-fixture');
+                const requests = lines<{
+                  operation: string;
+                  conversationId: string;
+                  files?: Array<{ path: string; content: string }>;
+                }>(join(output, 'sandbox-stat-requests.jsonl'));
+                assert.equal(
+                  requests.filter(
+                    ({ operation, conversationId }) =>
+                      operation === 'stat' &&
+                      conversationId === 'default__' + result.workflowExecutionId
+                  ).length,
+                  1
+                );
+              }
+              if (family === 'nightshift_tree_hydrate') {
+                const requests = lines<{
+                  operation: string;
+                  conversationId: string;
+                  files?: Array<{ path: string; content: string }>;
+                }>(join(output, 'sandbox-stat-requests.jsonl'));
+                const written = requests.filter(
+                  ({ operation, conversationId }) =>
+                    operation === 'write' &&
+                    conversationId === 'default__' + result.workflowExecutionId
+                );
+                assert.equal(written.length, 1);
+                assert(
+                  written[0].files?.some(({ content }) => content.includes('# Verified tree'))
+                );
+              }
               const authorizationReads = lines<AuthorizationRead>(join(directory, 'timing.jsonl'))
                 .slice(timingBefore)
                 .filter(({ event }) => event === 'conversation_authorization_read');
@@ -969,6 +1027,7 @@ export const runLaneBMeasurements = async (): Promise<void> => {
     try {
       if (child) await stop(child);
     } finally {
+      if (sandbox) await sandbox.close();
       fake.closeAllConnections();
       await new Promise<void>((done) => fake.close(() => done()));
       try {

@@ -5,17 +5,13 @@
  * 2.0.
  */
 
-import type { ElasticsearchClient, Logger } from '@kbn/core/server';
+import type { Logger } from '@kbn/core/server';
 import { i18n } from '@kbn/i18n';
 import type { ContextEnginePluginSetup } from '@kbn/context-engine-plugin/server';
-import type { SandboxSession } from '@kbn/sandbox-plugin/server';
 import {
   DECISION_TREE_AI_INDEX_DEST,
   DECISION_TREE_AI_INDEX_ID,
 } from '../../common/decision_trees';
-import { parseAccessedTreesMarker } from './accessed_trees';
-import { materializeDecisionTrees } from './materialize';
-import { createDecisionTreeStore } from './store';
 
 /**
  * Registers the dedicated decision-tree AI index with the Context Engine so it is a managed,
@@ -43,32 +39,6 @@ export const registerDecisionTreeAiIndex = (
   });
 };
 
-/** Writes the stored decision trees into the reinforcement agent's sandbox for this round. */
-export const hydrateDecisionTreeWorkspace = async ({
-  session,
-  esClient,
-  logger,
-  spaceId,
-  prompt,
-  signal,
-}: {
-  session: SandboxSession;
-  esClient: ElasticsearchClient;
-  logger: Logger;
-  spaceId: string;
-  prompt?: string;
-  signal?: AbortSignal;
-}): Promise<number> => {
-  const store = createDecisionTreeStore({ esClient, logger, spaceId, signal });
-  const accessedTreeIds = parseAccessedTreesMarker(prompt);
-  const trees = await materializeDecisionTrees({
-    session,
-    store,
-    logger,
-    signal,
-    ...(accessedTreeIds ? { treeIds: accessedTreeIds } : {}),
-  });
-  return trees.length;
-};
+export { hydrateDecisionTreeWorkspace } from './hydrate_workspace';
 
 export { prepareReinforcementTurn } from './prepare_reinforcement_turn';

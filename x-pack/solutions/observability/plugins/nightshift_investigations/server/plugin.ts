@@ -66,6 +66,9 @@ import { DecisionTreePolicyToken } from './remote/decision_tree_policy_tokens';
 import { DecisionTreePolicy } from './remote/decision_tree_policy';
 import { AgentInstallationToken } from './remote/agent_installation_tokens';
 import { AgentInstallation, createAgentInstaller } from './remote/agent_installation';
+import { SandboxWorkspacesToken } from './remote/sandbox_workspaces_tokens';
+import { SandboxWorkspaces } from './remote/sandbox_workspaces';
+import { createWorkspaceAllocator } from './remote/allocate_workspace';
 import { InvestigationsToken } from './remote/investigations_tokens';
 import { ModelSelectionToken } from './remote/model_selection_tokens';
 import { ModelSelection } from './remote/model_selection';
@@ -231,6 +234,18 @@ export class NightshiftInvestigationsPlugin
       getSandboxStart: () => this.sandboxStart,
       isNightshiftEnabled: isNightshiftEnabledSync,
     });
+    core.remote.bind(
+      SandboxWorkspacesToken,
+      (scopes) =>
+        new SandboxWorkspaces(
+          scopes,
+          createWorkspaceAllocator({
+            getSandboxStart: getGatedSandboxStart,
+            logger: this.logger.get('obtain_sandbox'),
+          }),
+          getGatedSandboxStart
+        )
+    );
     const telemetry = setupNightshiftTelemetry({
       analytics: core.analytics,
       logger: this.logger.get('telemetry'),

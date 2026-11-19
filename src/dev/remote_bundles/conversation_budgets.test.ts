@@ -75,6 +75,8 @@ it('bounds original native conversation client first business execution and conv
         'ai.agent',
         'nightshift.composeHydrateNotifications',
         'nightshift.decisionTreePrepare',
+        'nightshift.decisionTreeHydrate',
+        'nightshift.obtainSandbox',
         'nightshift.ensureInvestigationAgent',
         'nightshift.renderSlackMessage',
         'nightshift.resolveModel',

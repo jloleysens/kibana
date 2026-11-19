@@ -7,11 +7,11 @@
 
 import { loggerMock } from '@kbn/logging-mocks';
 import type { SandboxPluginStart, SandboxSession } from '@kbn/sandbox-plugin/server';
-import { hydrateDecisionTreeWorkspace } from '../decision_trees/register_decision_trees';
+import { hydrateDecisionTreeWorkspace } from '../decision_trees/hydrate_workspace';
 import { decisionTreeHydrateStepDefinition } from './decision_tree_hydrate';
 import { NIGHTSHIFT_ASSISTANT_AGENT_ID, NIGHTSHIFT_INVESTIGATION_AGENT_ID } from '../../common';
 
-jest.mock('../decision_trees/register_decision_trees', () => ({
+jest.mock('../decision_trees/hydrate_workspace', () => ({
   hydrateDecisionTreeWorkspace: jest.fn().mockResolvedValue(3),
 }));
 

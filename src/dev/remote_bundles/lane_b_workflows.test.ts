@@ -24,6 +24,8 @@ it.each([
   'nightshift_trees',
   'nightshift_agents',
   'nightshift_render',
+  'nightshift_sandbox',
+  'nightshift_tree_hydrate',
 ] as const)('%s retains a real persisted outcome', (family) => {
   const workflow = createLaneBWorkflow(family, 'proof', 'endpoint');
   expect(workflow.steps.at(-1)).toMatchObject({
