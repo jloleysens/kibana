@@ -52,6 +52,8 @@ import { registerStepDefinitions } from './step_types';
 import { ContextEngineAnalyticsService, registerContextEngineUsageCollector } from './telemetry';
 import { isContextEngineEnabledInSpace } from './utils/is_context_engine_enabled_in_space';
 import { resolveSpaceId } from './utils/resolve_space_id';
+import { FeedbackOperations } from './remote/feedback_operations';
+import { FeedbackOperationsToken } from './remote/feedback_tokens';
 
 /** Must match the `pluginId` on the managed workflow definition. */
 const CONTEXT_ENGINE_WORKFLOW_OWNER = 'contextEngine';
@@ -287,6 +289,21 @@ export class ContextEnginePlugin
         });
       return hasAllRequested;
     };
+
+    coreSetup.remote.bind(
+      FeedbackOperationsToken,
+      (scopes) =>
+        new FeedbackOperations(scopes, {
+          getAiIndexService,
+          getImprovementsService,
+          getScopedEsClient: async (request) => {
+            const [coreStart] = await coreSetup.getStartServices();
+            return coreStart.elasticsearch.client.asScoped(request).asCurrentUser;
+          },
+          isContextEngineEnabled,
+          isFeedbackLoopEnabled: () => this.isFeedbackLoopEnabled(),
+        })
+    );
 
     registerStepDefinitions({
       workflowsExtensions: setupDeps.workflowsExtensions,
