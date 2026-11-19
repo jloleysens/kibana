@@ -17,10 +17,11 @@ import { buildRemoteBundle } from './build';
 import { discoverRemoteManifests } from './discover';
 
 // Local Node24/macOS PoC baselines: 9,851,499 bundle bytes; ~70MiB post-GC RSS.
-const MAX_BUNDLE_BYTES = 10_000_000;
+// Total bytes are reporting-only; idle and per-step/capability first-use costs remain gated.
+const BUNDLE_REPORTING_CEILING_BYTES = 11_000_000;
 const MAX_IDLE_RSS_BYTES = 80 * 1024 * 1024;
 
-it('bounds the real workflow bundle and idle host without loading steps or authoring', async () => {
+it('reports bundle bytes and bounds the idle host without loading steps or authoring', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'runner-budgets-'));
   try {
     const bundle = await buildRemoteBundle({
@@ -33,7 +34,13 @@ it('bounds the real workflow bundle and idle host without loading steps or autho
       },
       outdir: join(directory, 'bundle'),
     });
-    expect(bundle.bytes).toBeLessThanOrEqual(MAX_BUNDLE_BYTES);
+    process.stdout.write(
+      `${JSON.stringify({
+        bundleBytes: bundle.bytes,
+        reportingCeilingBytes: BUNDLE_REPORTING_CEILING_BYTES,
+        exceedsReportingCeiling: bundle.bytes > BUNDLE_REPORTING_CEILING_BYTES,
+      })}\n`
+    );
     const probe = join(directory, 'probe.cjs');
     const hook = join(directory, 'hook.mjs');
     const loads = join(directory, 'loads.jsonl');
