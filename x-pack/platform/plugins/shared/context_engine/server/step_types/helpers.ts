@@ -10,7 +10,6 @@ import type { ElasticsearchClient, KibanaRequest } from '@kbn/core/server';
 import type { Logger } from '@kbn/logging';
 import type { StepContext } from '@kbn/workflows';
 import { ExecutionError } from '@kbn/workflows/server';
-import { CONTEXT_ENGINE_ENABLED_SETTING_ID } from '@kbn/management-settings-ids';
 import { isIndexPattern, validateAiIndexId } from '../../common/ai_index_dest';
 import type { AiIndexDest } from '../../common/http_api/ai_indices';
 import type { KiWriter } from '../ai_indices/ki_revision';
@@ -196,31 +195,7 @@ export const assertKiWritePrivilege = async (
   }
 };
 
-/** Fails the step when the Context Engine setting is off in this space. */
-export const assertContextEngineEnabled = async (
-  isContextEngineEnabled: (spaceId: string) => Promise<boolean>,
-  spaceId: string
-): Promise<void> => {
-  if (!(await isContextEngineEnabled(spaceId))) {
-    throw new ExecutionError({
-      type: 'FeatureDisabledError',
-      message: `Context Engine is disabled. Enable the '${CONTEXT_ENGINE_ENABLED_SETTING_ID}' advanced setting to use this step.`,
-    });
-  }
-};
-
-/** Fails the step when the feedback loop advanced setting is off. */
-export const assertFeedbackLoopEnabled = async (
-  isFeedbackLoopEnabled: () => Promise<boolean>
-): Promise<void> => {
-  if (!(await isFeedbackLoopEnabled())) {
-    throw new ExecutionError({
-      type: 'FeatureDisabledError',
-      message:
-        'The Context Engine feedback loop is disabled. Enable it in advanced settings to use this step.',
-    });
-  }
-};
+export { assertContextEngineEnabled, assertFeedbackLoopEnabled } from './step_guards';
 
 /** Resolves an AI index id to its backing store, failing the step when the id is unknown. */
 export const resolveAiIndex = async (
