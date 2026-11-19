@@ -139,3 +139,50 @@ it.each([
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+it('refuses an oversized lazy step exclusive closure without increasing global or idle budgets', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'runner-step-budget-'));
+  try {
+    writeFileSync(join(directory, 'root.ts'), 'export class Root {}');
+    writeFileSync(
+      join(directory, 'payload.ts'),
+      `export const payload = '${'x'.repeat(256 * 1024)}';`
+    );
+    writeFileSync(
+      join(directory, 'step.ts'),
+      "import { payload } from './payload'; export class Step { run() { return payload; } }"
+    );
+    const manifest = join(directory, 'index.ts');
+    writeFileSync(
+      manifest,
+      `export const remoteModule = {
+      providers: [{ token: 'root', role: 'root', placement: 'executor', modulePath: require.resolve('./root.ts'), exportName: 'Root' }],
+      contributions: [{ kind: 'step', stepType: 'oversized', modulePath: require.resolve('./step.ts'), exportName: 'Step' }]
+    };`
+    );
+    const outdir = join(directory, 'bundle');
+    await expect(
+      buildRemoteBundle({
+        manifests: [manifest],
+        graph: { id: 'step-budget', root: 'root', dependencies: [], contributions: ['step'] },
+        outdir,
+      })
+    ).rejects.toThrow('Worker step exclusive chunks exceed 262144 bytes');
+    const sizes = JSON.parse(readFileSync(join(outdir, 'step_chunks.json'), 'utf8')) as Array<{
+      stepType: string;
+      exclusiveBytes: number;
+    }>;
+    expect(sizes).toEqual([
+      {
+        stepType: 'oversized',
+        exclusiveBytes: expect.any(Number),
+        entryBytes: expect.any(Number),
+        modulePath: expect.any(String),
+        sharedBytes: expect.any(Number),
+      },
+    ]);
+    expect(sizes[0].exclusiveBytes).toBeGreaterThan(256 * 1024);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

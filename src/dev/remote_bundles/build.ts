@@ -13,12 +13,16 @@ import { build } from 'esbuild';
 import { getJsSourceSync } from '@kbn/peggy';
 import type { RemoteWorkerSpec } from '@kbn/core-remote-common';
 import { readRemoteManifest } from './manifest';
+import { measureStepChunks, type StepChunkSize } from './step_chunk_sizes';
+
+const MAX_STEP_EXCLUSIVE_BYTES = 256 * 1024;
 
 export interface RemoteBundle {
   readonly entry: string;
   readonly bytes: number;
   readonly inputs: readonly string[];
   readonly spec: RemoteWorkerSpec;
+  readonly stepChunks: readonly StepChunkSize[];
 }
 
 export interface BundleGraph {
@@ -164,6 +168,18 @@ export const buildRemoteBundle = async ({
   writeFileSync(join(outdir, 'metafile.json'), JSON.stringify(result.metafile, null, 2));
   writeFileSync(join(outdir, 'forbidden_inputs.json'), JSON.stringify(forbidden, null, 2));
   if (forbidden.length) throw new Error(`Forbidden worker inputs:\n${forbidden.join('\n')}`);
+  const stepChunks = measureStepChunks(result.metafile, contributions);
+  writeFileSync(join(outdir, 'step_chunks.json'), JSON.stringify(stepChunks, null, 2));
+  const oversized = stepChunks.filter(
+    ({ exclusiveBytes }) => exclusiveBytes > MAX_STEP_EXCLUSIVE_BYTES
+  );
+  if (oversized.length) {
+    throw new Error(
+      `Worker step exclusive chunks exceed ${MAX_STEP_EXCLUSIVE_BYTES} bytes:\n${oversized
+        .map(({ stepType, exclusiveBytes }) => `${stepType}: ${exclusiveBytes}`)
+        .join('\n')}`
+    );
+  }
   for (const output of result.outputFiles) writeFileSync(output.path, output.contents);
   writeFileSync(join(outdir, 'spec.json'), JSON.stringify(spec, null, 2));
   return {
@@ -173,5 +189,6 @@ export const buildRemoteBundle = async ({
       relative(process.cwd(), resolve(path))
     ),
     spec,
+    stepChunks,
   };
 };
