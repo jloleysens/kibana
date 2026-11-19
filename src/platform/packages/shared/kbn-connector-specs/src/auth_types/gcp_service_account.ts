@@ -12,6 +12,7 @@ import { z, lazySchema } from '@kbn/zod/v4';
 import type { AxiosInstance } from 'axios';
 import type { AuthContext, AuthTypeSpec } from '../connector_spec';
 import * as i18n from './translations';
+import { createGcpTokenTransport } from './gcp_token_transport';
 import { getGcpAccessToken, parseServiceAccountKey } from './gcp_jwt_helpers';
 
 const DEFAULT_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
@@ -58,7 +59,7 @@ export const GcpServiceAccountAuth: AuthTypeSpec<AuthSchemaType> = {
   ...AUTH_TYPE_METADATA.gcp_service_account,
   schema: authSchema,
   configure: async (
-    _: AuthContext,
+    ctx: AuthContext,
     axiosInstance: AxiosInstance,
     secret: AuthSchemaType
   ): Promise<AxiosInstance> => {
@@ -68,7 +69,8 @@ export const GcpServiceAccountAuth: AuthTypeSpec<AuthSchemaType> = {
     const { accessToken } = await getGcpAccessToken(
       serviceAccount.client_email,
       serviceAccount.private_key,
-      scope
+      scope,
+      createGcpTokenTransport(axiosInstance, ctx)
     );
 
     axiosInstance.defaults.headers.common.Authorization = `Bearer ${accessToken}`;

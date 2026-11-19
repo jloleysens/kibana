@@ -270,3 +270,70 @@ it('runs the original stored-token strategy under the same lock as ordinary exec
     state.close();
   }
 });
+
+it('pins deployment-authenticated EARS refresh to a held lock and a refresh token read in this invocation', async () => {
+  const { client, controller } = setup();
+  client.get.mockResolvedValue({
+    hasErrors: false,
+    connectorToken: { ...stored, refreshToken: 'bound-refresh' },
+  });
+  const refreshed = {
+    accessToken: 'Bearer renewed',
+    tokenType: 'Bearer',
+    expiresIn: 3600,
+    refreshToken: 'rotated',
+  };
+  const refresh = jest.fn().mockResolvedValue(refreshed);
+  const state = new ConnectorTokenState(
+    client,
+    { actionId: 'prepared', authMode: 'shared' },
+    controller.signal,
+    refresh
+  );
+  await expect(
+    state.execute({ operation: 'refreshEars', refreshToken: 'bound-refresh' })
+  ).rejects.toThrow('held refresh lock');
+  await state.execute({ operation: 'acquireRefreshLock' });
+  await expect(
+    state.execute({ operation: 'refreshEars', refreshToken: 'bound-refresh' })
+  ).rejects.toThrow('invocation-local token read');
+  await state.execute({ operation: 'get', options: {} });
+  await expect(state.execute({ operation: 'refreshEars', refreshToken: 'forged' })).rejects.toThrow(
+    'invocation-local token read'
+  );
+  expect(
+    (await state.execute({ operation: 'refreshEars', refreshToken: 'bound-refresh' })).earsToken
+  ).toEqual(refreshed);
+  expect(refresh).toHaveBeenCalledTimes(1);
+  expect(refresh).toHaveBeenCalledWith('bound-refresh');
+  await state.execute({ operation: 'releaseRefreshLock' });
+  state.close();
+  await expect(
+    state.execute({ operation: 'refreshEars', refreshToken: 'bound-refresh' })
+  ).rejects.toThrow('closed');
+});
+
+it('does not export deployment TLS keys, raw Axios configuration or response bodies on EARS failure', async () => {
+  const { client, controller } = setup();
+  client.get.mockResolvedValue({
+    hasErrors: false,
+    connectorToken: { ...stored, refreshToken: 'bound-refresh' },
+  });
+  const refresh = jest.fn().mockRejectedValue(
+    Object.assign(new Error('system-key-in-message'), {
+      config: { privateKey: 'system-key-in-config' },
+    })
+  );
+  const state = new ConnectorTokenState(
+    client,
+    { actionId: 'prepared' },
+    controller.signal,
+    refresh
+  );
+  await state.execute({ operation: 'acquireRefreshLock' });
+  await state.execute({ operation: 'get', options: {} });
+  await expect(
+    state.execute({ operation: 'refreshEars', refreshToken: 'bound-refresh' })
+  ).rejects.toEqual(new Error('Failed to refresh token from auth redirect service'));
+  state.close();
+});

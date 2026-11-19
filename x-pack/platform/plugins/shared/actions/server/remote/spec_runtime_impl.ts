@@ -173,7 +173,8 @@ export class SpecRuntime implements SpecRuntimeApi {
                   connectorTokenClient: createConnectorTokenStore(
                     this.actions,
                     scopeId,
-                    invocationId
+                    invocationId,
+                    prepared.earsTransportAvailable
                   ),
                   params: validatedParams,
                   config: validatedConfig,

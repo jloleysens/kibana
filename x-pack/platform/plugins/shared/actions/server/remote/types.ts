@@ -43,6 +43,7 @@ export interface PreparedConnector {
   readonly runtimeConfig: RuntimeActionsConfig;
   readonly userAgent?: string;
   readonly relayAvailable?: boolean;
+  readonly earsTransportAvailable?: boolean;
   readonly authMode?: AuthMode;
   readonly profileUid?: string;
   readonly connectorVersion?: string;
@@ -84,6 +85,7 @@ export interface NativeActionsApi {
 
 export type ConnectorTokenRequest =
   | { readonly operation: 'acquireRefreshLock' | 'releaseRefreshLock' }
+  | { readonly operation: 'refreshEars'; readonly refreshToken: string }
   | {
       readonly operation: 'get';
       readonly options: Pick<
@@ -104,6 +106,7 @@ export type ConnectorTokenRequest =
       readonly options: Parameters<ConnectorTokenStore['updateWithRefreshToken']>[0];
     };
 export interface ConnectorTokenResponse {
+  readonly earsToken?: import('../lib/request_oauth_token').OAuthTokenResponse;
   readonly hasErrors: boolean;
   readonly connectorToken: Awaited<ReturnType<ConnectorTokenStore['get']>>['connectorToken'];
 }

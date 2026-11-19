@@ -47,6 +47,9 @@ export type ConnectorTokenStore = Pick<
   ConnectorTokenClientContract,
   'get' | 'updateOrReplace' | 'deleteConnectorTokens' | 'updateWithRefreshToken'
 > & {
+  readonly refreshEars?: (
+    refreshToken: string
+  ) => Promise<import('./lib/request_oauth_token').OAuthTokenResponse>;
   readonly withRefreshLock?: <T>(refresh: () => Promise<T>) => Promise<T>;
 };
 

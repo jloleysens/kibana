@@ -12,7 +12,8 @@ import type { NativeActionsApi, ConnectorTokenResponse } from './types';
 export const createConnectorTokenStore = (
   actions: NativeActionsApi,
   scopeId: string,
-  invocationId: string
+  invocationId: string,
+  earsTransportAvailable = false
 ): ConnectorTokenStore => {
   const token = (request: Parameters<NativeActionsApi['token']>[2]) =>
     actions.token(scopeId, invocationId, request);
@@ -31,6 +32,15 @@ export const createConnectorTokenStore = (
     });
   }
   return {
+    ...(earsTransportAvailable
+      ? {
+          refreshEars: async (refreshToken: string) => {
+            const response = await token({ operation: 'refreshEars', refreshToken });
+            if (!response.earsToken) throw new Error('EARS refresh transport returned no token');
+            return response.earsToken;
+          },
+        }
+      : {}),
     get,
     withRefreshLock: async (refresh) => {
       await token({ operation: 'acquireRefreshLock' });

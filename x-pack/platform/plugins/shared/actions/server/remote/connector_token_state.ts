@@ -24,7 +24,10 @@ export class ConnectorTokenState {
   constructor(
     private readonly client: ConnectorTokenStore,
     private readonly identity: Pick<PreparedConnector, 'actionId' | 'authMode' | 'profileUid'>,
-    private readonly signal: AbortSignal
+    private readonly signal: AbortSignal,
+    private readonly refreshEars?: (
+      refreshToken: string
+    ) => Promise<import('../lib/request_oauth_token').OAuthTokenResponse>
   ) {
     signal.addEventListener('abort', this.onAbort, { once: true });
     if (signal.aborted) this.close();
@@ -63,6 +66,35 @@ export class ConnectorTokenState {
           this.readMissing = true;
         }
         return result;
+      }
+      case 'refreshEars': {
+        if (!this.refreshEars || !this.releaseRefreshLock)
+          throw new Error(
+            'EARS refresh transport requires the prepared identity and held refresh lock'
+          );
+        const matched = [...this.tokens.values()].some((token) => {
+          const credentials = 'credentials' in token ? token.credentials : undefined;
+          const stored =
+            authMode === 'per-user' &&
+            credentials &&
+            typeof credentials === 'object' &&
+            'refreshToken' in credentials
+              ? credentials.refreshToken
+              : 'refreshToken' in token
+              ? token.refreshToken
+              : undefined;
+          return typeof stored === 'string' && stored === request.refreshToken;
+        });
+        if (!matched) throw new Error('EARS refresh requires an invocation-local token read');
+        try {
+          const earsToken = await this.refreshEars(request.refreshToken);
+          this.signal.throwIfAborted();
+          if (this.closed) throw new Error('Connector token invocation is closed');
+          return { hasErrors: false, connectorToken: null, earsToken };
+        } catch {
+          // Deployment identity/network errors must not carry TLS keys or Axios configuration to the worker.
+          throw new Error('Failed to refresh token from auth redirect service');
+        }
       }
       case 'replace': {
         const { token, ...update } = request.options;

@@ -20,6 +20,7 @@ import type {
   ConnectorDashboardResponse,
   InferenceStreamingFacts,
 } from './types';
+import { requestEarsRefreshToken } from '../lib/ears/request_ears_refresh_token';
 import { ConnectorTokenState } from './connector_token_state';
 
 /** Keeps live authorization and final event production on the coordinator without executing a handler. */
@@ -85,11 +86,38 @@ export class PreparedExecution {
           }
           signal.throwIfAborted();
           if (!options.runtimeConfig) throw new Error('Missing connector network policy');
+          const earsSsl =
+            options.secrets.authType === 'ears'
+              ? options.configurationUtilities.getEARSSSLSettings()
+              : undefined;
+          const hasEarsDeploymentIdentity = Boolean(
+            options.runtimeConfig.auth.ears?.ssl?.certificate ||
+              options.runtimeConfig.auth.ears?.ssl?.key ||
+              earsSsl?.cert ||
+              earsSsl?.key
+          );
+          const earsTransportAvailable =
+            options.secrets.authType === 'ears' && hasEarsDeploymentIdentity;
+          const earsProvider =
+            typeof options.secrets.provider === 'string' ? options.secrets.provider : undefined;
+          if (earsTransportAvailable && !earsProvider)
+            throw new Error('Prepared EARS provider is missing');
+          const refreshEars =
+            earsTransportAvailable && earsProvider
+              ? (refreshToken: string) =>
+                  requestEarsRefreshToken(
+                    earsProvider,
+                    options.logger,
+                    { refreshToken },
+                    options.configurationUtilities
+                  )
+              : undefined;
           if (options.connectorTokenClient) {
             this.tokenState = new ConnectorTokenState(
               options.connectorTokenClient,
               options,
-              signal
+              signal,
+              refreshEars
             );
           }
           if (options.relayClient) {
@@ -114,7 +142,20 @@ export class PreparedExecution {
               params: options.params,
               config: options.config,
               secrets: options.secrets,
-              runtimeConfig: options.runtimeConfig,
+              runtimeConfig: {
+                ...options.runtimeConfig,
+                auth: {
+                  ...options.runtimeConfig.auth,
+                  ears: options.runtimeConfig.auth.ears
+                    ? {
+                        ...options.runtimeConfig.auth.ears,
+                        // EARS deployment mTLS authenticates AS KIBANA and stays on the coordinator.
+                        ...(hasEarsDeploymentIdentity ? { ssl: undefined } : {}),
+                      }
+                    : undefined,
+                },
+              },
+              earsTransportAvailable,
               userAgent: options.runtimeUserAgent,
               relayAvailable: Boolean(options.relayClient),
               authMode: options.authMode,
