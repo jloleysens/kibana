@@ -352,7 +352,7 @@ export class KiOperations implements KiOperationsApi {
         throw new Error('Unknown KI verification reference');
       const request = this.scopes.get<KibanaRequest>(scopeId);
       const state = this.scopes.getRunState(scopeId);
-      const { workflowVersion, metadata, parent } = this.scopes.getRunDefinitionFacts(scopeId);
+      const { metadata, parent } = this.scopes.getRunDefinitionFacts(scopeId);
       try {
         return await this.dependencies.verify({
           ki: params.ki,
@@ -360,13 +360,7 @@ export class KiOperations implements KiOperationsApi {
           aiIndexId: params.aiIndexId,
           totalTimeoutSec: params.totalTimeoutSec,
           request,
-          workflow: {
-            id: state.workflowId,
-            name: state.workflowName,
-            enabled: true,
-            spaceId: state.spaceId,
-            version: workflowVersion,
-          },
+          workflow: { id: state.workflowId, spaceId: state.spaceId },
           metadata,
           parent,
           getEsClient: async () => {

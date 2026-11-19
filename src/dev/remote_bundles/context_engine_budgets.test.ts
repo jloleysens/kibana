@@ -48,6 +48,8 @@ it('bounds original KI and feedback handlers without loading coordinator registr
       '/server/ai_indices/ki_revision.ts',
       '/server/remote/ki_operations.ts',
       '/server/step_types/verify_ki.ts',
+      '/server/step_types/record_improvements_operation.ts',
+      '/server/feedback_analysis/record_improvements.ts',
     ]) {
       expect(
         bundle.inputs.some((path) => path.endsWith('/context_engine' + coordinatorModule))
@@ -61,7 +63,7 @@ it('bounds original KI and feedback handlers without loading coordinator registr
       format: 'esm',
       outfile: kiProbe,
     });
-    for (const action of ['createKi', 'updateKi', 'deleteKi', 'verifyKi']) {
+    for (const action of ['createKi', 'updateKi', 'deleteKi', 'verifyKi', 'recordImprovements']) {
       for (let index = 0; index < 3; index++) {
         const result = JSON.parse(
           execFileSync(process.execPath, ['--expose-gc', kiProbe, dirname(bundle.entry), action], {

@@ -6,11 +6,18 @@
  */
 
 import type { RemoteModule } from '@kbn/core-remote-common';
+import { RecordImprovementsOperationsToken } from './record_improvements_tokens';
 import { KiOperationsToken } from './ki_tokens';
 import { FeedbackOperationsToken, WorkflowStepKind } from './feedback_tokens';
 
 export const remoteModule: RemoteModule = {
   providers: [
+    {
+      token: RecordImprovementsOperationsToken,
+      placement: 'coordinator',
+      modulePath: require.resolve('./record_improvements_operations'),
+      exportName: 'RecordImprovementsOperations',
+    },
     {
       token: KiOperationsToken,
       placement: 'coordinator',
@@ -25,6 +32,13 @@ export const remoteModule: RemoteModule = {
     },
   ],
   contributions: [
+    {
+      kind: WorkflowStepKind,
+      stepType: 'context-engine.recordImprovements',
+      needs: [RecordImprovementsOperationsToken, FeedbackOperationsToken],
+      modulePath: require.resolve('./record_improvements_step'),
+      exportName: 'RecordImprovementsStep',
+    },
     {
       kind: WorkflowStepKind,
       stepType: 'context-engine.verifyKi',

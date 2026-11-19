@@ -52,6 +52,8 @@ import { registerStepDefinitions } from './step_types';
 import { ContextEngineAnalyticsService, registerContextEngineUsageCollector } from './telemetry';
 import { isContextEngineEnabledInSpace } from './utils/is_context_engine_enabled_in_space';
 import { resolveSpaceId } from './utils/resolve_space_id';
+import { RecordImprovementsOperations } from './remote/record_improvements_operations';
+import { RecordImprovementsOperationsToken } from './remote/record_improvements_tokens';
 import { KiOperations } from './remote/ki_operations';
 import { KiOperationsToken } from './remote/ki_tokens';
 import { createVerifyKiOperation, type VerifyKiDependencies } from './step_types/verify_ki';
@@ -305,6 +307,27 @@ export class ContextEnginePlugin
           analyticsService,
           logger: this.logger.get('context_steps'),
           verify: verifyKiOperation,
+          getScopedEsClient: async (request) => {
+            const [coreStart] = await coreSetup.getStartServices();
+            return coreStart.elasticsearch.client.asScoped(request).asCurrentUser;
+          },
+        })
+    );
+
+    coreSetup.remote.bind(
+      RecordImprovementsOperationsToken,
+      (scopes) =>
+        new RecordImprovementsOperations(scopes, {
+          getAiIndexService,
+          getImprovementsService,
+          isContextEngineEnabled,
+          checkWritePrivilege,
+          isFeedbackLoopEnabled: () => this.isFeedbackLoopEnabled(),
+          logger: this.logger.get('feedback_analysis'),
+          getAuditLogger: async (request) => {
+            const [coreStart] = await coreSetup.getStartServices();
+            return coreStart.security.audit.asScoped(request);
+          },
           getScopedEsClient: async (request) => {
             const [coreStart] = await coreSetup.getStartServices();
             return coreStart.elasticsearch.client.asScoped(request).asCurrentUser;

@@ -238,7 +238,7 @@ it('retains original permission errors, managed telemetry and scope-close cancel
   );
 });
 
-it('verifies with original scoped request and coordinator-only version/ancestry, ignoring forged extra fields', async () => {
+it('verifies with original scoped request and coordinator-only ancestry, ignoring forged extra fields', async () => {
   const { api, verify, request } = setup();
   const params = {
     ki: { type: 'document', title: 'KI' },
@@ -251,13 +251,7 @@ it('verifies with original scoped request and coordinator-only version/ancestry,
   expect(verify).toHaveBeenCalledWith(
     expect.objectContaining({
       request,
-      workflow: {
-        id: 'trusted-workflow',
-        name: 'Trusted',
-        enabled: true,
-        spaceId: 'trusted-space',
-        version: 7,
-      },
+      workflow: { id: 'trusted-workflow', spaceId: 'trusted-space' },
       parent: { workflowId: 'trusted-parent', executionId: 'trusted-parent-run' },
       metadata: { ki_verifier_chain: ['trusted-ancestor'] },
     })

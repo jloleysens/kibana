@@ -13,6 +13,7 @@ import { pathToFileURL } from 'node:url';
 import type { RemoteWorkerSpec } from '@kbn/core-remote-common';
 import type { RemoteWorkflowStep, StepHandlerContext } from '@kbn/workflows-extensions/server';
 import type { KiOperationsApi } from '@kbn/context-engine-plugin/server/remote/ki_tokens';
+import type { RecordImprovementsOperationsApi } from '@kbn/context-engine-plugin/server/remote/record_improvements_tokens';
 import type { FeedbackOperationsApi } from '@kbn/context-engine-plugin/server/remote/feedback_tokens';
 
 const main = async (): Promise<void> => {
@@ -53,6 +54,15 @@ const main = async (): Promise<void> => {
     finishWrite: async () => {},
     verify: async () => ({ passed: true, results: [{ verifier: 'fixture', passed: true }] }),
   };
+  const recordResult = {
+    recorded: [{ improvement_id: 'fixture', action: 'remove_ki' as const, title: 'Original' }],
+    skipped: [],
+  };
+  const recordApi: RecordImprovementsOperationsApi = {
+    assertEnabled: async () => {},
+    checkWritePrivilege: async () => true,
+    record: async () => recordResult,
+  };
   const settings: FeedbackOperationsApi = {
     isContextEngineEnabled: async () => true,
     isFeedbackLoopEnabled: async () => true,
@@ -73,6 +83,16 @@ const main = async (): Promise<void> => {
     ['updateKi', { ai_index_id: 'fixture', ki_id: 'ki', ki: { title: 'After' } }],
     ['deleteKi', { ai_index_id: 'fixture', ki_id: 'ki' }],
     ['verifyKi', { ki: { type: 'document', title: 'Original' } }],
+    [
+      'recordImprovements',
+      {
+        ai_index_id: 'fixture',
+        agent_run_id: 'user-authored',
+        signal_window: { from: '2026-01-01', to: '2026-02-01' },
+        signal_spaces: [],
+        improvements: [],
+      },
+    ],
   ] as const) {
     if (process.argv[3] && process.argv[3] !== action) continue;
     const contribution = graph.spec.contributions.find(
@@ -83,7 +103,10 @@ const main = async (): Promise<void> => {
     const started = performance.now();
     const Step = (await graph.implementations[contribution.modulePath]())[
       contribution.exportName
-    ] as new (api: KiOperationsApi, settings: FeedbackOperationsApi) => RemoteWorkflowStep;
+    ] as new (
+      api: KiOperationsApi | RecordImprovementsOperationsApi,
+      settings: FeedbackOperationsApi
+    ) => RemoteWorkflowStep;
     const handlerContext: StepHandlerContext = {
       input,
       config: {},
@@ -108,12 +131,18 @@ const main = async (): Promise<void> => {
       logger: { debug() {}, error() {}, info() {}, warn() {} },
       abortSignal: new AbortController().signal,
     };
-    const result = await new Step(api, settings).run('scope', {}, { handlerContext });
+    const result = await new Step(action === 'recordImprovements' ? recordApi : api, settings).run(
+      'scope',
+      {},
+      { handlerContext }
+    );
     const ms = performance.now() - started;
     const heapIncrement = sample() - before;
     assert.deepEqual(
       result,
-      action === 'verifyKi'
+      action === 'recordImprovements'
+        ? { output: recordResult }
+        : action === 'verifyKi'
         ? { output: { passed: true, results: [{ verifier: 'fixture', passed: true }] } }
         : action === 'updateKi'
         ? { output: { id: 'ki', result: 'updated' } }
@@ -121,7 +150,10 @@ const main = async (): Promise<void> => {
     );
     events.push({ action, ms, heapIncrement });
   }
-  assert.equal(calls, process.argv[3] ? (process.argv[3] === 'verifyKi' ? 0 : 1) : 3);
+  assert.equal(
+    calls,
+    process.argv[3] ? (['verifyKi', 'recordImprovements'].includes(process.argv[3]) ? 0 : 1) : 3
+  );
   process.stdout.write(JSON.stringify({ events }) + '\n');
 };
 main().catch((error: Error) => {

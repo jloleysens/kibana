@@ -54,7 +54,7 @@ export type VerifyKi = (params: VerifyKiParams) => Promise<KiVerificationSummary
 /** Verifies a KI on behalf of the verifyKi and createKi steps. */
 export interface VerifyKiOperationParams extends Omit<VerifyKiParams, 'context'> {
   request: KibanaRequest;
-  workflow: StepContext['workflow'];
+  workflow: Pick<StepContext['workflow'], 'id' | 'spaceId'>;
   metadata?: StepContext['metadata'];
   parent?: StepContext['parent'];
   getEsClient: () => ElasticsearchClient | Promise<ElasticsearchClient>;
