@@ -12,6 +12,14 @@ import type { ActionRuntimeResult } from '../lib/execute_action';
 import { ActionExecutionError } from '../lib/errors/action_execution_error';
 import type { ExecuteOptions } from '../lib/action_executor';
 import type { ConnectorPreparation, ConnectorTokenRequest, ConnectorTokenResponse } from './types';
+import type { ConnectorRelayRequest, ConnectorRelayResponse } from './types';
+import { ConnectorRelayTransport } from './connector_relay_transport';
+import { ConnectorDashboardState } from './connector_dashboard_state';
+import type {
+  ConnectorDashboardRequest,
+  ConnectorDashboardResponse,
+  InferenceStreamingFacts,
+} from './types';
 import { ConnectorTokenState } from './connector_token_state';
 
 /** Keeps live authorization and final event production on the coordinator without executing a handler. */
@@ -22,7 +30,9 @@ export class PreparedExecution {
   private resolveRuntime?: (result: ActionRuntimeResult) => void;
   private rejectRuntime?: (error: Error) => void;
   private completed = false;
+  private dashboardState?: ConnectorDashboardState;
   private tokenState?: ConnectorTokenState;
+  private relayTransport?: ConnectorRelayTransport;
   private readonly onAbort: () => void;
 
   constructor(
@@ -31,7 +41,8 @@ export class PreparedExecution {
     connectorType: string,
     input: Record<string, unknown>,
     signal: AbortSignal,
-    actionInfo?: NonNullable<ExecuteOptions['runtime']>['actionInfo']
+    actionInfo?: NonNullable<ExecuteOptions['runtime']>['actionInfo'],
+    getInferenceFacts?: () => Promise<InferenceStreamingFacts>
   ) {
     let ready: (result: ConnectorPreparation) => void = () => {};
     const preparation = new Promise<ConnectorPreparation>((resolve) => {
@@ -44,7 +55,9 @@ export class PreparedExecution {
     // A preparation failure may occur before the runtime is entered.
     void runtime.catch(() => {});
     this.onAbort = () => {
+      this.dashboardState?.close();
       this.tokenState?.close();
+      this.relayTransport?.close();
       this.rejectRuntime?.(new Error('Connector scope closed'));
     };
     signal.addEventListener('abort', this.onAbort, { once: true });
@@ -79,8 +92,21 @@ export class PreparedExecution {
               signal
             );
           }
+          if (options.relayClient) {
+            this.relayTransport = new ConnectorRelayTransport(options.relayClient, options, signal);
+          }
+          this.dashboardState = new ConnectorDashboardState(
+            options.services.savedObjectsClient,
+            options.actionType.id,
+            options.params,
+            signal,
+            options.actionType.getDashboardAttributes
+          );
+          const inferenceStreamingFacts = getInferenceFacts ? await getInferenceFacts() : undefined;
+          signal.throwIfAborted();
           ready({
             prepared: {
+              inferenceStreamingFacts,
               kibanaVersion: kibanaPackageJson.version,
               actionId: options.actionId,
               actionTypeId: options.actionType.id,
@@ -90,6 +116,7 @@ export class PreparedExecution {
               secrets: options.secrets,
               runtimeConfig: options.runtimeConfig,
               userAgent: options.runtimeUserAgent,
+              relayAvailable: Boolean(options.relayClient),
               authMode: options.authMode,
               profileUid: options.profileUid,
               connectorVersion: options.connectorVersion,
@@ -107,6 +134,17 @@ export class PreparedExecution {
     void this.completion.catch(() => {});
   }
 
+  async dashboard(request: ConnectorDashboardRequest): Promise<ConnectorDashboardResponse> {
+    if (this.completed || !this.dashboardState) throw new Error('Dashboard invocation is closed');
+    return this.dashboardState.execute(request);
+  }
+
+  async relay(request: ConnectorRelayRequest): Promise<ConnectorRelayResponse> {
+    if (this.completed || !this.relayTransport)
+      throw new Error('Connector Relay transport is not available');
+    return this.relayTransport.execute(request);
+  }
+
   async token(request: ConnectorTokenRequest): Promise<ConnectorTokenResponse> {
     if (this.completed || !this.tokenState)
       throw new Error('Connector token state is not available');
@@ -121,7 +159,9 @@ export class PreparedExecution {
   async finalize(result: ActionRuntimeResult): Promise<IEvent[]> {
     if (this.completed) throw new Error('Connector invocation already finalized');
     this.completed = true;
+    this.dashboardState?.close();
     this.tokenState?.close();
+    this.relayTransport?.close();
     this.resolveRuntime?.(result);
     await this.completion;
     return this.events;

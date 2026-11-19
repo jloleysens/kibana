@@ -5,12 +5,34 @@
  * 2.0.
  */
 
+import type { RelayActionClient } from '@kbn/connector-specs';
 import type { AuthMode } from '@kbn/connector-specs-runtime';
 import type { RuntimeActionsConfig } from '../actions_config';
 import type { ActionRuntimeResult } from '../lib/execute_action';
 import type { ActionTypeExecutorResult, ConnectorTokenStore } from '../types';
 
+export interface InferenceStreamingFacts {
+  readonly enabled?: boolean;
+  readonly services?: Array<
+    Pick<import('@kbn/inference-common').InferenceProvider, 'service' | 'features'>
+  >;
+}
+
+export type ConnectorDashboardRequest =
+  | { readonly operation: 'get' }
+  | { readonly operation: 'create' };
+export type ConnectorDashboardResponse =
+  | { readonly value: import('@kbn/core-saved-objects-server').SavedObject }
+  | {
+      readonly error: {
+        readonly message: string;
+        readonly statusCode: number;
+        readonly error: string;
+      };
+    };
+
 export interface PreparedConnector {
+  readonly inferenceStreamingFacts?: InferenceStreamingFacts;
   readonly kibanaVersion: string;
   readonly actionId: string;
   readonly actionTypeId: string;
@@ -20,6 +42,7 @@ export interface PreparedConnector {
   readonly params: Record<string, unknown>;
   readonly runtimeConfig: RuntimeActionsConfig;
   readonly userAgent?: string;
+  readonly relayAvailable?: boolean;
   readonly authMode?: AuthMode;
   readonly profileUid?: string;
   readonly connectorVersion?: string;
@@ -32,6 +55,11 @@ export interface ConnectorFinalization {
   readonly runtime: ActionRuntimeResult;
 }
 export interface NativeActionsApi {
+  dashboard(
+    scopeId: string,
+    invocationId: string,
+    request: ConnectorDashboardRequest
+  ): Promise<ConnectorDashboardResponse>;
   prepare(
     scopeId: string,
     invocationId: string,
@@ -41,6 +69,11 @@ export interface NativeActionsApi {
       readonly input: Record<string, unknown>;
     }
   ): Promise<ConnectorPreparation>;
+  relay(
+    scopeId: string,
+    invocationId: string,
+    request: ConnectorRelayRequest
+  ): Promise<ConnectorRelayResponse>;
   token(
     scopeId: string,
     invocationId: string,
@@ -50,6 +83,7 @@ export interface NativeActionsApi {
 }
 
 export type ConnectorTokenRequest =
+  | { readonly operation: 'acquireRefreshLock' | 'releaseRefreshLock' }
   | {
       readonly operation: 'get';
       readonly options: Pick<
@@ -73,3 +107,25 @@ export interface ConnectorTokenResponse {
   readonly hasErrors: boolean;
   readonly connectorToken: Awaited<ReturnType<ConnectorTokenStore['get']>>['connectorToken'];
 }
+
+export type ConnectorRelayRequest =
+  | {
+      readonly operation: 'trigger';
+      readonly input: Omit<Parameters<RelayActionClient['trigger']>[0], 'tenantKey'> & {
+        readonly blocks?: Array<Record<string, unknown>>;
+      };
+    }
+  | {
+      readonly operation: 'listBindings';
+      readonly options?: Parameters<RelayActionClient['listBindings']>[1];
+    };
+export type ConnectorRelayResponse =
+  | {
+      readonly operation: 'trigger';
+      readonly result: Awaited<ReturnType<RelayActionClient['trigger']>>;
+    }
+  | {
+      readonly operation: 'listBindings';
+      readonly result: Awaited<ReturnType<RelayActionClient['listBindings']>>;
+    }
+  | { readonly error: { readonly statusCode?: number } };

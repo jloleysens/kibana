@@ -28,8 +28,6 @@ describe('Bedrock with proxy config', () => {
   const PROXY_URL_HTTP = `http://${PROXY_HOST}:${PROXY_PORT}`;
   const PROXY_URL_HTTPS = `https://${PROXY_HOST}:${PROXY_PORT}`;
 
-  // Constructed for its side effect: the connector builds the NodeHttpHandler
-  // we assert on.
   const createConnector = () =>
     new BedrockConnector({
       configurationUtilities,
@@ -43,7 +41,7 @@ describe('Bedrock with proxy config', () => {
       services: actionsMock.createServices(),
     });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.clearAllMocks();
     configurationUtilities.getProxySettings.mockReturnValue({
       proxyUrl: PROXY_URL_HTTP,
@@ -54,10 +52,10 @@ describe('Bedrock with proxy config', () => {
       proxyOnlyHosts: undefined,
     });
 
-    createConnector();
+    await createConnector()['getBedrockClient']();
   });
 
-  it('verifies that the Bedrock client is initialized with the custom proxy HTTP agent', () => {
+  it('verifies that the Bedrock client is initialized with the custom proxy HTTP agent', async () => {
     expect(nodeHttpHandlerMock).toHaveBeenCalledTimes(1);
     // Since DEFAULT_URL is https, only httpsAgent is passed, see: https://github.com/elastic/kibana/pull/224130#discussion_r2152632806
     // This is a whole-argument (not objectContaining) match, so it also pins that
@@ -73,7 +71,7 @@ describe('Bedrock with proxy config', () => {
     });
   });
 
-  it('verifies that the Bedrock client is initialized with the custom proxy HTTPS agent', () => {
+  it('verifies that the Bedrock client is initialized with the custom proxy HTTPS agent', async () => {
     configurationUtilities.getProxySettings.mockReturnValue({
       proxyUrl: PROXY_URL_HTTPS,
       proxySSLSettings: {
@@ -84,7 +82,7 @@ describe('Bedrock with proxy config', () => {
     });
     nodeHttpHandlerMock.mockClear();
 
-    createConnector();
+    await createConnector()['getBedrockClient']();
 
     // See note above: an https proxy URL still yields only an httpsAgent here.
     expect(nodeHttpHandlerMock).toHaveBeenCalledTimes(1);

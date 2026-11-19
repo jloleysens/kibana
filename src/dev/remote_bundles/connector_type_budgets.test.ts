@@ -116,13 +116,28 @@ it('bounds first business execution of each registered spec and the shared MCP c
         '1password',
         'threatq',
         'okta',
+        'github',
+        'servicenow_search',
+        'box',
+        'jira-cloud',
+        'monday_com',
+        'snowflake',
+        'dropbox',
+        'zoom',
+        'one_drive',
+        'hubspot',
+        'outlook',
+        'salesforce',
+        'figma',
+        'google_cloud_storage',
+        'notion',
       ]);
       for (const event of result.events) {
         expect(event.heapIncrement).toBeLessThanOrEqual(2 * 1024 * 1024);
         expect(event.requests).toBeGreaterThan(0);
       }
-      expect(result.prepares).toBe(37);
-      expect(result.finalizes).toEqual([37]);
+      expect(result.prepares).toBe(52);
+      expect(result.finalizes).toEqual([52]);
       process.stdout.write(`${JSON.stringify({ connectorTypeCurve: result })}\n`);
     }
     process.stdout.write(`${JSON.stringify({ shellHeapSamples })}\n`);

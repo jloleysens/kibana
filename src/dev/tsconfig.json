@@ -11,6 +11,7 @@
     "@kbn/inference-plugin",
     "@kbn/workflows-execution-engine",
     "@kbn/workflows-extensions",
+    "@kbn/stack-connectors-plugin",
     "@kbn/connector-specs",
     "@kbn/workflows-runtime",
     "@kbn/scout",

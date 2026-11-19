@@ -7,9 +7,14 @@
 
 import { z } from '@kbn/zod/v4';
 import type { Logger } from '@kbn/core/server';
-import { createTaskRunError, TaskErrorSource } from '@kbn/task-manager-plugin/server';
+import {
+  createTaskRunError,
+  TaskErrorSource,
+} from '@kbn/task-manager-plugin/server/task_running/errors';
 import type { ActionsConfigurationUtilities } from '../actions_config';
-import type { ExecutorType } from '../types';
+import type { ActionTypeExecutorOptions, ActionTypeExecutorResult } from '../types';
+import type { SubActionServices } from './types';
+import type { Services } from '../types';
 import type { ExecutorParams, SubActionConnectorType } from './types';
 
 const isFunction = (v: unknown): v is Function => {
@@ -21,16 +26,23 @@ const getConnectorErrorMsg = (actionId: string, connector: { id: string; name: s
 
 export const buildExecutor = <
   Config extends Record<string, unknown>,
-  Secrets extends Record<string, unknown>
+  Secrets extends Record<string, unknown>,
+  ExecutionServices extends SubActionServices = Services
 >({
   configurationUtilities,
   connector,
   logger,
+  signal,
 }: {
-  connector: SubActionConnectorType<Config, Secrets>;
+  connector: SubActionConnectorType<Config, Secrets, ExecutionServices>;
   logger: Logger;
+  signal?: AbortSignal;
   configurationUtilities: ActionsConfigurationUtilities;
-}): ExecutorType<Config, Secrets, ExecutorParams, unknown> => {
+}): ((
+  options: Omit<ActionTypeExecutorOptions<Config, Secrets, ExecutorParams>, 'services'> & {
+    services: ExecutionServices;
+  }
+) => Promise<ActionTypeExecutorResult<unknown>>) => {
   return async ({
     actionId,
     params,
@@ -105,7 +117,11 @@ export const buildExecutor = <
       }
     }
 
-    const data = await func.call(service, _subActionParams, connectorUsageCollector);
+    const data = await func.call(
+      service,
+      signal ? { ..._subActionParams, signal } : _subActionParams,
+      connectorUsageCollector
+    );
     return { status: 'ok', data: data ?? {}, actionId };
   };
 };

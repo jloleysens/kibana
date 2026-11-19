@@ -5,16 +5,21 @@
  * 2.0.
  */
 
-import type { ServiceParams } from '@kbn/actions-plugin/server';
-import { SubActionConnector } from '@kbn/actions-plugin/server';
+import type { Services } from '@kbn/actions-plugin/server/types';
+import type {
+  ServiceParams,
+  SubActionServices,
+} from '@kbn/actions-plugin/server/sub_action_framework/types';
+import { SubActionConnector } from '@kbn/actions-plugin/server/sub_action_framework/sub_action_connector';
 import type { AxiosError, Method } from 'axios';
 import { PassThrough } from 'stream';
 import type { IncomingMessage } from 'http';
 import type { SubActionRequestParams } from '@kbn/actions-plugin/server/sub_action_framework/types';
+import { getCustomAgents } from '@kbn/actions-plugin/server/lib/get_custom_agents';
 import { getGoogleOAuthJwtAccessToken } from '@kbn/actions-plugin/server/lib/get_gcp_oauth_access_token';
 import type {
   ConnectorUsageCollector,
-  ConnectorTokenClientContract,
+  ConnectorTokenStore,
 } from '@kbn/actions-plugin/server/types';
 import { HarmBlockThreshold, HarmCategory } from '@google/generative-ai';
 import { trace } from '@opentelemetry/api';
@@ -72,14 +77,16 @@ interface Payload {
   safety_settings: Array<{ category: string; threshold: string }>;
 }
 
-export class GeminiConnector extends SubActionConnector<Config, Secrets> {
+export class GeminiConnector<
+  ExecutionServices extends SubActionServices = Services
+> extends SubActionConnector<Config, Secrets, ExecutionServices> {
   private url;
   private model;
   private gcpRegion;
   private gcpProjectID;
-  private connectorTokenClient: ConnectorTokenClientContract;
+  private connectorTokenClient: ConnectorTokenStore;
 
-  constructor(params: ServiceParams<Config, Secrets>) {
+  constructor(params: ServiceParams<Config, Secrets, ExecutionServices>) {
     super(params);
 
     this.url = this.config.apiUrl;
@@ -212,6 +219,11 @@ export class GeminiConnector extends SubActionConnector<Config, Secrets> {
       connectorId: this.connector.id,
       logger: this.logger,
       credentials: credentialsJson,
+      requestAgent: getCustomAgents(
+        this.configurationUtilities,
+        this.logger,
+        'https://oauth2.googleapis.com/token'
+      ).httpsAgent,
       connectorTokenClient: this.connectorTokenClient,
     });
     return accessToken;

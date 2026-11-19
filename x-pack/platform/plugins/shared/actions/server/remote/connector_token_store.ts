@@ -32,6 +32,19 @@ export const createConnectorTokenStore = (
   }
   return {
     get,
+    withRefreshLock: async (refresh) => {
+      await token({ operation: 'acquireRefreshLock' });
+      let result;
+      try {
+        result = await refresh();
+      } catch (error) {
+        // Scope closure also releases the coordinator lease; cleanup cannot replace the auth error.
+        await token({ operation: 'releaseRefreshLock' }).catch(() => {});
+        throw error;
+      }
+      await token({ operation: 'releaseRefreshLock' });
+      return result;
+    },
     updateOrReplace: async ({
       token: original,
       newToken,

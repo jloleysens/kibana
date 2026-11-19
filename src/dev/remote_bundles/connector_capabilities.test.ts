@@ -92,6 +92,7 @@ it('keeps the approved eager spec-runtime shell tiny and defers every Actions im
 });
 
 it('bounds the shared native Actions capability without importing any connector implementation', async () => {
+  const trackerImports: string[] = [];
   const result = await build({
     entryPoints: [
       resolve(
@@ -104,14 +105,33 @@ it('bounds the shared native Actions capability without importing any connector 
     format: 'esm',
     write: false,
     metafile: true,
+    plugins: [
+      {
+        name: 'separately-budgeted-token-tracking-capability',
+        setup(builder) {
+          builder.onResolve(
+            { filter: /^\.\.\/lib\/token_tracking\/gen_ai_token_tracking$/ },
+            (args) => {
+              trackerImports.push(args.kind);
+              if (args.kind !== 'dynamic-import')
+                throw new Error('Token tracking must remain a lazy capability');
+              return { path: args.path, external: true };
+            }
+          );
+        },
+      },
+    ],
   });
+  expect(trackerImports).toEqual(['dynamic-import']);
   // Measured 5,608,160B standalone; ~21% headroom, independent of per-type budgets.
   expect(
     result.outputFiles.reduce((total, file) => total + file.contents.length, 0)
   ).toBeLessThanOrEqual(6.5 * 1024 * 1024);
   expect(
     Object.keys(result.metafile.inputs).filter((path) =>
-      /all_specs|kbn-connector-specs\/src\/specs\//.test(path)
+      /all_specs|kbn-connector-specs\/src\/specs\/|\/lib\/relay\/relay_client\.ts|connector_relay_transport\.ts/.test(
+        path
+      )
     )
   ).toEqual([]);
 });

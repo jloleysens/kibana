@@ -9,7 +9,7 @@ import type { Logger } from '@kbn/logging';
 import type { Readable } from 'stream';
 import { EventStreamMarshaller } from '@smithy/eventstream-serde-node';
 import { fromUtf8, toUtf8 } from '@smithy/util-utf8';
-import { identity } from 'lodash';
+import identity from 'lodash/identity';
 import { finished } from 'stream/promises';
 
 export const getTokensFromBedrockConverseStream = async function (

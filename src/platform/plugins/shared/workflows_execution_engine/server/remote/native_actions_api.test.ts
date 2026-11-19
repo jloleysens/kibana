@@ -23,6 +23,8 @@ const mockPrepare = jest.fn();
 const mockFinalize = jest.fn();
 const mockConstruct = jest.fn();
 const mockToken = jest.fn();
+const mockRelay = jest.fn();
+const mockDashboard = jest.fn();
 
 jest.mock('@kbn/actions-plugin/server', () => ({
   ...jest.requireActual('@kbn/actions-plugin/server'),
@@ -33,6 +35,8 @@ jest.mock('@kbn/actions-plugin/server', () => ({
     preparation = mockPrepare();
     finalize = mockFinalize;
     token = mockToken;
+    relay = mockRelay;
+    dashboard = mockDashboard;
   },
 }));
 
@@ -148,4 +152,41 @@ it('binds token calls to an active prepared invocation and refuses scope closure
   await expect(api.token('scope', 'first', request)).rejects.toThrow('Unknown');
   controller.abort();
   await expect(api.token('scope', 'first', request)).rejects.toThrow();
+});
+
+it('exposes Relay transport only through an active invocation in the requesting scope', async () => {
+  const { api, input, controller } = setup();
+  const request = { operation: 'listBindings' } as const;
+  await expect(api.relay('scope', 'missing', request)).rejects.toThrow('Unknown');
+  await api.prepare('scope', 'first', input);
+  mockRelay.mockResolvedValue({ operation: 'listBindings', result: { bindings: [] } });
+  await expect(api.relay('scope', 'first', request)).resolves.toEqual({
+    operation: 'listBindings',
+    result: { bindings: [] },
+  });
+  expect(mockRelay).toHaveBeenCalledWith(request);
+  await expect(api.relay('other', 'first', request)).rejects.toThrow('Unknown');
+  await api.finalize('scope', [{ invocationId: 'first', runtime: completion }]);
+  await expect(api.relay('scope', 'first', request)).rejects.toThrow('Unknown');
+  controller.abort();
+  await expect(api.relay('scope', 'first', request)).rejects.toThrow();
+});
+
+it('limits dashboard calls to active prepared invocations in the requesting scope', async () => {
+  const { api, controller, input } = setup();
+  await api.prepare('scope', 'dashboard', input);
+  mockDashboard.mockResolvedValue({ value: { id: 'pinned' } });
+  expect(await api.dashboard('scope', 'dashboard', { operation: 'get' })).toEqual({
+    value: { id: 'pinned' },
+  });
+  expect(mockDashboard).toHaveBeenCalledWith({ operation: 'get' });
+  await expect(api.dashboard('other', 'dashboard', { operation: 'get' })).rejects.toThrow(
+    'Unknown'
+  );
+  await api.finalize('scope', [{ invocationId: 'dashboard', runtime: completion }]);
+  await expect(api.dashboard('scope', 'dashboard', { operation: 'create' })).rejects.toThrow(
+    'Unknown'
+  );
+  controller.abort();
+  await expect(api.dashboard('scope', 'dashboard', { operation: 'get' })).rejects.toThrow();
 });

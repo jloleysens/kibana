@@ -35,6 +35,8 @@ it('finalizes cancellation after preparation rather than abandoning the original
   const controller = new AbortController();
   const finalize = jest.fn(async () => {});
   const actions: NativeActionsApi = {
+    dashboard: jest.fn(),
+    relay: jest.fn(),
     token: jest.fn(),
     prepare: async () => {
       controller.abort();
@@ -65,6 +67,8 @@ it('queues setup failures, preserves the original durable failure across drains 
     throw failure;
   });
   const actions: NativeActionsApi = {
+    dashboard: jest.fn(),
+    relay: jest.fn(),
     token: jest.fn(),
     prepare: async () => ({
       prepared: {

@@ -5,6 +5,7 @@
  * 2.0.
  */
 
+import { withConnectorTokenRefreshLock } from '../lib/with_connector_token_refresh_lock';
 import type { ConnectorTokenStore } from '../types';
 import type { ConnectorTokenRequest, ConnectorTokenResponse, PreparedConnector } from './types';
 
@@ -15,12 +16,19 @@ export class ConnectorTokenState {
   private readonly tokens = new Map<string, NonNullable<StoredToken>>();
   private readMissing = false;
   private closed = false;
+  private refreshLock?: Promise<void>;
+  private releaseRefreshLock?: () => void;
+  private rejectRefreshLock?: (error: Error) => void;
+  private readonly onAbort = () => this.close();
 
   constructor(
     private readonly client: ConnectorTokenStore,
     private readonly identity: Pick<PreparedConnector, 'actionId' | 'authMode' | 'profileUid'>,
     private readonly signal: AbortSignal
-  ) {}
+  ) {
+    signal.addEventListener('abort', this.onAbort, { once: true });
+    if (signal.aborted) this.close();
+  }
 
   async execute(request: ConnectorTokenRequest): Promise<ConnectorTokenResponse> {
     this.signal.throwIfAborted();
@@ -32,6 +40,12 @@ export class ConnectorTokenState {
     const identity = { connectorId, ...(authMode === 'per-user' ? { profileUid } : {}) };
     let connectorToken: StoredToken = null;
     switch (request.operation) {
+      case 'acquireRefreshLock':
+        await this.acquireRefreshLock();
+        break;
+      case 'releaseRefreshLock':
+        await this.releaseLock();
+        break;
       case 'get': {
         const { tokenType, credentialType } = request.options;
         if (tokenType !== undefined && tokenType !== 'access_token') {
@@ -83,8 +97,45 @@ export class ConnectorTokenState {
     return { hasErrors: false, connectorToken };
   }
 
+  private async acquireRefreshLock(): Promise<void> {
+    if (this.refreshLock) throw new Error('Connector invocation already requested a refresh lock');
+    const { actionId, authMode, profileUid } = this.identity;
+    const key = authMode === 'per-user' ? `${actionId}:${profileUid}` : actionId;
+    let acquired: () => void = () => {};
+    let rejected: (error: Error) => void = () => {};
+    const ready = new Promise<void>((resolve, reject) => {
+      acquired = resolve;
+      rejected = reject;
+    });
+    this.rejectRefreshLock = rejected;
+    this.refreshLock = withConnectorTokenRefreshLock(key, async () => {
+      if (this.closed || this.signal.aborted)
+        throw new Error('Connector token invocation is closed');
+      await new Promise<void>((resolve) => {
+        this.releaseRefreshLock = resolve;
+        acquired();
+      });
+    });
+    void this.refreshLock.catch(rejected);
+    await ready;
+    this.rejectRefreshLock = undefined;
+  }
+
+  private async releaseLock(): Promise<void> {
+    if (!this.releaseRefreshLock)
+      throw new Error('Connector invocation has no acquired refresh lock');
+    this.releaseRefreshLock();
+    await this.refreshLock;
+    this.releaseRefreshLock = undefined;
+    this.refreshLock = undefined;
+  }
+
   close(): void {
     this.closed = true;
+    this.signal.removeEventListener('abort', this.onAbort);
+    this.rejectRefreshLock?.(new Error('Connector token invocation is closed'));
+    this.rejectRefreshLock = undefined;
+    this.releaseRefreshLock?.();
     this.tokens.clear();
     this.readMissing = false;
   }

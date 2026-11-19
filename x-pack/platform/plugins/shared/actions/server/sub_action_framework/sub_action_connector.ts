@@ -5,7 +5,8 @@
  * 2.0.
  */
 
-import { isEmpty, isPlainObject } from 'lodash';
+import isEmpty from 'lodash/isEmpty';
+import isPlainObject from 'lodash/isPlainObject';
 import type { Logger } from '@kbn/logging';
 import type {
   AxiosBasicCredentials,
@@ -17,8 +18,6 @@ import type {
   AxiosResponse,
 } from 'axios';
 import axios from 'axios';
-import type { SavedObjectsClientContract } from '@kbn/core-saved-objects-api-server';
-import type { ElasticsearchClient } from '@kbn/core-elasticsearch-server';
 import { finished } from 'stream/promises';
 import type { IncomingMessage } from 'http';
 import { PassThrough } from 'stream';
@@ -28,7 +27,8 @@ import type { z } from '@kbn/zod/v4';
 import type { ConnectorUsageCollector } from '../usage';
 import { assertURL } from './helpers/validators';
 import type { ActionsConfigurationUtilities } from '../actions_config';
-import type { ServiceParams, SubAction, SubActionRequestParams } from './types';
+import type { Services } from '../types';
+import type { ServiceParams, SubAction, SubActionRequestParams, SubActionServices } from './types';
 import * as i18n from './translations';
 import { request } from '../lib/axios_utils';
 import { combineHeadersWithBasicAuthHeader } from '../lib/get_basic_auth_header';
@@ -39,20 +39,24 @@ const isObject = (value: unknown): value is Record<string, unknown> => {
 
 const isAxiosError = (error: unknown): error is AxiosError => (error as AxiosError).isAxiosError;
 
-export abstract class SubActionConnector<Config, Secrets> {
+export abstract class SubActionConnector<
+  Config,
+  Secrets,
+  ExecutionServices extends SubActionServices = Services
+> {
   [k: string]: ((params: unknown) => unknown) | unknown;
   private axiosInstance: AxiosInstance;
   private subActions: Map<string, SubAction> = new Map();
   protected configurationUtilities: ActionsConfigurationUtilities;
   protected readonly kibanaRequest?: KibanaRequest;
   protected logger: Logger;
-  protected esClient: ElasticsearchClient;
-  protected savedObjectsClient: SavedObjectsClientContract;
-  protected connector: ServiceParams<Config, Secrets>['connector'];
+  protected esClient: ExecutionServices['scopedClusterClient'];
+  protected savedObjectsClient: ExecutionServices['savedObjectsClient'];
+  protected connector: ServiceParams<Config, Secrets, ExecutionServices>['connector'];
   protected config: Config;
   protected secrets: Secrets;
 
-  constructor(params: ServiceParams<Config, Secrets>) {
+  constructor(params: ServiceParams<Config, Secrets, ExecutionServices>) {
     this.connector = params.connector;
     this.logger = params.logger;
     this.config = params.config;
