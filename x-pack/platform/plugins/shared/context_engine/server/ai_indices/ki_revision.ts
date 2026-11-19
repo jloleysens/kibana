@@ -64,8 +64,7 @@ export const mergeKiDoc = (
   return merged;
 };
 
-export const isKiDeleted = (source: StoredKi): boolean =>
-  source.governance?.lifecycle?.status === 'deleted';
+export { isKiDeleted } from './ki_revision_lifecycle';
 
 /** Appends a new revision of a KI to a data stream. */
 export const appendKiRevision = async ({

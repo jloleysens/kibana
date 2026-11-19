@@ -20,7 +20,15 @@ export interface RemoteRunState {
   readonly admittedChildren: ReadonlySet<string>;
 }
 
+export interface RemoteRunDefinitionFacts {
+  readonly workflowVersion?: number;
+  readonly metadata?: Readonly<Record<string, unknown>>;
+  readonly parent?: { readonly workflowId: string; readonly executionId: string };
+}
+
 export interface ScopeLookup {
+  /** Coordinator-only persisted provenance and ancestry, never executor-supplied. */
+  getRunDefinitionFacts(scopeId: string): RemoteRunDefinitionFacts;
   /** Coordinator-only metadata installed by the dispatcher, never by the executor. */
   getRunState(scopeId: string): RemoteRunState;
   /** Coordinator-only persisted-definition type; unknown steps fail closed. */
@@ -54,7 +62,8 @@ export interface RemoteSession<T> {
     state: unknown,
     runState?: RemoteRunState,
     stepOutputLimits?: ReadonlyMap<string, number>,
-    stepTypes?: ReadonlyMap<string, string>
+    stepTypes?: ReadonlyMap<string, string>,
+    definitionFacts?: RemoteRunDefinitionFacts
   ): string;
   closeScope(scopeId: string): void;
   getScope<TState>(scopeId: string): TState;

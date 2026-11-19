@@ -19,6 +19,7 @@ import type { StepExecutionRepository } from '../repositories/step_execution_rep
 import type { WorkflowExecutionRepository } from '../repositories/workflow_execution_repository';
 import { resolveStepOutputLimit } from '../step/resolve_step_output_limit';
 import { getOutboundEventChainHeaders } from '../trigger_events/event_context/event_chain_context';
+import { buildInputDefaultRenderContext } from '../workflow_context_manager/build_workflow_context';
 import type { StepDependencyPlan } from '../workflow_context_manager/step_dependency_plan';
 import { isWorkflowTaskManagerAbortSignal } from '../workflow_task_shutdown';
 
@@ -108,6 +109,7 @@ export const dispatchWorkflow = async ({
         );
       }
     );
+    const { workflow, metadata, parent } = buildInputDefaultRenderContext(execution, coreStart);
     scopeId = lease.openScope(
       request,
       {
@@ -118,7 +120,12 @@ export const dispatchWorkflow = async ({
         admittedChildren,
       },
       stepOutputLimits,
-      stepTypes
+      stepTypes,
+      {
+        workflowVersion: workflow.version,
+        metadata,
+        parent: parent && { workflowId: parent.workflowId, executionId: parent.executionId },
+      }
     );
     const activeScope = scopeId;
     const onAbort = () => {

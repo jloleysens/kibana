@@ -62,6 +62,7 @@ const setup = () => {
         spaceId: 'space',
         admittedChildren,
       }),
+      getRunDefinitionFacts: jest.fn(),
       resolveStepType: jest.fn(),
       resolveStepOutputLimit: jest.fn(),
       admitChild: (_scope, id) => {

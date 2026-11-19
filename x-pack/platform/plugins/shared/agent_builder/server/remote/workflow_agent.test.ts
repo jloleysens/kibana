@@ -69,6 +69,7 @@ const setup = () => {
         admittedChildren: new Set<string>(),
       };
     }),
+    getRunDefinitionFacts: jest.fn(),
     resolveStepType: jest.fn((_scope: string, step: string) => {
       if (step === 'unknown') throw new Error('Unknown step definition');
       return step === 'other' ? 'ai.prompt' : 'ai.agent';

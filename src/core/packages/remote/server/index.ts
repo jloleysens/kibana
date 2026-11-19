@@ -15,4 +15,5 @@ export type {
   RemoteSetup,
   ScopeLookup,
   RemoteRunState,
+  RemoteRunDefinitionFacts,
 } from './src/contracts';

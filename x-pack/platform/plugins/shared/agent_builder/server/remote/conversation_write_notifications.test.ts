@@ -228,6 +228,7 @@ it('fails as an original OCC conflict when the worker read differs from the coor
     {
       get: jest.fn().mockReturnValue(request),
       getRunState: jest.fn(),
+      getRunDefinitionFacts: jest.fn(),
       resolveStepType: jest.fn(),
       resolveStepOutputLimit: jest.fn(),
       admitChild: jest.fn(),
@@ -262,6 +263,7 @@ it('uses the captured OCC tokens and never notifies after a competing write wins
     {
       get: jest.fn().mockReturnValue(httpServerMock.createKibanaRequest()),
       getRunState: jest.fn(),
+      getRunDefinitionFacts: jest.fn(),
       resolveStepType: jest.fn(),
       resolveStepOutputLimit: jest.fn(),
       admitChild: jest.fn(),
