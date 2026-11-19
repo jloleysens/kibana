@@ -12,5 +12,6 @@ export type {
   SpacesClientServiceStart,
   SpacesClientRepositoryFactory,
   SpacesClientWrapper,
+  SpacesSavedObjectsService,
 } from './spaces_client_service';
 export { SpacesClientService } from './spaces_client_service';

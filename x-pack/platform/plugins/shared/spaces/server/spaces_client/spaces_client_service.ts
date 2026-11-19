@@ -9,7 +9,6 @@ import type { Observable } from 'rxjs';
 
 import type { BuildFlavor } from '@kbn/config/src/types';
 import type {
-  CoreStart,
   ISavedObjectsRepository,
   KibanaRequest,
   SavedObjectsServiceStart,
@@ -34,9 +33,14 @@ export type SpacesClientWrapper = (
  * For consumption by the security plugin only.
  * @internal
  */
+export type SpacesSavedObjectsService = Pick<
+  SavedObjectsServiceStart,
+  'getTypeRegistry' | 'createInternalRepository' | 'createScopedRepository'
+>;
+
 export type SpacesClientRepositoryFactory = (
   request: KibanaRequest,
-  savedObjectsStart: SavedObjectsServiceStart
+  savedObjectsStart: SpacesSavedObjectsService
 ) => ISavedObjectsRepository;
 
 export interface SpacesClientServiceSetup {
@@ -102,9 +106,9 @@ export class SpacesClientService {
   }
 
   public start(
-    coreStart: CoreStart,
-    features: FeaturesPluginStart,
-    cps: CPSServerStart | undefined
+    coreStart: { savedObjects: SpacesSavedObjectsService },
+    features: Pick<FeaturesPluginStart, 'getKibanaFeatures'>,
+    cps: Pick<CPSServerStart, 'createNpreClient'> | undefined
   ): SpacesClientServiceStart {
     const nonGlobalTypes = coreStart.savedObjects
       .getTypeRegistry()

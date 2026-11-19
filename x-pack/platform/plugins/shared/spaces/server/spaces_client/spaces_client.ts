@@ -7,7 +7,7 @@
 
 import { errors } from '@elastic/elasticsearch';
 import Boom from '@hapi/boom';
-import { isEqual } from 'lodash';
+import isEqual from 'lodash/isEqual';
 
 import type { BuildFlavor } from '@kbn/config/src/types';
 import type {
@@ -121,7 +121,7 @@ export class SpacesClient implements ISpacesClient {
     private readonly repository: ISavedObjectsRepository,
     private readonly nonGlobalTypeNames: string[],
     private readonly buildFlavour: BuildFlavor,
-    private readonly features: FeaturesPluginStart,
+    private readonly features: Pick<FeaturesPluginStart, 'getKibanaFeatures'>,
     private readonly npreClient: INpreClient | undefined
   ) {
     this.isServerless = this.buildFlavour === 'serverless';

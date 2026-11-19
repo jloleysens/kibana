@@ -5,9 +5,10 @@
  * 2.0.
  */
 
-import { cloneDeep, uniq } from 'lodash';
+import cloneDeep from 'lodash/cloneDeep';
+import uniq from 'lodash/uniq';
 import type { ILicense } from '@kbn/licensing-types';
-import { DEFAULT_APP_CATEGORIES } from '@kbn/core/server';
+import { DEFAULT_APP_CATEGORIES } from '@kbn/core-application-common';
 import type {
   KibanaFeatureConfig,
   FeatureKibanaPrivileges,

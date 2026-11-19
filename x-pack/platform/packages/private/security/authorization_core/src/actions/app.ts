@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { isString } from 'lodash';
+import isString from 'lodash/isString';
 
 import type { AppActions as AppActionsType } from '@kbn/security-plugin-types-server';
 

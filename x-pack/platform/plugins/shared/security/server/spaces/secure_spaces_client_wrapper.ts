@@ -24,12 +24,12 @@ import type {
   Space,
 } from '@kbn/spaces-plugin/server';
 
-import { SpaceAuditAction, spaceAuditEvent } from '../audit';
+import { SpaceAuditAction, spaceAuditEvent } from '../audit/audit_events';
 import type { SecurityPluginSetup } from '../plugin';
 
 const PURPOSE_PRIVILEGE_MAP: Record<
   GetAllSpacesPurpose,
-  (authorization: SecurityPluginSetup['authz']) => string[]
+  (authorization: Pick<SecurityPluginSetup['authz'], 'actions'>) => string[]
 > = {
   any: (authorization) => [authorization.actions.login],
   copySavedObjectsIntoSpace: (authorization) => [
@@ -52,7 +52,10 @@ export class SecureSpacesClientWrapper implements ISpacesClient {
   constructor(
     private readonly spacesClient: ISpacesClient,
     private readonly request: KibanaRequest,
-    private readonly authorization: AuthorizationServiceSetup,
+    private readonly authorization: Pick<
+      AuthorizationServiceSetup,
+      'actions' | 'mode' | 'checkPrivilegesWithRequest'
+    >,
     private readonly auditLogger: AuditLogger,
     private readonly errors: SavedObjectsClient['errors'],
     private readonly securityExtension: ISavedObjectsSecurityExtension | undefined,

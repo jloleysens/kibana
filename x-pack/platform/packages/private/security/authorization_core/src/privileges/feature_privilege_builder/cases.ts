@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { uniq } from 'lodash';
+import uniq from 'lodash/uniq';
 
 import type { FeatureKibanaPrivileges, KibanaFeature } from '@kbn/features-plugin/server';
 

@@ -4,7 +4,7 @@
  * 2.0; you may not use this file except in compliance with the Elastic License
  * 2.0.
  */
-import _ from 'lodash';
+import once from 'lodash/once';
 
 import type { TypeOf } from '@kbn/config-schema';
 import { schema } from '@kbn/config-schema';
@@ -416,7 +416,7 @@ export const getKibanaRoleSchema = (
   getBasePrivilegeNames: () => { global: string[]; space: string[] }
 ) => {
   // Resolving base privilege names rebuilds the full privilege map; do it once per schema.
-  const getMemoizedBasePrivilegeNames = _.once(getBasePrivilegeNames);
+  const getMemoizedBasePrivilegeNames = once(getBasePrivilegeNames);
 
   return schema.arrayOf(
     schema.object(

@@ -9,7 +9,7 @@ import type { KibanaRequest } from '@kbn/core/server';
 
 import type { SecurityLicense } from '../../common';
 
-export function authorizationModeFactory(license: SecurityLicense) {
+export function authorizationModeFactory(license: Pick<SecurityLicense, 'getFeatures'>) {
   const useRbacForRequestCache = new WeakMap<KibanaRequest, boolean>();
   return {
     useRbacForRequest(request: KibanaRequest) {

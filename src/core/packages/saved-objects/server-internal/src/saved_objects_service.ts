@@ -10,7 +10,7 @@
 import type { Observable } from 'rxjs';
 import { Subject, firstValueFrom, of } from 'rxjs';
 import { filter, switchMap } from 'rxjs';
-import type { Logger } from '@kbn/logging';
+import type { Logger, LoggerFactory } from '@kbn/logging';
 import { stripVersionQualifier } from '@kbn/std';
 import type { ServiceStatus } from '@kbn/core-status-common';
 import type { CoreContext, CoreService } from '@kbn/core-base-server-internal';
@@ -99,7 +99,7 @@ export interface InternalSavedObjectsServiceStart extends SavedObjectsServiceSta
 /** @internal */
 export interface SavedObjectsSetupDeps {
   http: InternalHttpServiceSetup;
-  elasticsearch: InternalElasticsearchServiceSetup;
+  elasticsearch: Pick<InternalElasticsearchServiceSetup, 'status$' | 'esNodesCompatibility$'>;
   coreUsageData: InternalCoreUsageDataSetup;
   deprecations: DeprecationRegistryProvider;
   docLinks: DocLinksServiceSetup;
@@ -107,10 +107,21 @@ export interface SavedObjectsSetupDeps {
 
 /** @internal */
 export interface SavedObjectsStartDeps {
-  elasticsearch: InternalElasticsearchServiceStart;
+  elasticsearch: Pick<InternalElasticsearchServiceStart, 'client' | 'getCapabilities'>;
   pluginsInitialized?: boolean;
   docLinks: DocLinksServiceStart;
   node: NodeInfo;
+}
+
+/** Explicit local dependencies for the lazy worker factory, without a Core/plugin lifecycle. */
+export interface SavedObjectsServiceDependencies {
+  readonly logger: Pick<LoggerFactory, 'get'>;
+  readonly kibanaVersion: string;
+  readonly isServerless: boolean;
+  readonly readConfig: () => Promise<{
+    savedObjects: SavedObjectsConfigType;
+    migrations: SavedObjectsMigrationConfigType;
+  }>;
 }
 
 export class SavedObjectsService
@@ -135,9 +146,27 @@ export class SavedObjectsService
 
   private started = false;
 
-  constructor(private readonly coreContext: CoreContext) {
-    this.logger = coreContext.logger.get('savedobjects-service');
-    this.kibanaVersion = stripVersionQualifier(this.coreContext.env.packageInfo.version);
+  private readonly dependencies: SavedObjectsServiceDependencies;
+
+  constructor(context: CoreContext | SavedObjectsServiceDependencies) {
+    this.dependencies =
+      'readConfig' in context
+        ? context
+        : {
+            logger: context.logger,
+            kibanaVersion: context.env.packageInfo.version,
+            isServerless: context.env.packageInfo.buildFlavor === 'serverless',
+            readConfig: async () => ({
+              savedObjects: await firstValueFrom(
+                context.configService.atPath<SavedObjectsConfigType>('savedObjects')
+              ),
+              migrations: await firstValueFrom(
+                context.configService.atPath<SavedObjectsMigrationConfigType>('migrations')
+              ),
+            }),
+          };
+    this.logger = this.dependencies.logger.get('savedobjects-service');
+    this.kibanaVersion = stripVersionQualifier(this.dependencies.kibanaVersion);
   }
 
   public async setup(setupDeps: SavedObjectsSetupDeps): Promise<InternalSavedObjectsServiceSetup> {
@@ -160,12 +189,8 @@ export class SavedObjectsService
     this.setupDeps = setupDeps;
     const { http, elasticsearch, coreUsageData, deprecations, docLinks } = setupDeps;
 
-    const savedObjectsConfig = await firstValueFrom(
-      this.coreContext.configService.atPath<SavedObjectsConfigType>('savedObjects')
-    );
-    const savedObjectsMigrationConfig = await firstValueFrom(
-      this.coreContext.configService.atPath<SavedObjectsMigrationConfigType>('migrations')
-    );
+    const { savedObjects: savedObjectsConfig, migrations: savedObjectsMigrationConfig } =
+      await this.dependencies.readConfig();
     this.config = new SavedObjectConfig(savedObjectsConfig, savedObjectsMigrationConfig);
     const accessControlEnabled = this.config.enableAccessControl;
     this.typeRegistry.setAccessControlEnabled(accessControlEnabled);
@@ -189,7 +214,7 @@ export class SavedObjectsService
         config: this.config,
         migratorPromise: firstValueFrom(this.migrator$),
         kibanaVersion: this.kibanaVersion,
-        isServerless: this.coreContext.env.packageInfo.buildFlavor === 'serverless',
+        isServerless: this.dependencies.isServerless,
         docLinks,
       });
     }
@@ -264,12 +289,23 @@ export class SavedObjectsService
     };
   }
 
-  public async start({
-    elasticsearch,
-    pluginsInitialized = true,
-    docLinks,
-    node,
-  }: SavedObjectsStartDeps): Promise<InternalSavedObjectsServiceStart> {
+  public async start(deps: SavedObjectsStartDeps): Promise<InternalSavedObjectsServiceStart> {
+    return this.startInternal(deps);
+  }
+
+  /** Starts document services only after the coordinator verifies completed index migrations. */
+  public async startTask(
+    deps: SavedObjectsStartDeps,
+    verifyMigrations: () => Promise<void>
+  ): Promise<InternalSavedObjectsServiceStart> {
+    await verifyMigrations();
+    return this.startInternal(deps, true);
+  }
+
+  private async startInternal(
+    { elasticsearch, pluginsInitialized = true, docLinks, node }: SavedObjectsStartDeps,
+    coordinatorMigrated = false
+  ): Promise<InternalSavedObjectsServiceStart> {
     if (!this.setupDeps || !this.config) {
       throw new Error('#setup() needs to be run first');
     }
@@ -306,7 +342,7 @@ export class SavedObjectsService
      * We also cannot safely run migrations if plugins are not initialized since
      * not plugin migrations won't be registered.
      */
-    const skipMigrations = this.config.migration.skip || !pluginsInitialized;
+    const skipMigrations = coordinatorMigrated || this.config.migration.skip || !pluginsInitialized;
 
     /**
      * Note: Prepares all migrations maps. If a saved object type was registered with property `migrations`
@@ -317,9 +353,11 @@ export class SavedObjectsService
     let migrationDuration: number;
 
     if (skipMigrations) {
-      this.logger.warn(
-        'Skipping Saved Object migrations on startup. Note: Individual documents will still be migrated when read or written.'
-      );
+      if (!coordinatorMigrated) {
+        this.logger.warn(
+          'Skipping Saved Object migrations on startup. Note: Individual documents will still be migrated when read or written.'
+        );
+      }
       migrationDuration = 0;
     } else {
       this.logger.info(

@@ -5,7 +5,8 @@
  * 2.0.
  */
 
-import { flatten, uniq } from 'lodash';
+import flatten from 'lodash/flatten';
+import uniq from 'lodash/uniq';
 
 import type { FeatureKibanaPrivileges } from '@kbn/features-plugin/server';
 

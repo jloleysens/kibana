@@ -131,6 +131,40 @@ describe('SavedObjectsService', () => {
     jest.clearAllMocks();
   });
 
+  describe('#startTask()', () => {
+    it('requires coordinator verification before preparing document migrations and never runs index migrations', async () => {
+      const service = new SavedObjectsService(createCoreContext({ skipMigration: false }));
+      await service.setupTask({ elasticsearch: createSetupDeps().elasticsearch });
+      let verify: (() => void) | undefined;
+      const pending = service.startTask(
+        createStartDeps(),
+        () =>
+          new Promise<void>((resolve) => {
+            verify = resolve;
+          })
+      );
+      expect(migratorInstanceMock.prepareMigrations).not.toHaveBeenCalled();
+      expect(verify).toBeDefined();
+      verify?.();
+      await pending;
+      expect(migratorInstanceMock.prepareMigrations).toHaveBeenCalledTimes(1);
+      expect(migratorInstanceMock.runMigrations).not.toHaveBeenCalled();
+    });
+
+    it('exposes no clients or document migrator if coordinator verification rejects', async () => {
+      const service = new SavedObjectsService(createCoreContext({ skipMigration: false }));
+      await service.setupTask({ elasticsearch: createSetupDeps().elasticsearch });
+      await expect(
+        service.startTask(createStartDeps(), async () => {
+          throw new Error('Migration incomplete');
+        })
+      ).rejects.toThrow('Migration incomplete');
+      expect(migratorInstanceMock.prepareMigrations).not.toHaveBeenCalled();
+      expect(migratorInstanceMock.runMigrations).not.toHaveBeenCalled();
+      expect(SavedObjectsClientProvider).not.toHaveBeenCalled();
+    });
+  });
+
   describe('#setupTask()', () => {
     it('registers Core types without HTTP routes, usage collection or deprecation services', async () => {
       const service = new SavedObjectsService(createCoreContext());

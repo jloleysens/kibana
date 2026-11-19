@@ -12,7 +12,19 @@ export { SavedObjectsService } from './saved_objects_service';
 export type {
   InternalSavedObjectsServiceStart,
   InternalSavedObjectsServiceSetup,
+  SavedObjectsSetupDeps,
+  SavedObjectsStartDeps,
+  SavedObjectsServiceDependencies,
 } from './saved_objects_service';
+export { WorkerSavedObjects } from './worker_saved_objects';
+export type {
+  WorkerSavedObjectsAdmission,
+  WorkerSavedObjectsLease,
+  WorkerSavedObjectsOptions,
+  WorkerSavedObjectsType,
+} from './worker_saved_objects';
+export { resolveSavedObjectsType, savedObjectsTypeParity } from './saved_objects_type_parity';
+export type { SavedObjectsTypeParity } from './saved_objects_type_parity';
 export { CoreSavedObjectsRouteHandlerContext } from './saved_objects_route_handler_context';
 export type {
   InternalSavedObjectsRequestHandlerContext,

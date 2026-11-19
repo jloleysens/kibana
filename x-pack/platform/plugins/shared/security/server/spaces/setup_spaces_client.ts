@@ -5,7 +5,8 @@
  * 2.0.
  */
 
-import { type AuthenticatedUser, type KibanaRequest, SavedObjectsClient } from '@kbn/core/server';
+import type { AuthenticatedUser, KibanaRequest } from '@kbn/core/server';
+import { SavedObjectsClient } from '@kbn/core-saved-objects-api-server-internal';
 import type { ISavedObjectTypeRegistry } from '@kbn/core-saved-objects-server';
 import type {
   AuditServiceSetup,
@@ -18,8 +19,11 @@ import { SavedObjectsSecurityExtension } from '../saved_objects';
 
 interface Deps {
   audit: AuditServiceSetup;
-  authz: AuthorizationServiceSetup;
-  spaces?: SpacesPluginSetup;
+  authz: Pick<
+    AuthorizationServiceSetup,
+    'actions' | 'mode' | 'checkPrivilegesWithRequest' | 'checkSavedObjectsPrivilegesWithRequest'
+  >;
+  spaces?: Pick<SpacesPluginSetup, 'spacesClient'>;
   getCurrentUser: (request: KibanaRequest) => AuthenticatedUser | null;
   getTypeRegistry: () => ISavedObjectTypeRegistry;
 }

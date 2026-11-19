@@ -9,6 +9,7 @@
 
 import { BehaviorSubject } from 'rxjs';
 import { schema } from '@kbn/config-schema';
+import { loggerMock } from '@kbn/logging-mocks';
 
 import { mockCoreContext } from '@kbn/core-base-server-mocks';
 import { httpServiceMock } from '@kbn/core-http-server-mocks';
@@ -24,6 +25,7 @@ import { UiSettingsService } from './ui_settings_service';
 import { savedObjectsClientMock } from '@kbn/core-saved-objects-api-server-mocks';
 import { savedObjectsServiceMock } from '@kbn/core-saved-objects-server-mocks';
 import { uiSettingsType, uiSettingsGlobalType } from './saved_objects';
+import { uiSettingsConfig } from './ui_settings_config';
 import { UiSettingsDefaultsClient } from './clients/ui_settings_defaults_client';
 
 const overrides = {
@@ -88,6 +90,33 @@ describe('uiSettings', () => {
   });
 
   describe('#setupTask', () => {
+    it('uses explicit worker dependencies without constructing a Core context', async () => {
+      service = new UiSettingsService({
+        logger: loggerMock.create(),
+        config$: new BehaviorSubject(
+          uiSettingsConfig.schema.validate({ overrides, globalOverrides })
+        ),
+        isDev: false,
+        isDist: true,
+        version: '9.5.0-test',
+        buildNum: 123,
+      });
+      await service.preboot();
+      await service.setupTask({ savedObjects: setupDeps.savedObjects });
+      const start = await service.start();
+      start.asScopedToClient(savedObjectsClient);
+      expect(MockUiSettingsClientConstructor).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: '9.5.0',
+          buildNum: 123,
+          overrides,
+          sharedUserProvidedCache: undefined,
+        })
+      );
+      expect(setupDeps.http.createRouter).not.toHaveBeenCalled();
+      await service.stop();
+    });
+
     it('registers the same saved object types without creating HTTP routes', async () => {
       await service.setupTask({ savedObjects: setupDeps.savedObjects });
 

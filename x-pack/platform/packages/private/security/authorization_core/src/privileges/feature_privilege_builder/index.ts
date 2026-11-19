@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { flatten } from 'lodash';
+import flatten from 'lodash/flatten';
 
 import type { FeatureKibanaPrivileges, KibanaFeature } from '@kbn/features-plugin/server';
 

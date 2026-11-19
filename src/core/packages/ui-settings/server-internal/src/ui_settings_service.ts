@@ -11,7 +11,7 @@ import type { Observable } from 'rxjs';
 import { firstValueFrom } from 'rxjs';
 import { mapToObject } from '@kbn/std';
 
-import type { Logger } from '@kbn/logging';
+import type { Logger, LoggerFactory } from '@kbn/logging';
 import { stripVersionQualifier } from '@kbn/std';
 import type { CoreContext, CoreService } from '@kbn/core-base-server-internal';
 import type { InternalHttpServiceSetup } from '@kbn/core-http-server-internal';
@@ -49,6 +49,16 @@ type ClientType<T> = T extends 'global'
   ? UiSettingsClient
   : never;
 
+/** Explicit local dependencies for lazy worker settings, without a Core/plugin lifecycle. */
+export interface UiSettingsServiceDependencies {
+  readonly logger: Pick<LoggerFactory, 'get'>;
+  readonly config$: Observable<UiSettingsConfigType>;
+  readonly isDev: boolean;
+  readonly isDist: boolean;
+  readonly version: string;
+  readonly buildNum: number;
+}
+
 /** @internal */
 export class UiSettingsService
   implements CoreService<InternalUiSettingsServiceSetup, InternalUiSettingsServiceStart>
@@ -65,11 +75,24 @@ export class UiSettingsService
   private useSharedUserProvidedCache = true;
   private readonly sharedUserProvidedCache = new NamespacedCache<Record<string, any>>();
 
-  constructor(private readonly coreContext: CoreContext) {
-    this.log = coreContext.logger.get('ui-settings-service');
-    this.isDist = coreContext.env.packageInfo.dist;
-    this.config$ = coreContext.configService.atPath<UiSettingsConfigType>(uiConfigDefinition.path);
-    this.isDev = coreContext.env.mode.dev;
+  private readonly dependencies: UiSettingsServiceDependencies;
+
+  constructor(context: CoreContext | UiSettingsServiceDependencies) {
+    this.dependencies =
+      'config$' in context
+        ? context
+        : {
+            logger: context.logger,
+            config$: context.configService.atPath<UiSettingsConfigType>(uiConfigDefinition.path),
+            isDev: context.env.mode.dev,
+            isDist: context.env.packageInfo.dist,
+            version: context.env.packageInfo.version,
+            buildNum: context.env.packageInfo.buildNum,
+          };
+    this.log = this.dependencies.logger.get('ui-settings-service');
+    this.isDist = this.dependencies.isDist;
+    this.config$ = this.dependencies.config$;
+    this.isDev = this.dependencies.isDev;
   }
 
   public async preboot(): Promise<InternalUiSettingsServicePreboot> {
@@ -168,7 +191,7 @@ export class UiSettingsService
   private getScopedClientFactory<T extends UiSettingsScope>(
     scope: UiSettingsScope
   ): (savedObjectsClient: SavedObjectsClientContract) => ClientType<T> {
-    const { version, buildNum } = this.coreContext.env.packageInfo;
+    const { version, buildNum } = this.dependencies;
     return (savedObjectsClient: SavedObjectsClientContract): ClientType<T> => {
       const isNamespaceScope = scope === 'namespace';
       const namespace = isNamespaceScope

@@ -6,7 +6,9 @@
  */
 
 import type { estypes } from '@elastic/elasticsearch';
-import { pick, transform, uniq } from 'lodash';
+import pick from 'lodash/pick';
+import transform from 'lodash/transform';
+import uniq from 'lodash/uniq';
 
 import type { IClusterClient, KibanaRequest } from '@kbn/core/server';
 import type {
