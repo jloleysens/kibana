@@ -108,3 +108,17 @@ export { PollStepDefaults } from './poll_step_defaults';
 export { DEFAULT_WAIT_FOR_INPUT_TIMEOUT, DEFAULT_WAIT_FOR_APPROVAL_TIMEOUT } from './hitl_defaults';
 
 export { KibanaHttpMethods, IGNORED_KIBANA_FETCHER_SETTING_MESSAGE } from './kibana_http';
+
+export enum StepCategory {
+  Elasticsearch = 'elasticsearch',
+  External = 'external',
+  Ai = 'ai',
+  Kibana = 'kibana',
+  KibanaCases = 'kibana.cases',
+  KibanaEntityStore = 'kibana.entityStore',
+  KibanaSecurity = 'kibana.security',
+  Data = 'data',
+  FlowControl = 'flowControl',
+}
+
+export const StepCategories = Object.values(StepCategory) as StepCategory[];

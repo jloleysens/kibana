@@ -7,23 +7,12 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import type { StepCategory } from '@kbn/workflows-runtime';
 import type { z } from '@kbn/zod/v4';
 import type { StepDeprecationInfo } from './deprecated_step_metadata';
 import type { StabilityLevel } from '../types/v1';
 
-export enum StepCategory {
-  Elasticsearch = 'elasticsearch',
-  External = 'external',
-  Ai = 'ai',
-  Kibana = 'kibana',
-  KibanaCases = 'kibana.cases',
-  KibanaEntityStore = 'kibana.entityStore',
-  KibanaSecurity = 'kibana.security',
-  Data = 'data',
-  FlowControl = 'flowControl',
-}
-
-export const StepCategories = Object.values(StepCategory) as StepCategory[];
+export { StepCategory, StepCategories } from '@kbn/workflows-runtime';
 
 /**
  * Documentation information for a workflow step.

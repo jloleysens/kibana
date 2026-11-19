@@ -1411,6 +1411,7 @@
     "@kbn/visualizations-plugin": "workspace:*",
     "@kbn/watcher-plugin": "workspace:*",
     "@kbn/workflows": "workspace:*",
+    "@kbn/workflows-action-schema": "workspace:*",
     "@kbn/workflows-execution-engine": "workspace:*",
     "@kbn/workflows-extensions": "workspace:*",
     "@kbn/workflows-extensions-example": "workspace:*",

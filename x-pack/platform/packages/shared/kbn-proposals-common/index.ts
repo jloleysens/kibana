@@ -31,7 +31,7 @@ export {
 
 // The action-workflow contract is owned by @kbn/workflows, where the action
 // YAML files live; re-exported here so consumers have one import site.
-export { ACTION_WORKFLOW_TAG, actionMetadataSchema } from '@kbn/workflows';
+export { ACTION_WORKFLOW_TAG, actionMetadataSchema } from '@kbn/workflows-action-schema';
 export type { ActionMetadata } from '@kbn/workflows';
 
 export {

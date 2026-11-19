@@ -8,6 +8,7 @@
   "kbn_references": [
     "@kbn/workflows-template-runtime",
     "@kbn/workflows-runtime",
+    "@kbn/workflows-action-schema",
     "@kbn/entity-access-control",
     "@kbn/i18n",
     "@kbn/zod",

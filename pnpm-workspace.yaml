@@ -979,6 +979,7 @@ packages:
   - 'src/platform/packages/shared/kbn-visualization-utils'
   - 'src/platform/packages/shared/kbn-visualizations-common'
   - 'src/platform/packages/shared/kbn-workflows'
+  - 'src/platform/packages/shared/kbn-workflows-action-schema'
   - 'src/platform/packages/shared/kbn-workflows-library'
   - 'src/platform/packages/shared/kbn-workflows-runtime'
   - 'src/platform/packages/shared/kbn-workflows-template-runtime'

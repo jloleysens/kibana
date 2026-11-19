@@ -6,7 +6,7 @@
  */
 
 import type { ActionMetadata } from '@kbn/workflows';
-import { actionCategorySchema, actionImpactSchema } from '@kbn/workflows';
+import { actionCategorySchema, actionImpactSchema } from '@kbn/workflows-action-schema';
 import { z } from '@kbn/zod/v4';
 import { MAX_CHARTS_SUMMARY_BUCKETS, PROPOSAL_CATEGORY_TODO } from './constants';
 
