@@ -55,6 +55,11 @@ export const buildRemoteBundle = async ({
   ) {
     throw new Error('Remote bundle reporting ceiling must be a positive safe integer');
   }
+  for (const kind of sourceDigestKinds) {
+    if (!graph.contributions.includes(kind)) {
+      throw new Error(`Source-digested contribution kind is not selected by graph: ${kind}`);
+    }
+  }
   const declarations = manifests.map(readRemoteManifest);
   const providers = declarations.flatMap((declaration) => declaration.providers);
   const relevant = declarations.filter(

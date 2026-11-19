@@ -192,3 +192,14 @@ it('disconnect aborts active work, closes its data capability and forces exit de
     rmSync(directory, { recursive: true });
   }
 }, 10000);
+
+it('refuses a source-digest kind excluded from the graph instead of silently omitting it', async () => {
+  await expect(
+    buildRemoteBundle({
+      manifests: [],
+      graph,
+      outdir: 'unused',
+      sourceDigestKinds: ['not.selected'],
+    })
+  ).rejects.toThrow('Source-digested contribution kind is not selected by graph: not.selected');
+});

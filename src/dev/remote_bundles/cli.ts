@@ -20,7 +20,7 @@ const main = async (): Promise<void> => {
       id,
       root: 'workflows.executor',
       dependencies: ['workflows.stepCatalog'],
-      contributions: ['workflows.step', 'workflows.connector'],
+      contributions: ['workflows.step', 'workflows.connector', 'core.savedObjects.types'],
     },
     outdir: resolve(directory),
     sourceDigestKinds: ['core.savedObjects.types'],
