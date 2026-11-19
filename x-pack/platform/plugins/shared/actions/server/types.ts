@@ -50,6 +50,7 @@ export type ConnectorTokenStore = Pick<
   readonly refreshEars?: (
     refreshToken: string
   ) => Promise<import('./lib/request_oauth_token').OAuthTokenResponse>;
+  readonly withRefreshTransaction?: <T>(id: string, refresh: () => Promise<T>) => Promise<T>;
   readonly withRefreshLock?: <T>(refresh: () => Promise<T>) => Promise<T>;
 };
 

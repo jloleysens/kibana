@@ -13,6 +13,7 @@ import * as childProcess from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { ScopeLookup } from '@kbn/core-remote-server';
 import type { Logger } from '@kbn/logging';
 import { RemoteService } from './remote_service';
 import { Echo } from './__fixtures__/demo_plugin/server/remote/echo';
@@ -602,5 +603,39 @@ it('rejects an invalid measurement delay before spawning a child', async () => {
     else process.env.KBN_REMOTE_MESSAGE_DELAY_MS = previous;
     spawn.mockRestore();
     rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+it('owns run sidecars and admissions only on coordinator, and clears them when a scope closes', async () => {
+  const service = createService();
+  let scopes: ScopeLookup | undefined;
+  service.bind(EchoToken, (lookup) => {
+    scopes = lookup;
+    return new Echo();
+  });
+  await service.start('in_process');
+  const lease = await service.lease('demo');
+  try {
+    if (!scopes) throw new Error('Coordinator binding missing');
+    expect(() => scopes?.getRunState('unknown')).toThrow('scope');
+    const admittedChildren = new Set(['restored']);
+    const state = {
+      workflowRunId: 'run',
+      workflowId: 'workflow',
+      workflowName: 'Persisted',
+      spaceId: 'space',
+      admittedChildren,
+    };
+    const scopeId = lease.openScope({ request: true }, state);
+    admittedChildren.add('not-admitted');
+    expect(scopes.getRunState(scopeId).admittedChildren).toEqual(new Set(['restored']));
+    scopes.admitChild(scopeId, 'started');
+    expect(scopes.getRunState(scopeId).admittedChildren).toEqual(new Set(['restored', 'started']));
+    expect(Object.keys(lease)).not.toContain('admitChild');
+    lease.closeScope(scopeId);
+    expect(() => scopes?.getRunState(scopeId)).toThrow('scope');
+  } finally {
+    await lease.release();
+    await service.stop();
   }
 });

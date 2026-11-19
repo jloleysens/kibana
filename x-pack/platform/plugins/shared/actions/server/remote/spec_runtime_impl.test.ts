@@ -255,3 +255,106 @@ it('drains the first failed persistence through exactly one ID-only retry before
   expect(Reflect.get(runtime, 'pending').size).toBe(0);
   expect(Reflect.get(runtime, 'retries').size).toBe(0);
 });
+
+it.each([false, true])(
+  'flushes new results alongside older retries, including during close (active=%s)',
+  async (active) => {
+    const finalize = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('bulk failed'))
+      .mockResolvedValue(undefined);
+    const finalizeRetry = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('retry failed'))
+      .mockResolvedValue(undefined);
+    const runtime = new SpecRuntime({
+      dashboard: jest.fn(),
+      relay: jest.fn(),
+      token: jest.fn(),
+      prepare: async () => ({
+        prepared: {
+          ...prepared,
+          runtimeConfig: { ...prepared.runtimeConfig, maxResponseContentLength: 'invalid' },
+        },
+      }),
+      finalize,
+      finalizeRetry,
+    });
+    const queue = () =>
+      expect(runtime.run(connectorsSpecs.Jenkins, services, 'scope', request)).rejects.toThrow();
+    await queue();
+    await expect(runtime.drain('scope')).rejects.toThrow('retry failed');
+    let release: () => void = () => {};
+    let entered: () => void = () => {};
+    const ready = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    if (active)
+      finalizeRetry.mockImplementationOnce(async () => {
+        entered();
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      });
+    const draining = active ? runtime.drain('scope') : undefined;
+    if (active) await ready;
+    await queue();
+    const closing = runtime.close('scope');
+    release();
+    await Promise.all([draining, closing]);
+    expect(finalize).toHaveBeenCalledTimes(2);
+    expect(finalizeRetry).toHaveBeenCalledTimes(2);
+    expect(finalize.mock.calls[0][1][0].invocationId).not.toBe(
+      finalize.mock.calls[1][1][0].invocationId
+    );
+    expect(Reflect.get(runtime, 'pending').size).toBe(0);
+    expect(Reflect.get(runtime, 'retries').size).toBe(0);
+  }
+);
+
+it('does not finish close until results queued during the active drain are acknowledged', async () => {
+  const first = Promise.withResolvers<void>();
+  const second = Promise.withResolvers<void>();
+  const firstEntered = Promise.withResolvers<void>();
+  const secondEntered = Promise.withResolvers<void>();
+  const finalize = jest
+    .fn()
+    .mockImplementationOnce(async () => {
+      firstEntered.resolve();
+      await first.promise;
+    })
+    .mockImplementationOnce(async () => {
+      secondEntered.resolve();
+      await second.promise;
+    });
+  const runtime = new SpecRuntime({
+    dashboard: jest.fn(),
+    relay: jest.fn(),
+    token: jest.fn(),
+    prepare: async () => ({
+      prepared: {
+        ...prepared,
+        runtimeConfig: { ...prepared.runtimeConfig, maxResponseContentLength: 'invalid' },
+      },
+    }),
+    finalize,
+    finalizeRetry: jest.fn(),
+  });
+  const queue = () =>
+    expect(runtime.run(connectorsSpecs.Jenkins, services, 'scope', request)).rejects.toThrow();
+  await queue();
+  const draining = runtime.drain('scope');
+  await firstEntered.promise;
+  await queue();
+  let closed = false;
+  const closing = runtime.close('scope').then(() => {
+    closed = true;
+  });
+  first.resolve();
+  await secondEntered.promise;
+  expect(closed).toBe(false);
+  second.resolve();
+  await Promise.all([draining, closing]);
+  expect(closed).toBe(true);
+  expect(finalize).toHaveBeenCalledTimes(2);
+});

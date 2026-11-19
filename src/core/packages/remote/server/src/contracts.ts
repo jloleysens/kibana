@@ -12,7 +12,19 @@ import type { ServiceToken } from '@kbn/core-di';
 /** Backend selected by Core configuration. Callers register a graph, not a placement. */
 export type RemoteBackend = 'worker_thread' | 'in_process' | 'child_process';
 
+export interface RemoteRunState {
+  readonly workflowRunId: string;
+  readonly workflowId: string;
+  readonly workflowName: string;
+  readonly spaceId: string;
+  readonly admittedChildren: ReadonlySet<string>;
+}
+
 export interface ScopeLookup {
+  /** Coordinator-only metadata installed by the dispatcher, never by the executor. */
+  getRunState(scopeId: string): RemoteRunState;
+  /** Coordinator-only admission after a successful child start. */
+  admitChild(scopeId: string, childId: string): void;
   get<T>(scopeId: string): T;
   /** Scope lifetime is a cancellation signal, including transport failure. */
   getAbortSignal(scopeId: string): AbortSignal;
@@ -34,7 +46,7 @@ export interface RemoteRegistration {
 
 export interface RemoteSession<T> {
   readonly stub: T;
-  openScope(state: unknown): string;
+  openScope(state: unknown, runState?: RemoteRunState): string;
   closeScope(scopeId: string): void;
   getScope<TState>(scopeId: string): TState;
 }

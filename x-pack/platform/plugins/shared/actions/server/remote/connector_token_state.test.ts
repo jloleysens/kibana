@@ -482,3 +482,163 @@ it.each([undefined, 'oauth'])(
     state.close();
   }
 );
+
+it.each([false, true])(
+  'persists ordinary authorization-code rotation after abort and serializes the next refresh (per-user=%s)',
+  async (perUser) => {
+    const { getStoredTokenWithRefresh } = await import(
+      '../lib/get_stored_oauth_token_with_refresh'
+    );
+    const { loggingSystemMock } = await import('@kbn/core-logging-server-mocks');
+    const first = setup(perUser);
+    const second = setup(perUser);
+    let current = { ...stored, refreshToken: 'initial' };
+    const read = async () => ({
+      hasErrors: false,
+      connectorToken: perUser
+        ? {
+            ...current,
+            profileUid: 'prepared-user',
+            credentials: { accessToken: current.token, refreshToken: current.refreshToken },
+          }
+        : current,
+    });
+    const persist = async (
+      options: Parameters<ConnectorTokenStore['updateWithRefreshToken']>[0]
+    ) => {
+      current = { ...current, ...options };
+      return current;
+    };
+    for (const instance of [first, second]) {
+      instance.client.get.mockImplementation(read);
+      instance.client.updateWithRefreshToken.mockImplementation(persist);
+    }
+    let release: () => void = () => {};
+    let entered: () => void = () => {};
+    const ready = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const providerGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const provider = jest.fn(async (refreshToken: string) => {
+      expect(refreshToken).toBe(current.refreshToken);
+      if (refreshToken === 'initial') {
+        entered();
+        await providerGate;
+      }
+      return { tokenType: 'Bearer', accessToken: 'new', refreshToken: refreshToken + '-rotated' };
+    });
+    const refresh = (instance: ReturnType<typeof setup>) =>
+      getStoredTokenWithRefresh({
+        connectorId: 'prepared',
+        connectorTokenClient: instance.store,
+        logger: loggingSystemMock.createLogger(),
+        authMethod: 'oauth_authorization_code',
+        forceRefresh: true,
+        isPerUser: perUser,
+        profileUid: 'prepared-user',
+        refreshFn: provider,
+      });
+    const pending = refresh(first).catch(() => null);
+    await ready;
+    first.controller.abort();
+    const next = refresh(second);
+    await new Promise((resolve) => setImmediate(resolve));
+    const callsBeforeRelease = provider.mock.calls.length;
+    release();
+    await pending;
+    await next;
+    expect(callsBeforeRelease).toBe(1);
+    expect(current.refreshToken).toBe('initial-rotated-rotated');
+    expect(first.client.updateWithRefreshToken).toHaveBeenCalledTimes(1);
+    second.state.close();
+  }
+);
+
+it('bounds an abandoned OAuth transaction and logs the lost-response risk before releasing its lease', async () => {
+  const timer = jest.spyOn(
+    jest.requireActual<typeof import('node:timers')>('node:timers'),
+    'setTimeout'
+  );
+  const { client, controller } = setup();
+  const logger = { error: jest.fn() };
+  const first = new ConnectorTokenState(
+    client,
+    { actionId: 'prepared' },
+    controller.signal,
+    undefined,
+    logger
+  );
+  const next = new ConnectorTokenState(
+    client,
+    { actionId: 'prepared' },
+    new AbortController().signal
+  );
+  try {
+    await first.execute({ operation: 'acquireRefreshLock' });
+    await first.execute({ operation: 'get', options: {} });
+    const lease = await first.execute({ operation: 'beginRefresh', id: stored.id ?? '' });
+    controller.abort();
+    let acquired = false;
+    const acquisition = next.execute({ operation: 'acquireRefreshLock' }).then(() => {
+      acquired = true;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(acquired).toBe(false);
+    const expiry = timer.mock.calls.find(([, duration]) => duration === 120_000)?.[0];
+    if (!expiry) throw new Error('Missing OAuth transaction deadline');
+    expiry();
+    await acquisition;
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('credentials may be lost'));
+    await expect(
+      first.execute({
+        operation: 'refresh',
+        refreshLease: lease.refreshLease,
+        options: { id: stored.id ?? '', token: 'late' },
+      })
+    ).rejects.toThrow();
+    expect(client.updateWithRefreshToken).not.toHaveBeenCalled();
+    await next.execute({ operation: 'releaseRefreshLock' });
+  } finally {
+    first.close();
+    next.close();
+    timer.mockRestore();
+  }
+});
+
+it('holds the aborted OAuth lease until an already received provider result finishes persisting', async () => {
+  const { state, client, controller } = setup();
+  let complete: (value: ConnectorToken) => void = () => {};
+  client.updateWithRefreshToken.mockReturnValue(
+    new Promise((resolve) => {
+      complete = resolve;
+    })
+  );
+  await state.execute({ operation: 'acquireRefreshLock' });
+  await state.execute({ operation: 'get', options: {} });
+  const lease = await state.execute({ operation: 'beginRefresh', id: stored.id ?? '' });
+  const persisting = state.execute({
+    operation: 'refresh',
+    refreshLease: lease.refreshLease,
+    options: { id: stored.id ?? '', token: 'Bearer rotated' },
+  });
+  controller.abort();
+  const next = new ConnectorTokenState(
+    client,
+    { actionId: 'prepared' },
+    new AbortController().signal
+  );
+  let acquired = false;
+  const acquisition = next.execute({ operation: 'acquireRefreshLock' }).then(() => {
+    acquired = true;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(acquired).toBe(false);
+  complete(stored);
+  await persisting;
+  await acquisition;
+  expect(acquired).toBe(true);
+  await next.execute({ operation: 'releaseRefreshLock' });
+  next.close();
+});

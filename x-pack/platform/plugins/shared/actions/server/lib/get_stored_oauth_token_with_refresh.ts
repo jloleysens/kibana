@@ -185,24 +185,29 @@ export const getStoredTokenWithRefresh = async ({
     // Refresh the token
     logger.debug(`Refreshing access token for connectorId: ${connectorId}`);
     try {
-      const tokenResult = await refreshFn(storedRefreshToken);
+      const refreshAndPersist = async () => {
+        const tokenResult = await refreshFn(storedRefreshToken);
 
-      const newAccessToken = `${tokenResult.tokenType} ${tokenResult.accessToken}`;
+        const newAccessToken = `${tokenResult.tokenType} ${tokenResult.accessToken}`;
 
-      const updatedRefreshToken: string | undefined =
-        tokenResult.refreshToken ?? storedRefreshToken;
+        const updatedRefreshToken: string | undefined =
+          tokenResult.refreshToken ?? storedRefreshToken;
 
-      // Update stored token
-      await connectorTokenClient.updateWithRefreshToken({
-        id: connectorToken.id!,
-        token: newAccessToken,
-        refreshToken: updatedRefreshToken,
-        expiresIn: tokenResult.expiresIn,
-        refreshTokenExpiresIn: tokenResult.refreshTokenExpiresIn,
-        tokenType: 'access_token',
-      });
+        // Update stored token
+        await connectorTokenClient.updateWithRefreshToken({
+          id: connectorToken.id!,
+          token: newAccessToken,
+          refreshToken: updatedRefreshToken,
+          expiresIn: tokenResult.expiresIn,
+          refreshTokenExpiresIn: tokenResult.refreshTokenExpiresIn,
+          tokenType: 'access_token',
+        });
 
-      return newAccessToken;
+        return newAccessToken;
+      };
+      return await (connectorTokenClient.withRefreshTransaction
+        ? connectorTokenClient.withRefreshTransaction(connectorToken.id!, refreshAndPersist)
+        : refreshAndPersist());
     } catch (err) {
       logger.error(
         `Failed to refresh access token for connectorId: ${connectorId}. Error: ${err.message}`

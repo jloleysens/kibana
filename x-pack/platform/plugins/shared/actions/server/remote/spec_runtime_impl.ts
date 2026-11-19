@@ -455,7 +455,9 @@ export class SpecRuntime implements SpecRuntimeApi {
 
   async close(scopeId: string): Promise<void> {
     try {
-      await this.drain(scopeId);
+      do {
+        await this.drain(scopeId);
+      } while (this.retries.has(scopeId) || this.pending.get(scopeId)?.length);
     } finally {
       this.contexts.delete(scopeId);
     }
@@ -464,23 +466,27 @@ export class SpecRuntime implements SpecRuntimeApi {
   async drain(scopeId: string): Promise<void> {
     const existing = this.drains.get(scopeId);
     if (existing) return existing;
-    const pending = this.pending.get(scopeId) ?? [];
-    const retryIds = this.retries.get(scopeId);
-    if (!retryIds && pending.length === 0) return;
-    this.pending.delete(scopeId);
-    this.retries.set(scopeId, retryIds ?? pending.map(({ invocationId }) => invocationId));
-    const persistence = retryIds
-      ? this.actions.finalizeRetry(scopeId, retryIds)
-      : this.actions
+    const drain = (async () => {
+      while (true) {
+        const retryIds = this.retries.get(scopeId);
+        if (retryIds) {
+          await this.actions.finalizeRetry(scopeId, retryIds);
+          this.retries.delete(scopeId);
+          continue;
+        }
+        const pending = this.pending.get(scopeId) ?? [];
+        if (pending.length === 0) return;
+        this.pending.delete(scopeId);
+        const invocationIds = pending.map(({ invocationId }) => invocationId);
+        this.retries.set(scopeId, invocationIds);
+        await this.actions
           .finalize(scopeId, pending)
-          .catch(() => this.actions.finalizeRetry(scopeId, this.retries.get(scopeId) ?? []));
-    const drain = persistence
-      .then(() => {
+          .catch(() => this.actions.finalizeRetry(scopeId, invocationIds));
         this.retries.delete(scopeId);
-      })
-      .finally(() => {
-        this.drains.delete(scopeId);
-      });
+      }
+    })().finally(() => {
+      this.drains.delete(scopeId);
+    });
     this.drains.set(scopeId, drain);
     return drain;
   }

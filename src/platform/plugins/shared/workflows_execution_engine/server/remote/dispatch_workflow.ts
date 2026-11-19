@@ -12,6 +12,8 @@ import { recordRemoteHeap, recordRemoteTiming, recordSeam } from '@kbn/core-remo
 import type { RemoteSetup } from '@kbn/core-remote-server';
 import type { WorkflowDispatchFacts, WorkflowExecutorApi, WorkflowRunOutcome } from './tokens';
 import { workflowDispatchCredentials } from './workflow_dispatch_credentials';
+import type { StepExecutionRepository } from '../repositories/step_execution_repository';
+import type { WorkflowExecutionRepository } from '../repositories/workflow_execution_repository';
 import type { StepDependencyPlan } from '../workflow_context_manager/step_dependency_plan';
 import { isWorkflowTaskManagerAbortSignal } from '../workflow_task_shutdown';
 
@@ -24,10 +26,15 @@ export const dispatchWorkflow = async ({
   spaceId,
   facts,
   dependencyPlan,
+  repositories,
   logger,
   phase,
 }: {
   remote: RemoteSetup;
+  repositories: {
+    workflowExecutionRepository: Pick<WorkflowExecutionRepository, 'getWorkflowExecutionById'>;
+    stepExecutionRepository: Pick<StepExecutionRepository, 'getStepExecutionsByWorkflowExecution'>;
+  };
   request: KibanaRequest;
   signal: AbortSignal;
   workflowRunId: string;
@@ -46,7 +53,42 @@ export const dispatchWorkflow = async ({
   recordRemoteTiming('lease_acquired', { executionId: workflowRunId });
   let scopeId: string | undefined;
   try {
-    scopeId = lease.openScope(request);
+    const execution = await repositories.workflowExecutionRepository.getWorkflowExecutionById(
+      workflowRunId,
+      spaceId
+    );
+    if (!execution || execution.spaceId !== spaceId)
+      throw new Error('Workflow execution not found');
+    const admittedChildren = new Set<string>();
+    const steps = await repositories.stepExecutionRepository.getStepExecutionsByWorkflowExecution(
+      workflowRunId,
+      execution.stepExecutionIds
+    );
+    for (const step of steps) {
+      const childId = step.state?.executionId;
+      if (
+        step.workflowRunId === workflowRunId &&
+        step.spaceId === spaceId &&
+        typeof childId === 'string'
+      ) {
+        const child = await repositories.workflowExecutionRepository.getWorkflowExecutionById(
+          childId,
+          spaceId
+        );
+        if (
+          child?.context?.parentWorkflowExecutionId === workflowRunId &&
+          child.spaceId === spaceId
+        )
+          admittedChildren.add(childId);
+      }
+    }
+    scopeId = lease.openScope(request, {
+      workflowRunId,
+      spaceId,
+      workflowId: execution.workflowId,
+      workflowName: execution.workflowDefinition.name,
+      admittedChildren,
+    });
     const activeScope = scopeId;
     const onAbort = () => {
       void lease.stub
@@ -73,7 +115,9 @@ export const dispatchWorkflow = async ({
       signal.removeEventListener('abort', onAbort);
     }
   } finally {
-    if (scopeId) lease.closeScope(scopeId);
+    if (scopeId) {
+      lease.closeScope(scopeId);
+    }
     await lease.release();
     recordRemoteHeap('MAIN_HEAP', `after-remote-${phase}`);
   }

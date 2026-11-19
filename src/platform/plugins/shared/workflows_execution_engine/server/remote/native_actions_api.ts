@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { clearTimeout, setTimeout } from 'node:timers';
 import { PreparedExecution } from '@kbn/actions-plugin/server';
 import type {
   ActionsClient,
@@ -41,6 +42,15 @@ export class NativeActions implements NativeActionsApi {
         import('@kbn/actions-plugin/server/remote/types').InferenceStreamingFacts
       >;
       readonly resolver: Promise<ConnectorExecutor>;
+    }
+  >();
+  private readonly refreshLeases = new Map<
+    string,
+    {
+      readonly scopeId: string;
+      readonly invocationId: string;
+      readonly execution: PreparedExecution;
+      readonly timeout: NodeJS.Timeout;
     }
   >();
   constructor(
@@ -115,7 +125,11 @@ export class NativeActions implements NativeActionsApi {
         const result = await execution.preparation;
         if ('result' in result) {
           // Preflight refusal has no worker execution to finalize.
-          await (await state.client).finalizeExecutionEvents(await execution.refusalEvents());
+          const batch = { events: execution.refusalEvents() };
+          state.batches.set(JSON.stringify([invocationId]), batch);
+          await this.#persistBatch(batch, state.client).catch(() =>
+            this.finalizeRetry(scopeId, [invocationId])
+          );
           state.pending.delete(invocationId);
         }
         return result;
@@ -165,11 +179,34 @@ export class NativeActions implements NativeActionsApi {
     request: Parameters<NativeActionsApi['token']>[2]
   ): ReturnType<NativeActionsApi['token']> {
     return withNativeActionsErrorBoundary(async () => {
+      if (
+        (request.operation === 'refresh' || request.operation === 'endRefresh') &&
+        request.refreshLease
+      ) {
+        const lease = this.refreshLeases.get(request.refreshLease);
+        if (!lease || lease.scopeId !== scopeId || lease.invocationId !== invocationId)
+          throw new Error('Unknown OAuth refresh transaction lease');
+        try {
+          return await lease.execution.token(request);
+        } finally {
+          if (request.operation === 'endRefresh') {
+            clearTimeout(lease.timeout);
+            this.refreshLeases.delete(request.refreshLease);
+          }
+        }
+      }
       this.scopes.getAbortSignal(scopeId).throwIfAborted();
       this.scopes.get<KibanaRequest>(scopeId);
       const execution = this.scopesState.get(scopeId)?.pending.get(invocationId);
       if (!execution) throw new Error('Unknown native connector invocation');
-      return execution.token(request);
+      const response = await execution.token(request);
+      if (request.operation === 'beginRefresh' && response.refreshLease) {
+        const id = response.refreshLease;
+        const timeout = setTimeout(() => this.refreshLeases.delete(id), 125_000);
+        timeout.unref();
+        this.refreshLeases.set(id, { scopeId, invocationId, execution, timeout });
+      }
+      return response;
     }, this.logger);
   }
 

@@ -29,6 +29,7 @@ import type {
   RemoteSession,
   RemoteSetup,
   ScopeLookup,
+  RemoteRunState,
 } from '@kbn/core-remote-server';
 import { createManagedWorker } from '@kbn/core-threads-server-internal';
 import { RemoteLeasePool, type LeaseHost } from './remote_lease_pool';
@@ -52,6 +53,10 @@ export class RemoteService implements RemoteSetup {
   private readonly bindings = new Map<string, (scopes: ScopeLookup) => object>();
   private readonly inProcessBindings = new Map<string, (scopes: ScopeLookup) => object>();
   private readonly scopes = new Map<string, unknown>();
+  private readonly runStates = new Map<
+    string,
+    RemoteRunState & { admittedChildren: Set<string> }
+  >();
   private readonly scopeControllers = new Map<string, AbortController>();
   private readonly sessions = new Map<string, Promise<RemoteSession<unknown>>>();
   private readonly resolvers = new Map<string, (session: RemoteSession<unknown>) => void>();
@@ -59,6 +64,16 @@ export class RemoteService implements RemoteSetup {
   private readonly rejectors = new Map<string, (error: Error) => void>();
   private started = false;
   private readonly lookup: ScopeLookup = {
+    getRunState: (scopeId) => {
+      const state = this.runStates.get(scopeId);
+      if (!state) throw new Error('Unknown remote run scope');
+      return { ...state, admittedChildren: new Set(state.admittedChildren) };
+    },
+    admitChild: (scopeId, childId) => {
+      const state = this.runStates.get(scopeId);
+      if (!state) throw new Error('Unknown remote run scope');
+      state.admittedChildren.add(childId);
+    },
     getAbortSignal: (scopeId) => {
       const controller = this.scopeControllers.get(scopeId);
       if (!controller) throw new Error(`Unknown remote invocation scope "${scopeId}"`);
@@ -164,9 +179,9 @@ export class RemoteService implements RemoteSetup {
     }) as T;
     return {
       stub,
-      openScope: (state) => {
+      openScope: (state, runState) => {
         assertActive();
-        const scopeId = session.openScope(state);
+        const scopeId = session.openScope(state, runState);
         scopeIds.add(scopeId);
         return scopeId;
       },
@@ -363,6 +378,7 @@ export class RemoteService implements RemoteSetup {
       const controller = this.scopeControllers.get(scopeId);
       this.scopeControllers.delete(scopeId);
       this.scopes.delete(scopeId);
+      this.runStates.delete(scopeId);
       controller?.abort(reason);
     };
     const endScopes = (reason: Error) => {
@@ -389,10 +405,15 @@ export class RemoteService implements RemoteSetup {
     transportSignal?.addEventListener('abort', onTransportAbort, { once: true });
     const session: RemoteSession<T> = {
       stub,
-      openScope: (state) => {
+      openScope: (state, runState) => {
         if (closed) throw new Error('Remote host is closed');
         const scopeId = randomUUID();
         this.scopes.set(scopeId, state);
+        if (runState)
+          this.runStates.set(scopeId, {
+            ...runState,
+            admittedChildren: new Set(runState.admittedChildren),
+          });
         this.scopeControllers.set(scopeId, new AbortController());
         scopeIds.add(scopeId);
         return scopeId;

@@ -49,13 +49,29 @@ const setup = () => {
     executeWorkflow: jest.fn(async () => ({ workflowExecutionId: 'child-run' })),
     cancelWorkflowExecution: jest.fn(async () => {}),
   };
+  const admittedChildren = new Set<string>();
+  const canExecute = jest.fn(async () => true);
   const api = new NativeChildApi(
-    { get: jest.fn().mockReturnValue(request), getAbortSignal: () => controller.signal },
+    {
+      get: jest.fn().mockReturnValue(request),
+      getAbortSignal: () => controller.signal,
+      getRunState: () => ({
+        workflowRunId: parent.id,
+        workflowId: parent.workflowId,
+        workflowName: 'Parent',
+        spaceId: 'space',
+        admittedChildren,
+      }),
+      admitChild: (_scope, id) => {
+        admittedChildren.add(id);
+      },
+    },
     workflows,
     executions,
     steps,
     () => engine,
-    { maxWorkflowDepth: 10 }
+    { maxWorkflowDepth: 10 },
+    canExecute
   );
   const childRequest = {
     workflowId: 'child',
@@ -73,7 +89,9 @@ const setup = () => {
     workflows,
     executions,
     engine,
+    steps,
     childRequest,
+    canExecute,
   };
 };
 
@@ -140,7 +158,8 @@ it('enforces depth, self-reference and executable-definition guards before sched
 });
 
 it('cancels through the existing engine with the scoped identity', async () => {
-  const { api, engine, request } = setup();
+  const { api, engine, request, childRequest } = setup();
+  await api.start('scope', 'parent-run', 'space', childRequest);
   await api.cancel('scope', 'child-run', 'space');
   expect(engine.cancelWorkflowExecution).toHaveBeenCalledWith('child-run', 'space', request);
 });
@@ -156,4 +175,56 @@ it('cancels a child whose scheduling finishes after lease teardown', async () =>
     'AbortError'
   );
   expect(engine.cancelWorkflowExecution).toHaveBeenCalledWith('late-child', 'space', request);
+});
+
+it('refuses cross-scope parents, spaces and non-admitted executions before exposing repository data', async () => {
+  const { api, steps, workflows, childRequest } = setup();
+  await expect(api.getWorkflow('scope', 'other-parent', 'space', 'secret')).rejects.toThrow(
+    'scoped'
+  );
+  await expect(api.getWorkflow('scope', 'parent-run', 'other-space', 'secret')).rejects.toThrow(
+    'scoped'
+  );
+  await expect(api.start('scope', 'other-parent', 'space', childRequest)).rejects.toThrow('scoped');
+  await expect(api.getExecution('scope', 'other-run', 'space')).rejects.toThrow('admitted');
+  await expect(api.getSteps('scope', 'other-run', ['secret-step'])).rejects.toThrow('admitted');
+  await expect(api.cancel('scope', 'other-run', 'space')).rejects.toThrow('admitted');
+  expect(steps.getStepExecutionsByWorkflowExecution).not.toHaveBeenCalled();
+  expect(workflows.getWorkflow).not.toHaveBeenCalled();
+});
+
+it('allows dynamic visible workflow targets and reads only admitted child steps', async () => {
+  const { api, executions, parent, steps, childRequest } = setup();
+  await api.start('scope', 'parent-run', 'space', {
+    ...childRequest,
+    workflowId: 'rendered-target',
+  });
+  executions.getWorkflowExecutionById.mockResolvedValue({
+    ...parent,
+    id: 'child-run',
+    context: { parentWorkflowExecutionId: parent.id },
+    stepExecutionIds: ['child-step'],
+  });
+  await expect(api.getExecution('scope', 'child-run', 'space')).resolves.toHaveProperty(
+    'id',
+    'child-run'
+  );
+  await expect(api.getSteps('scope', 'child-run', ['foreign-step'])).rejects.toThrow('scoped');
+  await api.getSteps('scope', 'child-run', ['child-step']);
+  expect(steps.getStepExecutionsByWorkflowExecution).toHaveBeenCalledWith('child-run', [
+    'child-step',
+  ]);
+});
+
+it('never exports unreadable workflow definitions and checks dynamic targets with the scoped request', async () => {
+  const { api, canExecute, request, workflow } = setup();
+  canExecute.mockResolvedValue(false);
+  await expect(api.getWorkflow('scope', 'parent-run', 'space', 'private-target')).rejects.toThrow(
+    'permission'
+  );
+  expect(canExecute).toHaveBeenCalledWith(workflow, request, 'space');
+  canExecute.mockResolvedValue(true);
+  await expect(api.getWorkflow('scope', 'parent-run', 'space', 'dynamic-target')).resolves.toBe(
+    workflow
+  );
 });

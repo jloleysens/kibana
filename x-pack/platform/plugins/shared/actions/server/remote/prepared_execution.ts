@@ -197,7 +197,10 @@ export class PreparedExecution {
   }
 
   async token(request: ConnectorTokenRequest): Promise<ConnectorTokenResponse> {
-    if (this.completed || !this.tokenState)
+    const persistence =
+      (request.operation === 'refresh' || request.operation === 'endRefresh') &&
+      request.refreshLease;
+    if ((this.completed && !persistence) || !this.tokenState)
       throw new Error('Connector token state is not available');
     return this.tokenState.execute(request);
   }

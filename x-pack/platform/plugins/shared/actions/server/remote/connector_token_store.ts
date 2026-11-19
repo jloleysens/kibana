@@ -17,6 +17,7 @@ export const createConnectorTokenStore = (
   earsTransportAvailable = false
 ): ConnectorTokenStore => {
   const refreshQueue = pLimit(1);
+  let refreshLease: string | undefined;
   const token = (request: Parameters<NativeActionsApi['token']>[2]) =>
     actions.token(scopeId, invocationId, request);
   type GetOptions = Parameters<ConnectorTokenStore['get']>[0];
@@ -44,6 +45,23 @@ export const createConnectorTokenStore = (
         }
       : {}),
     get,
+    ...(!earsTransportAvailable
+      ? {
+          withRefreshTransaction: async <T>(id: string, refresh: () => Promise<T>): Promise<T> => {
+            const response = await token({ operation: 'beginRefresh', id });
+            if (!response.refreshLease)
+              throw new Error('Missing connector refresh transaction lease');
+            refreshLease = response.refreshLease;
+            try {
+              return await refresh();
+            } finally {
+              const lease = refreshLease;
+              refreshLease = undefined;
+              await token({ operation: 'endRefresh', refreshLease: lease });
+            }
+          },
+        }
+      : {}),
     withRefreshLock: (refresh) =>
       refreshQueue(async () => {
         await token({ operation: 'acquireRefreshLock' });
@@ -71,7 +89,8 @@ export const createConnectorTokenStore = (
       });
     },
     updateWithRefreshToken: async (options) =>
-      (await token({ operation: 'refresh', options })).connectorToken,
+      (await token({ operation: 'refresh', options, ...(refreshLease ? { refreshLease } : {}) }))
+        .connectorToken,
     deleteConnectorTokens: async () => {
       await token({ operation: 'delete' });
     },

@@ -5,6 +5,8 @@
  * 2.0.
  */
 
+import { setTimeout, clearTimeout } from 'node:timers';
+import { randomUUID } from 'node:crypto';
 import type { Logger } from '@kbn/core/server';
 import { withConnectorTokenRefreshLock } from '../lib/with_connector_token_refresh_lock';
 import type { ConnectorTokenStore } from '../types';
@@ -20,6 +22,13 @@ export class ConnectorTokenState {
   private persistedEarsRefresh?: {
     options: Parameters<ConnectorTokenStore['updateWithRefreshToken']>[0];
     connectorToken: StoredToken;
+  };
+  private refreshLease?: {
+    id: string;
+    token: string;
+    timeout: NodeJS.Timeout;
+    persistence?: Promise<StoredToken>;
+    settled?: boolean;
   };
   private closed = false;
   private refreshLock?: Promise<void>;
@@ -41,8 +50,12 @@ export class ConnectorTokenState {
   }
 
   async execute(request: ConnectorTokenRequest): Promise<ConnectorTokenResponse> {
-    this.signal.throwIfAborted();
-    if (this.closed) throw new Error('Connector token invocation is closed');
+    const latePersistence =
+      this.refreshLease &&
+      (request.operation === 'refresh' || request.operation === 'endRefresh') &&
+      request.refreshLease === this.refreshLease.token;
+    if (!latePersistence) this.signal.throwIfAborted();
+    if (this.closed && !latePersistence) throw new Error('Connector token invocation is closed');
     const { actionId: connectorId, authMode, profileUid } = this.identity;
     if (authMode === 'per-user' && !profileUid) {
       throw new Error('Per-user connector token access requires the prepared profile');
@@ -50,6 +63,31 @@ export class ConnectorTokenState {
     const identity = { connectorId, ...(authMode === 'per-user' ? { profileUid } : {}) };
     let connectorToken: StoredToken = null;
     switch (request.operation) {
+      case 'beginRefresh': {
+        if (!this.releaseRefreshLock || !this.tokens.has(request.id) || this.refreshLease)
+          throw new Error(
+            'OAuth refresh transaction requires a held lock and invocation-local read'
+          );
+        const token = randomUUID();
+        // A lost worker cannot retain the shared refresh mutex indefinitely.
+        const timeout = setTimeout(() => {
+          this.logger?.error(
+            'OAuth refresh transaction expired before completion; credentials may be lost'
+          );
+          this.endRefreshLease();
+        }, 120_000);
+        timeout.unref();
+        this.refreshLease = { id: request.id, token, timeout };
+        return { hasErrors: false, connectorToken: null, refreshLease: token };
+      }
+      case 'endRefresh':
+        if (!latePersistence) throw new Error('Unknown OAuth refresh transaction lease');
+        try {
+          await this.refreshLease?.persistence;
+        } finally {
+          this.endRefreshLease();
+        }
+        break;
       case 'acquireRefreshLock':
         await this.acquireRefreshLock();
         break;
@@ -150,6 +188,13 @@ export class ConnectorTokenState {
       }
       case 'refresh': {
         const { id } = request.options;
+        if (
+          request.refreshLease !== undefined &&
+          (!latePersistence || this.refreshLease?.id !== id)
+        )
+          throw new Error('Unknown OAuth refresh transaction lease');
+        if (this.refreshLease && (!latePersistence || this.refreshLease.id !== id))
+          throw new Error('OAuth refresh requires its transaction lease');
         if (!this.tokens.has(id)) {
           throw new Error('Connector token refresh requires an invocation-local read');
         }
@@ -167,7 +212,20 @@ export class ConnectorTokenState {
         ) {
           connectorToken = persisted.connectorToken;
         } else {
-          connectorToken = await this.client.updateWithRefreshToken(request.options);
+          const lease = this.refreshLease;
+          if (lease) {
+            if (lease.persistence) throw new Error('OAuth refresh transaction already persisted');
+            clearTimeout(lease.timeout);
+            lease.persistence = this.client.updateWithRefreshToken(request.options);
+            try {
+              connectorToken = await lease.persistence;
+            } finally {
+              lease.settled = true;
+              if (this.closed) this.clear();
+            }
+          } else {
+            connectorToken = await this.client.updateWithRefreshToken(request.options);
+          }
         }
         break;
       }
@@ -220,7 +278,14 @@ export class ConnectorTokenState {
     this.signal.removeEventListener('abort', this.onAbort);
     this.rejectRefreshLock?.(new Error('Connector token invocation is closed'));
     this.rejectRefreshLock = undefined;
-    if (!this.earsRefresh) this.clear();
+    if (this.refreshLease?.settled) this.clear();
+    if (!this.earsRefresh && !this.refreshLease) this.clear();
+  }
+
+  private endRefreshLease(): void {
+    if (this.refreshLease) clearTimeout(this.refreshLease.timeout);
+    this.refreshLease = undefined;
+    if (this.closed) this.clear();
   }
 
   private clear(): void {

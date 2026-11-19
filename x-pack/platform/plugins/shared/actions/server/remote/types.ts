@@ -87,6 +87,8 @@ export interface NativeActionsApi {
 
 export type ConnectorTokenRequest =
   | { readonly operation: 'acquireRefreshLock' | 'releaseRefreshLock' }
+  | { readonly operation: 'beginRefresh'; readonly id: string }
+  | { readonly operation: 'endRefresh'; readonly refreshLease: string }
   | { readonly operation: 'refreshEars'; readonly refreshToken: string }
   | {
       readonly operation: 'get';
@@ -105,9 +107,11 @@ export type ConnectorTokenRequest =
   | { readonly operation: 'delete' }
   | {
       readonly operation: 'refresh';
+      readonly refreshLease?: string;
       readonly options: Parameters<ConnectorTokenStore['updateWithRefreshToken']>[0];
     };
 export interface ConnectorTokenResponse {
+  readonly refreshLease?: string;
   readonly earsToken?: import('../lib/request_oauth_token').OAuthTokenResponse;
   readonly hasErrors: boolean;
   readonly connectorToken: Awaited<ReturnType<ConnectorTokenStore['get']>>['connectorToken'];
