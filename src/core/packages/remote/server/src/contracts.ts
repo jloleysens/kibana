@@ -23,6 +23,8 @@ export interface RemoteRunState {
 export interface ScopeLookup {
   /** Coordinator-only metadata installed by the dispatcher, never by the executor. */
   getRunState(scopeId: string): RemoteRunState;
+  /** Coordinator-only persisted-definition type; unknown steps fail closed. */
+  resolveStepType(scopeId: string, stepId: string): string;
   /** Coordinator-only persisted-step policy; unknown steps fail closed. */
   resolveStepOutputLimit(scopeId: string, stepId: string): number;
   /** Coordinator-only admission after a successful child start. */
@@ -51,7 +53,8 @@ export interface RemoteSession<T> {
   openScope(
     state: unknown,
     runState?: RemoteRunState,
-    stepOutputLimits?: ReadonlyMap<string, number>
+    stepOutputLimits?: ReadonlyMap<string, number>,
+    stepTypes?: ReadonlyMap<string, string>
   ): string;
   closeScope(scopeId: string): void;
   getScope<TState>(scopeId: string): TState;

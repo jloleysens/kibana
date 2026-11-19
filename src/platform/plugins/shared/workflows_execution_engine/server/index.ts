@@ -56,3 +56,5 @@ export type {
   SearchTriggerEventLogParams,
   SearchTriggerEventLogResult,
 } from './trigger_events/event_logs/trigger_event_log_query';
+
+export { ResponseSizeLimitError, safeOutputSize } from './step/errors';

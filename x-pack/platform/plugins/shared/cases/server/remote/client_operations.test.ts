@@ -41,6 +41,7 @@ const setup = () => {
       return request;
     }),
     getRunState: jest.fn().mockReturnValue(runState),
+    resolveStepType: jest.fn(),
     resolveStepOutputLimit: jest.fn(),
     admitChild: jest.fn(),
     getAbortSignal: (scopeId: string) => {

@@ -89,6 +89,7 @@ export const dispatchWorkflow = async ({
           admittedChildren.add(childId);
       }
     }
+    const stepTypes = new Map<string, string>();
     const stepOutputLimits = new Map<string, number>();
     visitNestedSteps(
       [
@@ -96,6 +97,7 @@ export const dispatchWorkflow = async ({
         ...(execution.workflowDefinition.settings?.['on-failure']?.fallback ?? []),
       ],
       ({ step }) => {
+        stepTypes.set(step.name, step.type);
         stepOutputLimits.set(
           step.name,
           resolveStepOutputLimit(
@@ -115,7 +117,8 @@ export const dispatchWorkflow = async ({
         workflowName: execution.workflowDefinition.name,
         admittedChildren,
       },
-      stepOutputLimits
+      stepOutputLimits,
+      stepTypes
     );
     const activeScope = scopeId;
     const onAbort = () => {

@@ -80,7 +80,8 @@ it('leases by non-secret settings and releases all state after success', async (
       workflowName: 'Persisted name',
       admittedChildren: new Set(),
     },
-    new Map([['agent', 1024]])
+    new Map([['agent', 1024]]),
+    new Map([['agent', 'ai.agent']])
   );
   expect(lease.closeScope).toHaveBeenCalledWith('scope-1');
   expect(lease.release).toHaveBeenCalledTimes(1);

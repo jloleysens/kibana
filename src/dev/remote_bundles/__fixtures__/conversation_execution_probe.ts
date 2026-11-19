@@ -213,6 +213,14 @@ const main = async (): Promise<void> => {
         assert.equal(id, 'conversation');
         assert.equal(message, 'Native message');
       },
+      runAgent: async () => 'agent-result',
+      takeResult: async () => ({
+        outcome: {
+          result: { message: 'Original agent response' },
+          usage: { inputTokens: 12, outputTokens: 6, cachedTokens: 0, totalTokens: 18 },
+        },
+      }),
+      cancel: async () => {},
       validateEvents: async (_scope: string, _clientLease: string, events: object[]) => events,
       prepareWrite: async (
         _scope: string,
@@ -299,6 +307,7 @@ const main = async (): Promise<void> => {
       ['ai.attachment.read', { conversation_id: 'conversation', attachment_id: 'text' }],
       ['ai.attachment.list', { conversation_id: 'conversation' }],
       ['ai.attachment.delete', { conversation_id: 'conversation', attachment_id: 'text' }],
+      ['ai.agent', { message: 'Original agent request' }],
       [
         'search.rerank',
         {

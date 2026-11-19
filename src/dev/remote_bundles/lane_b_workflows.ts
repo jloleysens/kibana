@@ -13,11 +13,27 @@ export type LaneBFamily =
   | 'inference'
   | 'conversation'
   | 'attachments'
-  | 'rerank';
+  | 'rerank'
+  | 'agent';
 
 /** Uses the same original business steps for ordinary Kibana and each worker backend. */
 export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: string) => {
   const steps = {
+    agent: [
+      {
+        name: 'agent',
+        type: 'ai.agent',
+        'connector-id': endpoint,
+        'create-conversation': true,
+        'public-conversation': true,
+        with: {
+          message: id,
+          conversation_id: '{{ execution.id }}',
+          metadata: { laneBRun: '{{ execution.id }}' },
+          configuration_overrides: { tools: [], skill_ids: [], enable_elastic_capabilities: false },
+        },
+      },
+    ],
     rerank: [
       {
         name: 'rerank',
@@ -246,6 +262,11 @@ export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: s
     ],
   }[family];
   const document = {
+    agent: {
+      conversationId: '{{ steps.agent.output.conversation_id }}',
+      message: '{{ steps.agent.output.message }}',
+      tokens: '{{ steps.agent.output.metadata.usage.totalTokens }}',
+    },
     rerank: {
       first: '{{ steps.rerank.output[0].title }}',
       second: '{{ steps.rerank.output[1].title }}',

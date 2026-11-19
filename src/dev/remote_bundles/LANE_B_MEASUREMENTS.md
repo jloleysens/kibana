@@ -29,7 +29,7 @@ directory; retains failed attempts. Workflows, Cases, Notes, fingerprints and
 outcome docs remain for independent review; all identifiers have a lane-B prefix.
 
 `--smoke` runs only three instrumented profiles (ordinary Kibana, child_process,
-in_process), two runs per family: **36 real persisted runs**. Not a timing claim.
+in_process), two runs per family: **42 real persisted runs**. Not a timing claim.
 The full matrix intentionally runs serially and restarts Kibana many times.
 
 ## Fixed method / outputs
@@ -52,12 +52,14 @@ The full matrix intentionally runs serially and restarts Kibana many times.
   for that append; attachment add/update/read/list/delete plus historical
   read and a real by-reference workflow YAML origin resolution; original rerank
   over a local Hugging Face-compatible fake through a real ES inference endpoint,
-  retaining the original rank-window tail. Every run persists an ES outcome;
+  retaining the original rank-window tail; ai.agent through its original authenticated
+  coordinator agent runtime, with native normalization/output/error projection,
+  persisted public conversation and independent stored workflow provenance. Every run persists an ES outcome;
   independent Case/comment/user-action-source/fingerprint/conversation/event/attachment/outcome reads
   validate it. No mocked business service or empty fingerprint fast path.
 - Uninstrumented timing: ordinary Kibana (`remoteExecution.enabled:false`) vs
   child_process; delays **0/1/5/30ms one-way per outbound IPC frame** for extension
-  and Cases. Inference, conversation, attachments and rerank measured at delay0.
+  and Cases. Inference, conversation, attachments, rerank and agent measured at delay0.
   Three independent fresh-Kibana+worker
   cold blocks per family/cell, five subsequent warm leases per block. Raw engine
   execution `duration` and submission-to-terminal-observation retained; latter
@@ -69,7 +71,7 @@ The full matrix intentionally runs serially and restarts Kibana many times.
   `finalTimingClaims:false` is deliberate: a harness cannot certify a quiet laptop.
 - Separate instrumented memory/callback profiles: baseline, child_process and
   in_process, fixed family order extensions -> Cases -> inference -> conversation
-  -> attachments -> rerank. Per-step Core
+  -> attachments -> rerank -> agent. Per-step Core
   heap markers + 100ms per-process RSS/heap/cumulative process CPU samples.
   Acknowledged SIGUSR2 samples force GC in **each owned process** before/after each
   run. `memory-curve.jsonl` retains individual PIDs and combined Kibana+worker RSS/
@@ -187,3 +189,31 @@ reviewed API methods with this unchanged allowlist. Any new input requires a
 source fix, not a higher cap. Both token-tracker imports remain dynamic.
 
 Cases audit proof now independently reads original user-actions API after create/update/comment, retains the raw API response, and checks every action source against the persisted workflow ID/name/run ID for ordinary and both runner backends. No worker-supplied ActionSource is admitted on the remote path.
+
+## Agent trust and placement
+
+The original heavy agent/template/conversation services remain a typed coordinator
+business-service exception (original closure assessment:18.77MB/9114inputs,
+including React SSR). Original schema-free input normalization and output/error
+projection execute in the worker; authoring schemas remain original on coordinator.
+Original API selectors/schema validation are not removed. The scope's persisted
+definition must contain the named ai.agent step; coordinator resolves its output
+limit with exact step > workflow > plugin >10mb precedence, including deliberate0
+disabling. Request/result are checked there; result references are opaque,
+run-owned and consumed once. Scope and step cancellation cancel original service
+work. Original request authorization and workflow provenance come from coordinator,
+not worker-supplied run/space/identity facts. No live events or handler context cross.
+
+**Within its own run the worker is the trusted engine**, already holding that
+run's credentials and referenced connector secrets. Worker-persisted RUNNING
+rows cannot independently prove legitimate progress; no such admission claim or
+invented call cap is made. Across runs/spaces/tenants the worker is untrusted.
+Architectural mitigations belong to the multi-tenant PRD: tenant processes,
+one run/process, short-lived credentials and disposal of secrets at lease end.
+Original workflow timeouts and permissions remain the cost controls.
+
+Agent first-use fixture uses an explicit typed-service response fixture to exercise
+the real native normalization/projection, not to claim LLM/resource authz proof.
+Live harness performs the original agent execution through real ES inference to
+the loopback fake, independently reads conversation/event data and allowlisted
+stored execution provenance, and asserts generic coordinator invoke0.

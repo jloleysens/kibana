@@ -72,6 +72,7 @@ it('bounds original native conversation client first business execution and conv
         'ai.attachment.read',
         'ai.attachment.list',
         'ai.attachment.delete',
+        'ai.agent',
         'search.rerank',
       ]);
       for (const event of result.events) {

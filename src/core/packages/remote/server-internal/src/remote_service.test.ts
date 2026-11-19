@@ -685,7 +685,13 @@ it('owns run sidecars and admissions only on coordinator, and clears them when a
       admittedChildren,
     };
     const limits = new Map([['agent', 1024]]);
-    const scopeId = lease.openScope({ request: true }, state, limits);
+    const types = new Map([['agent', 'ai.agent']]);
+    const scopeId = lease.openScope({ request: true }, state, limits, types);
+    types.set('agent', 'forged');
+    expect(scopes.resolveStepType(scopeId, 'agent')).toBe('ai.agent');
+    expect(() => scopes?.resolveStepType(scopeId, 'foreign')).toThrow('definition');
+    expect(() => scopes?.resolveStepType('unknown', 'agent')).toThrow('definition');
+    expect(Object.keys(lease)).not.toContain('resolveStepType');
     limits.set('agent', 999999);
     expect(scopes.resolveStepOutputLimit(scopeId, 'agent')).toBe(1024);
     expect(() => scopes?.resolveStepOutputLimit(scopeId, 'foreign')).toThrow('policy');
@@ -698,6 +704,7 @@ it('owns run sidecars and admissions only on coordinator, and clears them when a
     lease.closeScope(scopeId);
     expect(() => scopes?.getRunState(scopeId)).toThrow('scope');
     expect(() => scopes?.resolveStepOutputLimit(scopeId, 'agent')).toThrow('policy');
+    expect(() => scopes?.resolveStepType(scopeId, 'agent')).toThrow('definition');
   } finally {
     await lease.release();
     await service.stop();

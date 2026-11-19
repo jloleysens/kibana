@@ -58,6 +58,7 @@ export class RemoteService implements RemoteSetup {
     string,
     RemoteRunState & { admittedChildren: Set<string> }
   >();
+  private readonly stepTypes = new Map<string, ReadonlyMap<string, string>>();
   private readonly stepOutputLimits = new Map<string, ReadonlyMap<string, number>>();
   private readonly scopeControllers = new Map<string, AbortController>();
   private readonly sessions = new Map<string, Promise<RemoteSession<unknown>>>();
@@ -66,6 +67,11 @@ export class RemoteService implements RemoteSetup {
   private readonly rejectors = new Map<string, (error: Error) => void>();
   private started = false;
   private readonly lookup: ScopeLookup = {
+    resolveStepType: (scopeId, stepId) => {
+      const type = this.stepTypes.get(scopeId)?.get(stepId);
+      if (type === undefined) throw new Error('Unknown remote step definition');
+      return type;
+    },
     resolveStepOutputLimit: (scopeId, stepId) => {
       const limit = this.stepOutputLimits.get(scopeId)?.get(stepId);
       if (limit === undefined) throw new Error('Unknown remote step output policy');
@@ -186,9 +192,9 @@ export class RemoteService implements RemoteSetup {
     }) as T;
     return {
       stub,
-      openScope: (state, runState, stepOutputLimits) => {
+      openScope: (state, runState, stepOutputLimits, stepTypes) => {
         assertActive();
-        const scopeId = session.openScope(state, runState, stepOutputLimits);
+        const scopeId = session.openScope(state, runState, stepOutputLimits, stepTypes);
         scopeIds.add(scopeId);
         return scopeId;
       },
@@ -390,6 +396,7 @@ export class RemoteService implements RemoteSetup {
       this.scopes.delete(scopeId);
       this.runStates.delete(scopeId);
       this.stepOutputLimits.delete(scopeId);
+      this.stepTypes.delete(scopeId);
       controller?.abort(reason);
     };
     const endScopes = (reason: Error) => {
@@ -416,7 +423,7 @@ export class RemoteService implements RemoteSetup {
     transportSignal?.addEventListener('abort', onTransportAbort, { once: true });
     const session: RemoteSession<T> = {
       stub,
-      openScope: (state, runState, stepOutputLimits) => {
+      openScope: (state, runState, stepOutputLimits, stepTypes) => {
         if (closed) throw new Error('Remote host is closed');
         const scopeId = randomUUID();
         this.scopes.set(scopeId, state);
@@ -426,6 +433,7 @@ export class RemoteService implements RemoteSetup {
             admittedChildren: new Set(runState.admittedChildren),
           });
         if (stepOutputLimits) this.stepOutputLimits.set(scopeId, new Map(stepOutputLimits));
+        if (stepTypes) this.stepTypes.set(scopeId, new Map(stepTypes));
         this.scopeControllers.set(scopeId, new AbortController());
         scopeIds.add(scopeId);
         return scopeId;

@@ -50,6 +50,7 @@ const setup = () => {
         return request;
       }),
       getRunState: jest.fn(),
+      resolveStepType: jest.fn(),
       resolveStepOutputLimit: jest.fn(),
       admitChild: jest.fn(),
       getAbortSignal: (id) => {

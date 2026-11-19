@@ -62,6 +62,9 @@ import { AttachmentRegistryToken } from './remote/attachment_tokens';
 import { ConversationRegistry } from './remote/conversation_registry';
 import { AgentExecution } from './remote/agent_execution';
 import { AgentExecutionToken } from './remote/agent_execution_tokens';
+import { WorkflowAgentToken } from './remote/workflow_agent_tokens';
+import { WorkflowAgent } from './remote/workflow_agent';
+import { createWorkflowAgentRunner } from './step_types/workflow_agent_runner';
 
 export class AgentBuilderPlugin
   implements
@@ -183,6 +186,11 @@ export class AgentBuilderPlugin
       getRunAgentStepDefinition(this.serviceManager)
     );
     setupDeps.workflowsExtensions.registerStepDefinition(rerankStepDefinition);
+
+    coreSetup.remote.bind(
+      WorkflowAgentToken,
+      (scopes) => new WorkflowAgent(scopes, createWorkflowAgentRunner(this.serviceManager))
+    );
 
     coreSetup.remote.bind(
       AgentExecutionToken,

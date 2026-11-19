@@ -33,6 +33,7 @@ it('shares only in-flight scoped refreshes, strips extra secret fields, and forw
   const scopes = {
     get: jest.fn().mockReturnValue(request),
     getRunState: jest.fn(),
+    resolveStepType: jest.fn(),
     resolveStepOutputLimit: jest.fn(),
     admitChild: jest.fn(),
     getAbortSignal: () => controller.signal,
@@ -70,6 +71,7 @@ it('aborts an in-flight Core refresh waiter when its owning scope closes', async
   const api = new WorkflowCredentials(core, {
     get: jest.fn().mockReturnValue(request),
     getRunState: jest.fn(),
+    resolveStepType: jest.fn(),
     resolveStepOutputLimit: jest.fn(),
     admitChild: jest.fn(),
     getAbortSignal: () => controller.signal,

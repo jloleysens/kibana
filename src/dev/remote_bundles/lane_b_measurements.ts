@@ -200,6 +200,8 @@ const execute = async (
   };
   const persisted = await api<{
     _source: {
+      message?: string;
+      tokens?: string;
       caseId?: string;
       conversationId?: string;
       status?: string;
@@ -218,7 +220,34 @@ const execute = async (
     };
   }>(`${es}/lane-b-quiet-outcomes/_doc/${step('persist')._id}`);
   save(join(directory, `${workflowExecutionId}-business.json`), persisted);
-  if (family === 'cases') {
+  if (family === 'agent') {
+    assert.equal(persisted._source.message, 'Lane B verified response');
+    assert.equal(persisted._source.conversationId, workflowExecutionId);
+    const conversation = await api<{
+      _source: { events: Array<{ type: string; data: { message?: string } }> };
+    }>(`${es}/.chat-conversations/_doc/${workflowExecutionId}`);
+    assert(
+      conversation._source.events.some(
+        ({ type, data }) => type === 'user_message' && data.message === id
+      )
+    );
+    assert(conversation._source.events.some(({ type }) => type === 'execution_terminated'));
+    await api(`/api/agent_builder/conversations/${workflowExecutionId}`);
+    await delay(1100); // Original execution store refresh interval; no restricted-index admin privilege.
+    const executions = await api<
+      Search<{ status: string; agent_params: { workflowExecutionId: string } }>
+    >(`${es}/.chat-agent-executions/_search`, {
+      query: { term: { 'metadata.laneBRun': workflowExecutionId } },
+      _source: ['status', 'agent_params.workflowExecutionId', 'space_id', 'metadata'],
+    });
+    assert.equal(executions.hits.hits.length, 1);
+    assert.equal(
+      executions.hits.hits[0]._source.agent_params.workflowExecutionId,
+      workflowExecutionId
+    );
+    assert.equal(executions.hits.hits[0]._source.status, 'completed');
+    save(join(directory, `${workflowExecutionId}-agent.json`), { conversation, executions });
+  } else if (family === 'cases') {
     const caseId = step('create').case?.id;
     assert(caseId);
     const current = await api<Case>(`/api/cases/${caseId}`);
@@ -479,7 +508,8 @@ export const runLaneBMeasurements = async (): Promise<void> => {
       );
       return;
     }
-    const tool = body.tools?.[0]?.function;
+    const isAgent = JSON.stringify(body).includes('lane-b-quiet-agent-');
+    const tool = isAgent ? undefined : body.tools?.[0]?.function;
     const message = tool
       ? {
           role: 'assistant',
@@ -587,7 +617,7 @@ export const runLaneBMeasurements = async (): Promise<void> => {
     for (const cell of smoke ? memoryCells : [...timingCells, ...memoryCells]) {
       const families: LaneBFamily[] =
         cell.memory || cell.delayMs === 0
-          ? ['extensions', 'cases', 'inference', 'conversation', 'attachments', 'rerank']
+          ? ['extensions', 'cases', 'inference', 'conversation', 'attachments', 'rerank', 'agent']
           : ['extensions', 'cases'];
       const groups = cell.memory ? [families] : families.map((family) => [family]);
       for (const group of groups)
