@@ -10,15 +10,9 @@
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
-import type { RemoteModule } from '@kbn/core-remote-common';
+import type { RemoteModuleData } from '@kbn/core-remote-common';
 
-type Provider = NonNullable<RemoteModule['providers']>[number];
-type Contribution = NonNullable<RemoteModule['contributions']>[number];
-
-export interface StaticRemoteModule {
-  readonly providers: Array<Omit<Provider, 'token'> & { readonly token: string }>;
-  readonly contributions: Array<Omit<Contribution, 'kind'> & { readonly kind: string }>;
-}
+export type StaticRemoteModule = RemoteModuleData;
 
 type Data = string | Data[] | { [key: string]: Data };
 
@@ -142,6 +136,7 @@ export const readRemoteManifest = (file: string): StaticRemoteModule => {
       }
       return {
         token: text(provider.token),
+        needs: list(provider.needs).map(text),
         placement,
         role,
         modulePath: text(provider.modulePath),
@@ -152,6 +147,7 @@ export const readRemoteManifest = (file: string): StaticRemoteModule => {
       const contribution = object(value);
       return {
         kind: text(contribution.kind),
+        needs: list(contribution.needs).map(text),
         stepType: text(contribution.stepType),
         modulePath: text(contribution.modulePath),
         exportName: text(contribution.exportName),

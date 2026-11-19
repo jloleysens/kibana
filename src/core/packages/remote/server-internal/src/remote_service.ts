@@ -17,6 +17,7 @@ import { MessageChannel, type MessagePort } from 'node:worker_threads';
 import {
   openPortSession,
   remoteTokenId,
+  selectRemoteDeclarations,
   type RemoteModule,
   type RemoteWorkerSpec,
 } from '@kbn/core-remote-common';
@@ -250,63 +251,66 @@ export class RemoteService implements RemoteSetup {
     const contributions: RemoteWorkerSpec['contributions'][number][] = [];
     const coordinatorTokenIds: string[] = [];
 
-    const relevant = this.modules.filter((remoteModule) => {
-      const selectedProvider = (remoteModule.providers ?? []).some((provider) => {
-        const id = remoteTokenId(provider.token);
-        return id === rootId || dependencyIds.has(id);
-      });
-      const selectedContribution = (remoteModule.contributions ?? []).some((contribution) =>
-        kindIds.has(remoteTokenId(contribution.kind))
-      );
-      return selectedProvider || selectedContribution;
-    });
-
-    for (const remoteModule of relevant) {
-      for (const provider of remoteModule.providers ?? []) {
-        const id = remoteTokenId(provider.token);
-        if (provider.role === 'root') {
-          if (id !== rootId) continue;
-          if (root) {
-            throw new Error(`Remote graph "${registration.id}" has more than one root provider`);
-          }
-          root = { tokenId: id, modulePath: provider.modulePath, exportName: provider.exportName };
-          continue;
+    const selected = selectRemoteDeclarations(
+      this.modules.map((module) => ({
+        providers: (module.providers ?? []).map((provider) => ({
+          ...provider,
+          token: remoteTokenId(provider.token),
+          needs: provider.needs?.map(remoteTokenId),
+        })),
+        contributions: (module.contributions ?? []).map((contribution) => ({
+          ...contribution,
+          kind: remoteTokenId(contribution.kind),
+          needs: contribution.needs?.map(remoteTokenId),
+        })),
+      })),
+      {
+        id: registration.id,
+        root: rootId,
+        dependencies: [...dependencyIds],
+        contributions: [...kindIds],
+      }
+    );
+    for (const provider of selected.providers) {
+      const id = provider.token;
+      if (provider.role === 'root') {
+        if (id !== rootId) continue;
+        if (root) {
+          throw new Error(`Remote graph "${registration.id}" has more than one root provider`);
         }
-        if (provider.placement === 'coordinator') {
-          if (!coordinatorTokenIds.includes(id)) coordinatorTokenIds.push(id);
-          continue;
+        root = { tokenId: id, modulePath: provider.modulePath, exportName: provider.exportName };
+        continue;
+      }
+      if (provider.placement === 'coordinator') {
+        if (!coordinatorTokenIds.includes(id)) coordinatorTokenIds.push(id);
+        continue;
+      }
+      if (provider.role === 'catalog') {
+        if (catalog) {
+          throw new Error(`Remote graph "${registration.id}" has more than one catalogue provider`);
         }
-        if (provider.role === 'catalog') {
-          if (!dependencyIds.has(id)) continue;
-          if (catalog) {
-            throw new Error(
-              `Remote graph "${registration.id}" has more than one catalogue provider`
-            );
-          }
-          catalog = {
-            tokenId: id,
-            modulePath: provider.modulePath,
-            exportName: provider.exportName,
-          };
-          continue;
-        }
-        executorProviders.push({
+        catalog = {
           tokenId: id,
           modulePath: provider.modulePath,
           exportName: provider.exportName,
-        });
+        };
+        continue;
       }
-      for (const contribution of remoteModule.contributions ?? []) {
-        if (!kindIds.has(remoteTokenId(contribution.kind))) continue;
-        contributions.push({
-          kindId: remoteTokenId(contribution.kind),
-          stepType: contribution.stepType,
-          modulePath: contribution.modulePath,
-          exportName: contribution.exportName,
-        });
-      }
+      executorProviders.push({
+        tokenId: id,
+        modulePath: provider.modulePath,
+        exportName: provider.exportName,
+      });
     }
-
+    for (const contribution of selected.contributions) {
+      if (!kindIds.has(contribution.kind)) continue;
+      contributions.push({
+        kindId: contribution.kind,
+        stepType: contribution.stepType,
+        modulePath: contribution.modulePath,
+        exportName: contribution.exportName,
+      });
+    }
     for (const id of dependencyIds) {
       const provided =
         catalog?.tokenId === id ||

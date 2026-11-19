@@ -11,7 +11,12 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import { join, relative, resolve } from 'node:path';
 import { build } from 'esbuild';
 import { getJsSourceSync } from '@kbn/peggy';
-import type { RemoteContributionSourceDigest, RemoteWorkerSpec } from '@kbn/core-remote-common';
+import { selectRemoteDeclarations } from '@kbn/core-remote-common';
+import type {
+  RemoteContributionSourceDigest,
+  RemoteWorkerSpec,
+  RemoteSelectionReport,
+} from '@kbn/core-remote-common';
 import { readRemoteManifest } from './manifest';
 import { measureStepChunks, type StepChunkSize } from './step_chunk_sizes';
 import { collectRemoteSourceDigests } from './source_digests';
@@ -25,6 +30,7 @@ export interface RemoteBundle {
   readonly exceedsReportingCeiling?: boolean;
   readonly inputs: readonly string[];
   readonly spec: RemoteWorkerSpec;
+  readonly selectionReport: readonly RemoteSelectionReport[];
   readonly stepChunks: readonly StepChunkSize[];
   readonly sourceDigests: readonly RemoteContributionSourceDigest[];
 }
@@ -63,21 +69,11 @@ export const buildRemoteBundle = async ({
   }
   const declarations = manifests.map(readRemoteManifest);
   const providers = declarations.flatMap((declaration) => declaration.providers);
-  const relevant = declarations.filter(
-    (declaration) =>
-      declaration.providers.some(
-        ({ token }) => token === graph.root || graph.dependencies.includes(token)
-      ) || declaration.contributions.some(({ kind }) => graph.contributions.includes(kind))
-  );
-  const selected = relevant
-    .flatMap((declaration) => declaration.providers)
-    .filter(({ token, role }) =>
-      role === 'root'
-        ? token === graph.root
-        : role === 'catalog'
-        ? graph.dependencies.includes(token)
-        : true
-    );
+  const {
+    providers: selected,
+    contributions,
+    selectionReport,
+  } = selectRemoteDeclarations(declarations, graph);
   for (const token of [graph.root, ...graph.dependencies]) {
     if (selected.filter((provider) => provider.token === token).length !== 1) {
       throw new Error(`Graph ${graph.id} requires exactly one provider for ${token}`);
@@ -95,12 +91,6 @@ export const buildRemoteBundle = async ({
   const catalogs = selected.filter(({ role }) => role === 'catalog');
   if (catalogs.length > 1 || catalogs.some(({ placement }) => placement !== 'executor')) {
     throw new Error(`Graph ${graph.id} requires at most one executor catalog`);
-  }
-  const contributions = declarations
-    .flatMap((declaration) => declaration.contributions)
-    .filter(({ kind }) => graph.contributions.includes(kind));
-  if (new Set(contributions.map(({ stepType }) => stepType)).size !== contributions.length) {
-    throw new Error(`Graph ${graph.id} has duplicate step types`);
   }
   const spec: RemoteWorkerSpec = {
     id: graph.id,
@@ -216,6 +206,7 @@ export const buildRemoteBundle = async ({
   writeFileSync(join(outdir, 'bundle_size.json'), JSON.stringify(sizeReport, null, 2));
   for (const output of result.outputFiles) writeFileSync(output.path, output.contents);
   writeFileSync(join(outdir, 'spec.json'), JSON.stringify(spec, null, 2));
+  writeFileSync(join(outdir, 'selection_report.json'), JSON.stringify(selectionReport, null, 2));
   return {
     entry: join(outdir, 'graph.mjs'),
     ...sizeReport,
@@ -223,6 +214,7 @@ export const buildRemoteBundle = async ({
       relative(process.cwd(), resolve(path))
     ),
     spec,
+    selectionReport,
     stepChunks,
     sourceDigests,
   };

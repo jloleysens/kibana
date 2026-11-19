@@ -54,3 +54,28 @@ it('never evaluates manifest top-level code or require.resolve targets', () => {
     rmSync(directory, { recursive: true });
   }
 });
+
+it('reads static provider and contribution needs without evaluating implementation modules', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'runner-manifest-needs-'));
+  try {
+    writeFileSync(join(directory, 'implementation.ts'), 'throw new Error("must stay lazy");');
+    const file = join(directory, 'index.ts');
+    writeFileSync(
+      file,
+      `export const remoteModule = {
+      providers: [{token:'root', role:'root', placement:'executor', modulePath:require.resolve('./implementation.ts'), exportName:'Root', needs:['owner']}],
+      contributions: [{kind:'step', stepType:'step', modulePath:require.resolve('./implementation.ts'), exportName:'Step', needs:['other']}]
+    };`
+    );
+    const result = readRemoteManifest(file);
+    expect(result.providers[0].needs).toEqual(['owner']);
+    expect(result.contributions[0].needs).toEqual(['other']);
+    writeFileSync(
+      file,
+      `export const remoteModule = {providers:[{token:'root', placement:'executor', modulePath:require.resolve('./implementation.ts'), exportName:'Root', needs:'owner'}]};`
+    );
+    expect(() => readRemoteManifest(file)).toThrow('Expected array');
+  } finally {
+    rmSync(directory, { recursive: true });
+  }
+});

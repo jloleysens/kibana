@@ -20,6 +20,8 @@ import { ApiPrivileges } from '@kbn/core-security-server';
 import { createInferenceRequestError } from '@kbn/inference-common';
 import { GEN_AI_SETTINGS_DEFAULT_AI_CONNECTOR } from '@kbn/management-settings-ids';
 
+import { InferenceFeaturesToken } from './remote/tokens';
+import { InferenceFeatures } from './remote/inference_features';
 import { defineRoutes } from './routes';
 import { InferenceFeatureRegistry } from './inference_feature_registry';
 import { getForFeature as getForFeatureFn } from './inference_endpoints';
@@ -81,6 +83,14 @@ export class SearchInferenceEndpointsPlugin
     plugins: SearchInferenceEndpointsPluginSetupDependencies
   ) {
     this.logger.debug('searchInferenceEndpoints: Setup');
+    core.remote.bind(
+      InferenceFeaturesToken,
+      (scopes) =>
+        new InferenceFeatures(scopes, async () => {
+          const [, , services] = await core.getStartServices();
+          return services;
+        })
+    );
     const router = core.http.createRouter();
 
     core.savedObjects.registerType(createInferenceSettingsSavedObjectType());

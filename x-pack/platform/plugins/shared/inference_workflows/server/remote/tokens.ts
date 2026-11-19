@@ -7,19 +7,9 @@
 
 import { createToken } from '@kbn/core-di';
 import type { ElasticsearchClient } from '@kbn/core/server';
-import type { SearchInferenceEndpointsPluginStart } from '@kbn/search-inference-endpoints/server';
 
-export interface InferenceFeaturesApi {
-  list(
-    scopeId: string
-  ): Promise<ReturnType<SearchInferenceEndpointsPluginStart['features']['getAll']>>;
-  getForFeature(
-    scopeId: string,
-    featureId: string,
-    options?: Parameters<SearchInferenceEndpointsPluginStart['endpoints']['getForFeature']>[2]
-  ): ReturnType<SearchInferenceEndpointsPluginStart['endpoints']['getForFeature']>;
-}
-export const InferenceFeaturesToken = createToken<InferenceFeaturesApi>('inference.features');
+export { InferenceFeaturesToken } from '@kbn/search-inference-endpoints/server/remote/tokens';
+export type { InferenceFeaturesApi } from '@kbn/search-inference-endpoints/server/remote/tokens';
 export interface InferenceDataPlane {
   internal(scopeId?: string): ElasticsearchClient;
   user(scopeId: string): ElasticsearchClient;

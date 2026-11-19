@@ -26,3 +26,11 @@ export type {
 
 export { recordRemoteTiming } from './src/remote_timing';
 export type { RemoteTimingContext } from './src/remote_timing';
+
+export { selectRemoteDeclarations } from './src/select_declarations';
+export type {
+  RemoteModuleData,
+  RemoteProviderData,
+  RemoteContributionData,
+  RemoteSelectionReport,
+} from './src/select_declarations';

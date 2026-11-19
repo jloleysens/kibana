@@ -210,3 +210,77 @@ it('refuses a source-digest kind excluded from the graph instead of silently omi
     })
   ).rejects.toThrow('Source-digested contribution kind is not selected by graph: not.selected');
 });
+
+it('selects provider-only owners through declared needs, reports legacy vs needs, and fails closed on missing/conflicting providers', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'runner-declared-needs-'));
+  try {
+    writeFileSync(join(directory, 'root.ts'), 'export class Root {}');
+    writeFileSync(join(directory, 'step.ts'), 'export class Step {}');
+    writeFileSync(
+      join(directory, 'owner.ts'),
+      'throw new Error("coordinator implementation must not enter worker"); export class Owner {}'
+    );
+    const consumer = join(directory, 'consumer.ts');
+    const ownerManifest = join(directory, 'owner_manifest.ts');
+    const writeConsumer = (needs: string[]) =>
+      writeFileSync(
+        consumer,
+        `export const remoteModule = {
+      providers:[{token:'root',role:'root',placement:'executor',modulePath:require.resolve('./root.ts'),exportName:'Root'}],
+      contributions:[{kind:'step',stepType:'step',modulePath:require.resolve('./step.ts'),exportName:'Step',needs:${JSON.stringify(
+        needs
+      )}}]
+    };`
+      );
+    const declaration = `{token:'owner',placement:'coordinator',modulePath:require.resolve('./owner.ts'),exportName:'Owner'}`;
+    writeFileSync(ownerManifest, `export const remoteModule = {providers:[${declaration}]};`);
+    const selectedGraph = { id: 'needs', root: 'root', dependencies: [], contributions: ['step'] };
+    writeConsumer(['owner']);
+    const selected = await buildRemoteBundle({
+      manifests: [consumer, ownerManifest, ownerManifest],
+      graph: selectedGraph,
+      outdir: join(directory, 'selected'),
+    });
+    expect(selected.spec.coordinatorTokenIds).toEqual(['owner']);
+    expect(selected.inputs.some((path) => path.endsWith('/owner.ts'))).toBe(false);
+    expect(
+      JSON.parse(readFileSync(join(directory, 'selected/selection_report.json'), 'utf8'))
+    ).toEqual([
+      { token: 'root', selectedBy: ['explicit'] },
+      { token: 'owner', selectedBy: ['needs'] },
+    ]);
+    writeConsumer([]);
+    const unselected = await buildRemoteBundle({
+      manifests: [consumer, ownerManifest],
+      graph: selectedGraph,
+      outdir: join(directory, 'unselected'),
+    });
+    expect(unselected.spec.coordinatorTokenIds).toEqual([]);
+    writeConsumer(['missing']);
+    await expect(
+      buildRemoteBundle({
+        manifests: [consumer, ownerManifest],
+        graph: selectedGraph,
+        outdir: join(directory, 'missing'),
+      })
+    ).rejects.toThrow('exactly one provider for missing');
+    const conflict = join(directory, 'conflict.ts');
+    writeFileSync(
+      conflict,
+      `export const remoteModule = {providers:[${declaration.replace(
+        "exportName:'Owner'",
+        "exportName:'Different'"
+      )}]};`
+    );
+    writeConsumer(['owner']);
+    await expect(
+      buildRemoteBundle({
+        manifests: [consumer, ownerManifest, conflict],
+        graph: selectedGraph,
+        outdir: join(directory, 'conflict'),
+      })
+    ).rejects.toThrow('Conflicting remote providers for owner');
+  } finally {
+    rmSync(directory, { recursive: true });
+  }
+});

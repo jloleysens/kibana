@@ -604,3 +604,61 @@ it('rejects an invalid measurement delay before spawning a child', async () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+it('uses the same declared-needs closure at runtime for a provider-only owner', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'remote-owner-needs-'));
+  const service = new RemoteService(logger, { maxOldGenerationSizeMb: 256 });
+  try {
+    const consumer = join(directory, 'consumer');
+    const owner = join(directory, 'owner');
+    for (const path of [consumer, owner])
+      mkdirSync(join(path, 'server/remote'), { recursive: true });
+    writeFileSync(
+      join(consumer, 'server/remote/index.js'),
+      `module.exports.remoteModule = {
+      providers: [
+        { token: Symbol.for('demo.value'), placement:'executor', modulePath:${JSON.stringify(
+          join(FIXTURE, 'server/remote/executor_value.ts')
+        )}, exportName:'ExecutorValue' },
+        { token: Symbol.for('demo.catalog'), role:'catalog', placement:'executor', modulePath:${JSON.stringify(
+          join(FIXTURE, 'server/remote/catalog.ts')
+        )}, exportName:'DemoCatalog' },
+        { token: Symbol.for('demo.root'), role:'root', placement:'executor', modulePath:${JSON.stringify(
+          join(FIXTURE, 'server/remote/root.ts')
+        )}, exportName:'Root' }
+      ],
+      contributions: [{ kind:Symbol.for('demo.step'), stepType:'demo.echoStep', modulePath:${JSON.stringify(
+        join(FIXTURE, 'server/remote/step.ts')
+      )}, exportName:'EchoStep', needs:[Symbol.for('demo.echo')] }]
+    };`
+    );
+    writeFileSync(
+      join(owner, 'server/remote/index.js'),
+      `module.exports.remoteModule = { providers:[{token:Symbol.for('demo.echo'),placement:'coordinator',modulePath:${JSON.stringify(
+        ECHO_MODULE
+      )},exportName:'Echo'}] };`
+    );
+    service.discover([consumer, owner]);
+    service.register({
+      id: 'demo',
+      root: DemoRootToken,
+      dependencies: [DemoCatalogToken],
+      contributions: [DemoStepKind],
+    });
+    service.bind(EchoToken, () => new Echo());
+    await service.start('in_process');
+    const session = await service.whenReady<{
+      run(request: {
+        scopeId: string;
+        steps: Array<{ type: string }>;
+      }): Promise<{ outputs: Array<{ marker: string }> }>;
+    }>('demo');
+    const scopeId = session.openScope({ request: { id: 'declared-needs' } });
+    const result = await session.stub.run({ scopeId, steps: [{ type: 'demo.echoStep' }] });
+    expect(result.outputs[0].marker).toBe('coordinator');
+    session.closeScope(scopeId);
+  } finally {
+    await service.stop();
+    rmSync(directory, { recursive: true });
+  }
+});
