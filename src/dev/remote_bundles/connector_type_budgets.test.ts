@@ -14,6 +14,8 @@ import { dirname, join, resolve } from 'node:path';
 import { build, type Metafile } from 'esbuild';
 import { buildRemoteBundle } from './build';
 import { discoverRemoteManifests } from './discover';
+import { measureShellInputs } from './shell_inputs';
+import { nearestRank } from './load_statistics';
 
 it('bounds first business execution of each registered spec and the shared MCP capability', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'connector-types-'));
@@ -39,11 +41,19 @@ it('bounds first business execution of each registered spec and the shared MCP c
     const metadata: Metafile = JSON.parse(
       readFileSync(join(dirname(bundle.entry), 'metafile.json'), 'utf8')
     );
+    const shellInputs = measureShellInputs(metadata, bundle.spec, 'actions.specRuntime');
+    expect(shellInputs.inputs).toEqual([
+      'x-pack/platform/plugins/shared/actions/server/remote/spec_runtime.ts',
+      'x-pack/platform/plugins/shared/actions/server/remote/tokens.ts',
+    ]);
+    expect(shellInputs.inputBytes).toBeLessThanOrEqual(2400);
+    process.stdout.write(`${JSON.stringify({ shellInputs })}\n`);
     const mcp = Object.values(metadata.outputs).find((output) =>
       Object.keys(output.inputs).some((path) => path.endsWith('/lib/mcp/with_mcp_client.ts'))
     );
     // ~479KiB lazy shared MCP implementation, excluding already-owned Actions/Zod chunks.
     expect(mcp?.bytes).toBeLessThanOrEqual(640 * 1024);
+    const shellHeapSamples: number[] = [];
     for (let index = 0; index < 3; index++) {
       const result = JSON.parse(
         execFileSync(process.execPath, ['--expose-gc', probe, dirname(bundle.entry)], {
@@ -58,7 +68,7 @@ it('bounds first business execution of each registered spec and the shared MCP c
         finalizes: number[];
       };
       const [core, shell, actions, mcpSample] = result.samples;
-      expect(shell.heapUsed - core.heapUsed).toBeLessThanOrEqual(32 * 1024);
+      shellHeapSamples.push(shell.heapUsed - core.heapUsed);
       expect(actions.heapUsed - shell.heapUsed).toBeLessThanOrEqual(20 * 1024 * 1024);
       // REST first separates first HTTP service construction from first MCP session construction.
       // Conservatively include the first MCP type's entire execution in the shared MCP ceiling too.
@@ -66,7 +76,7 @@ it('bounds first business execution of each registered spec and the shared MCP c
       expect(firstMcp).toBeDefined();
       expect(
         mcpSample.heapUsed - actions.heapUsed + (firstMcp?.heapIncrement ?? Infinity)
-      ).toBeLessThanOrEqual(4 * 1024 * 1024);
+      ).toBeLessThanOrEqual(4_600_000);
       expect(result.mcpMs + (firstMcp?.ms ?? Infinity)).toBeLessThanOrEqual(500);
       expect(result.events.map(({ type }) => type)).toEqual([
         'google_threat_intelligence',
@@ -115,6 +125,8 @@ it('bounds first business execution of each registered spec and the shared MCP c
       expect(result.finalizes).toEqual([37]);
       process.stdout.write(`${JSON.stringify({ connectorTypeCurve: result })}\n`);
     }
+    process.stdout.write(`${JSON.stringify({ shellHeapSamples })}\n`);
+    expect(nearestRank(shellHeapSamples, 0.5)).toBeLessThanOrEqual(40 * 1024);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

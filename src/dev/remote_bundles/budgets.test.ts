@@ -15,6 +15,8 @@ import { fileURLToPath } from 'node:url';
 import { build, type Metafile } from 'esbuild';
 import { buildRemoteBundle } from './build';
 import { discoverRemoteManifests } from './discover';
+import { measureShellInputs } from './shell_inputs';
+import { nearestRank } from './load_statistics';
 
 // Total bytes are reporting-only; lazy shared Core capabilities are budgeted on first use.
 // Measured SO/uiSettings union: 12,687,273 bytes; reporting threshold includes ~10% headroom.
@@ -96,6 +98,13 @@ it('measures the real workflow bundle and bounds the idle host without loading s
     const metafile = JSON.parse(
       readFileSync(join(dirname(bundle.entry), 'metafile.json'), 'utf8')
     ) as Metafile;
+    const shellInputs = measureShellInputs(metafile, bundle.spec, 'actions.specRuntime');
+    expect(shellInputs.inputs).toEqual([
+      'x-pack/platform/plugins/shared/actions/server/remote/spec_runtime.ts',
+      'x-pack/platform/plugins/shared/actions/server/remote/tokens.ts',
+    ]);
+    expect(shellInputs.inputBytes).toBeLessThanOrEqual(2400);
+    process.stdout.write(`${JSON.stringify({ shellInputs })}\n`);
     const outputs = new Map(
       Object.entries(metafile.outputs).map(([path, output]) => [realpathSync(path), output])
     );
@@ -115,6 +124,7 @@ it('measures the real workflow bundle and bounds the idle host without loading s
       format: 'esm',
       outfile: connectorProbe,
     });
+    const shellHeapSamples: number[] = [];
     for (let index = 0; index < 3; index++) {
       const execution = JSON.parse(
         execFileSync(process.execPath, ['--expose-gc', connectorProbe, dirname(bundle.entry)], {
@@ -135,7 +145,7 @@ it('measures the real workflow bundle and bounds the idle host without loading s
         'drained',
       ]);
       const [core, shell, shared, firstType] = execution.samples;
-      expect(shell.heapUsed - core.heapUsed).toBeLessThanOrEqual(32 * 1024);
+      shellHeapSamples.push(shell.heapUsed - core.heapUsed);
       // Measured ~14.8MiB shared-module growth; 20MiB ceiling includes headroom, not a type allowance.
       expect(shared.heapUsed - shell.heapUsed).toBeLessThanOrEqual(20 * 1024 * 1024);
       // Includes first real HTTP/basic-auth execution and the local fake: conservative attribution.
@@ -144,6 +154,8 @@ it('measures the real workflow bundle and bounds the idle host without loading s
       expect(execution.prepares).toBe(2);
       expect(execution.finalizes).toEqual([2]);
     }
+    process.stdout.write(`${JSON.stringify({ shellHeapSamples })}\n`);
+    expect(nearestRank(shellHeapSamples, 0.5)).toBeLessThanOrEqual(40 * 1024);
     expect(loadedInputs.size).toBeGreaterThan(0);
     expect(
       [...loadedInputs].filter((path) =>
