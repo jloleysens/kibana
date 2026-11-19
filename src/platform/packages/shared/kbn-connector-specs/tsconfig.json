@@ -18,6 +18,7 @@
     "target/**/*"
   ],
   "kbn_references": [
+    "@kbn/connector-specs-runtime",
     "@kbn/zod",
     "@kbn/logging",
     "@kbn/licensing-types",

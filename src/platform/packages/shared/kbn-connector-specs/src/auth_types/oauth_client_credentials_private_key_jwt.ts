@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { AUTH_TYPE_METADATA } from '@kbn/connector-specs-runtime';
 import { lazySchema, z } from '@kbn/zod/v4';
 import type { AxiosInstance } from 'axios';
 import type { AuthContext, AuthTypeSpec, GetTokenOpts } from '../connector_spec';
@@ -131,7 +132,7 @@ const resolveAccessToken = async (ctx: AuthContext, secret: AuthSchemaType): Pro
  * the Node `crypto` dependency this shared-common package can't take).
  */
 export const OAuthClientCredentialsPrivateKeyJwt: AuthTypeSpec<AuthSchemaType> = {
-  id: OAUTH_CLIENT_CREDENTIALS_PRIVATE_KEY_JWT_ID,
+  ...AUTH_TYPE_METADATA.oauth_client_credentials_private_key_jwt,
   schema: authSchema,
   configure: async (
     ctx: AuthContext,

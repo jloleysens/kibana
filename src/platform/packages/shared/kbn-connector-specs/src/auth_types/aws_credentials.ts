@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { AUTH_TYPE_METADATA } from '@kbn/connector-specs-runtime';
 import { z, lazySchema } from '@kbn/zod/v4';
 import type { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import type { AuthContext, AuthTypeSpec } from '../connector_spec';
@@ -51,7 +52,7 @@ type AuthSchemaType = z.infer<typeof authSchema>;
  * Use for: Lambda, S3, EC2, SES, and any other AWS service.
  */
 export const AwsCredentialsAuth: AuthTypeSpec<AuthSchemaType> = {
-  id: 'aws_credentials',
+  ...AUTH_TYPE_METADATA.aws_credentials,
   schema: authSchema,
   configure: async (
     _: AuthContext,

@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { AUTH_TYPE_METADATA } from '@kbn/connector-specs-runtime';
 import { z, lazySchema } from '@kbn/zod/v4';
 import type { AuthTypeDefinition } from '../connector_spec';
 import * as i18n from './translations';
@@ -39,6 +40,6 @@ export type BasicWithTlsAuthSchema = z.infer<typeof authSchema>;
  * present a private or self-signed certificate (for example SolarWinds SWIS).
  */
 export const BasicWithTlsAuth: AuthTypeDefinition = {
-  id: BASIC_WITH_TLS_AUTH_ID,
+  ...AUTH_TYPE_METADATA.basic_with_tls,
   schema: authSchema,
 };

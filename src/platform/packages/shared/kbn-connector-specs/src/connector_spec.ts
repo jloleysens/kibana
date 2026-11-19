@@ -21,6 +21,9 @@
  * - Zod for validation and UI derivation
  */
 
+import type { AuthMode, ActionScope } from '@kbn/connector-specs-runtime';
+export type { AuthMode, ActionScope } from '@kbn/connector-specs-runtime';
+export { TEST_CONNECTOR_SUB_ACTION } from '@kbn/connector-specs-runtime';
 import type { z } from '@kbn/zod/v4';
 import type { Logger } from '@kbn/logging';
 import type { CustomHostSettings, ProxySettings, SSLSettings } from '@kbn/actions-utils';
@@ -140,8 +143,6 @@ export interface AuthContext {
   sslSettings: SSLSettings;
 }
 
-export type AuthMode = 'per-user' | 'shared';
-
 export interface AuthTypeDefinition {
   id: string;
   schema: z.ZodObject<Record<string, z.ZodType>>;
@@ -246,7 +247,6 @@ export interface ConnectorPolicies {
  * - `destroy` The action may overwrite, update, or delete existing data
  *             (e.g. resolve an issue, delete a resource, patch a record).
  */
-export type ActionScope = 'read' | 'write' | 'destroy';
 
 export interface ActionDefinition<TInput = unknown, TOutput = unknown, TError = unknown> {
   isTool?: boolean;
@@ -348,8 +348,6 @@ export interface Transformations {
 // ============================================================================
 // TESTING
 // ============================================================================
-
-export const TEST_CONNECTOR_SUB_ACTION = '_test';
 
 /**
  * Success = return data (use `{}` when there's nothing to report); failure = throw.
