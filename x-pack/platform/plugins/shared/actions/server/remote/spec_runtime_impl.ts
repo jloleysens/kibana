@@ -47,6 +47,7 @@ import { buildValidators } from '../sub_action_framework/validators';
 import type { SubActionConnectorType, SubActionServices } from '../sub_action_framework/types';
 import type { PreparedConnector } from './types';
 import type { ActionRuntimeResult } from '../lib/execute_action';
+import type { LocalConnectorExecution } from './local_execution';
 
 const requestSchema = lazySchema(() =>
   z.object({
@@ -81,6 +82,7 @@ export class SpecRuntime implements SpecRuntimeApi {
       readonly actionTypes: Map<string, ActionType>;
     }
   >();
+  private readonly localCompletions = new Map<string, Set<() => Promise<void>>>();
   private readonly drains = new Map<string, Promise<void>>();
   private readonly pending = new Map<string, ConnectorFinalization[]>();
   constructor(private readonly actions: NativeActionsApi) {}
@@ -288,6 +290,114 @@ export class SpecRuntime implements SpecRuntimeApi {
     );
   }
 
+  async runLocal<Config extends Record<string, unknown>, Secrets extends Record<string, unknown>>(
+    connector: SubActionConnectorType<Config, Secrets, SubActionServices>,
+    services: Pick<SubActionServices, 'scopedClusterClient'>,
+    scopeId: string,
+    input: unknown,
+    signal?: AbortSignal
+  ): Promise<LocalConnectorExecution> {
+    const request = requestSchema.parse(input);
+    const subActions: Readonly<Record<string, readonly string[]>> = {
+      '.gen-ai': ['stream'],
+      '.bedrock': ['converse', 'converseStream'],
+      '.gemini': ['invokeStream', 'invokeAIRaw'],
+      '.inference': ['unified_completion_stream'],
+    };
+    if (
+      typeof request.input.subAction !== 'string' ||
+      !subActions[connector.id]?.includes(request.input.subAction)
+    )
+      throw new Error(
+        'Local connector execution only supports original inference adapter subactions'
+      );
+    const controller = new AbortController();
+    const forwardAbort = () => controller.abort(signal?.reason);
+    signal?.addEventListener('abort', forwardAbort, { once: true });
+    if (signal?.aborted) forwardAbort();
+    const cleanup = () => signal?.removeEventListener('abort', forwardAbort);
+    try {
+      return (await this.runPrepared(
+        connector.id,
+        scopeId,
+        input,
+        controller.signal,
+        async (prepared, context, logger, invocationId, markHandler) => {
+          const { configurationUtilities } = context;
+          const executor = buildExecutor({
+            connector,
+            configurationUtilities,
+            logger,
+            signal: controller.signal,
+          });
+          const actionType = {
+            id: connector.id,
+            name: connector.name,
+            minimumLicenseRequired: connector.minimumLicenseRequired,
+            supportedFeatureIds: connector.supportedFeatureIds,
+            validate: buildValidators({
+              connector,
+              configurationUtilities,
+            }) as ActionType['validate'],
+          };
+          const usage = new ConnectorUsageCollector({ logger, connectorId: prepared.actionId });
+          const runtime = await executeAction(
+            {
+              ...prepared,
+              actionType,
+              configurationUtilities,
+              executor: ({ validatedParams, validatedConfig, validatedSecrets }) => {
+                markHandler();
+                recordRemoteTiming('connector_legacy_handler', { stepType: connector.id, scopeId });
+                return executor({
+                  actionId: prepared.actionId,
+                  params: {
+                    ...(validatedParams as import('../sub_action_framework/types').ExecutorParams),
+                    subActionParams: {
+                      ...(validatedParams.subActionParams as object),
+                      signal: controller.signal,
+                    },
+                  },
+                  config: validatedConfig as Config,
+                  secrets: validatedSecrets as Secrets,
+                  configurationUtilities,
+                  services: {
+                    ...services,
+                    inferenceStreamingFacts: prepared.inferenceStreamingFacts,
+                    savedObjectsClient: createConnectorDashboardStore(
+                      this.actions,
+                      scopeId,
+                      invocationId
+                    ),
+                    connectorTokenClient: createConnectorTokenStore(
+                      this.actions,
+                      scopeId,
+                      invocationId
+                    ),
+                  },
+                  logger,
+                  connectorUsageCollector: usage,
+                  signal: controller.signal,
+                  connectorVersion: prepared.connectorVersion,
+                });
+              },
+            },
+            { TaskErrorSource, getErrorSource, isConnectorAuthorizationError }
+          );
+          return { ...runtime, requestBodyBytes: usage.getRequestBodyByte() };
+        },
+        {
+          abort: () =>
+            controller.abort(new Error('Local connector stream closed at run completion')),
+          cleanup,
+        }
+      )) as Promise<LocalConnectorExecution>;
+    } catch (error) {
+      cleanup();
+      throw error;
+    }
+  }
+
   private async runPrepared(
     type: string,
     scopeId: string,
@@ -302,7 +412,8 @@ export class SpecRuntime implements SpecRuntimeApi {
       logger: Logger,
       invocationId: string,
       markHandler: () => void
-    ) => Promise<ActionRuntimeResult>
+    ) => Promise<ActionRuntimeResult>,
+    local?: { abort(): void; cleanup(): void }
   ): Promise<unknown> {
     signal?.throwIfAborted();
     const request = requestSchema.parse(input);
@@ -310,7 +421,10 @@ export class SpecRuntime implements SpecRuntimeApi {
       throw new Error('Native connector type mismatch');
     const invocationId = randomUUID();
     const preparation = await this.actions.prepare(scopeId, invocationId, request);
-    if ('result' in preparation) return preparation.result;
+    if ('result' in preparation) {
+      local?.cleanup();
+      return local ? { result: preparation.result, finalize: async () => {} } : preparation.result;
+    }
     const { prepared } = preparation;
     let queued = false;
     let handlerStarted = false;
@@ -338,6 +452,23 @@ export class SpecRuntime implements SpecRuntimeApi {
       const runtime = await execute(prepared, context, logger, invocationId, () => {
         handlerStarted = true;
       });
+      if (local) {
+        const { createLocalConnectorExecution } = await import('./local_execution');
+        const execution = await createLocalConnectorExecution({
+          runtime: { ...runtime, handlerStarted },
+          actionTypeId: type,
+          logger,
+          signal,
+          abortExecution: local.abort,
+          onFinalized: local.cleanup,
+          enqueue,
+        });
+        const completions = this.localCompletions.get(scopeId) ?? new Set();
+        completions.add(execution.finalize);
+        this.localCompletions.set(scopeId, completions);
+        queued = true;
+        return execution;
+      }
       enqueue({ ...runtime, handlerStarted });
       recordRemoteTiming('connector_handler', {
         stepType: type,
@@ -377,12 +508,18 @@ export class SpecRuntime implements SpecRuntimeApi {
       await this.drain(scopeId);
     } finally {
       this.pending.delete(scopeId);
+      this.localCompletions.delete(scopeId);
       this.drains.delete(scopeId);
       this.contexts.delete(scopeId);
     }
   }
 
   async drain(scopeId: string): Promise<void> {
+    const local = this.localCompletions.get(scopeId);
+    if (local) {
+      await Promise.all([...local].map((finalize) => finalize()));
+      this.localCompletions.delete(scopeId);
+    }
     const existing = this.drains.get(scopeId);
     if (existing) return existing;
     const pending = this.pending.get(scopeId) ?? [];

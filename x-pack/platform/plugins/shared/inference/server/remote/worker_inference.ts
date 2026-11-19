@@ -13,6 +13,7 @@ import {
   GEN_AI_SETTINGS_DEFAULT_AI_CONNECTOR_DEFAULT_ONLY,
 } from '@kbn/management-settings-ids';
 import type {
+  ActionsClientProvider,
   InferenceClientCreateOptions,
   InferenceBoundClientCreateOptions,
   InferenceServerClient,
@@ -38,6 +39,7 @@ export const createWorkerInference = ({
   internalClient,
   userClient,
   logger,
+  executeAction,
 }: {
   scopeId: string;
   policy: InferencePolicy;
@@ -45,6 +47,9 @@ export const createWorkerInference = ({
   internalClient: ElasticsearchClient;
   userClient: ElasticsearchClient;
   logger: Logger;
+  executeAction?: Awaited<
+    ReturnType<ActionsClientProvider['getActionsClientWithRequest']>
+  >['execute'];
 }) => {
   const actions = {
     getActionsClientWithRequest: async () => ({
@@ -52,12 +57,13 @@ export const createWorkerInference = ({
         if ('error' in policy.stackConnectors) throw new Error(policy.stackConnectors.error);
         return policy.stackConnectors;
       },
-      // Admission below keeps legacy Actions execution at its existing placement until lane A lands it.
-      execute: async (): Promise<never> => {
-        throw new UncarvedInferenceBacking(
-          'Legacy inference connector execution is not carved out'
-        );
-      },
+      execute:
+        executeAction ??
+        (async (): Promise<never> => {
+          throw new UncarvedInferenceBacking(
+            'Legacy inference connector execution is not carved out'
+          );
+        }),
     }),
   };
   const connectorOptions = { actions, esClient: internalClient, logger };
@@ -122,7 +128,7 @@ export const createWorkerInference = ({
         : InferenceServerClient,
     getChatModel: async (input: Parameters<InferenceServerStart['getChatModel']>[0]) => {
       const connector = await getById(input.connectorId, input.request);
-      if (!connector.isInferenceEndpoint)
+      if (!connector.isInferenceEndpoint && !executeAction)
         throw new UncarvedInferenceBacking(
           'Legacy inference connector execution is not carved out'
         );

@@ -30,4 +30,15 @@ export class GeminiConnector {
       context.signal
     );
   }
+  async runLocal(
+    ...[scopeId, input, context]: Parameters<GeminiConnector['run']>
+  ): ReturnType<SpecRuntime['runLocal']> {
+    return this.runtime.runLocal(
+      getConnectorType<SubActionServices>(),
+      { scopedClusterClient: this.data.user(scopeId) },
+      scopeId,
+      input,
+      context.signal
+    );
+  }
 }

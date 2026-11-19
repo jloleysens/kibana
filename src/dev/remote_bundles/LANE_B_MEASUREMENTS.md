@@ -107,3 +107,29 @@ doc; deleted only with explicit supervisor approval. Normal AlertZero startup
 installs the original exact-name template; correctly configured nonempty proofs
 then pass both backends. Never delete an unknown index or relax the mapping guard
 just to make this harness pass.
+
+## Legacy inference execution addition
+
+AI3 also uses the original legacy LLM executors through lane A's authorized
+prepare/secrets/finalize pipeline. Additive `runLocal` returns live streams only
+to in-worker inference adapters; ordinary connector `runLegacy` behavior unchanged.
+Original token tracking runs once, after consumption/abort/error its JSON-safe
+usage joins the existing durable completion drain. Run Node-native stream tests
+separately (the general tooling project intentionally uses JSDOM):
+
+```sh
+node scripts/jest src/dev/remote_bundles/node_tests --runInBand
+```
+
+Those two serialized-backend tests use explicitly fake scoped Actions preparation
+and real original model/connector/token code, not production authorization proof.
+Production auth/secrets/PID/persisted outcomes are the separate live workflow
+proofs. The original workflow AI handlers use `model.invoke` (non-streaming);
+streaming coverage deliberately calls original `model.stream`, never changes
+workflow semantics to manufacture a streaming workflow API.
+
+Reviewed shell source growth:2188B ->2857B (laneA runLegacy/types) ->2996B (additive
+runLocal). Source ceiling3300B; same exact two-input allowlist;40KiB median post-GC
+shell heap unchanged (measured33.6–38.8KiB). Source cap may grow only for explicit
+reviewed API methods with this unchanged allowlist. Any new input requires a
+source fix, not a higher cap. Both token-tracker imports remain dynamic.

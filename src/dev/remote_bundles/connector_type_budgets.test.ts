@@ -46,7 +46,7 @@ it('bounds first business execution of each registered spec and the shared MCP c
       'x-pack/platform/plugins/shared/actions/server/remote/spec_runtime.ts',
       'x-pack/platform/plugins/shared/actions/server/remote/tokens.ts',
     ]);
-    expect(shellInputs.inputBytes).toBeLessThanOrEqual(2400);
+    expect(shellInputs.inputBytes).toBeLessThanOrEqual(3300);
     process.stdout.write(`${JSON.stringify({ shellInputs })}\n`);
     const mcp = Object.values(metadata.outputs).find((output) =>
       Object.keys(output.inputs).some((path) => path.endsWith('/lib/mcp/with_mcp_client.ts'))

@@ -5,6 +5,8 @@
  * 2.0.
  */
 
+import type { SpecRuntime } from '@kbn/actions-plugin/server/remote/spec_runtime';
+import type { LocalConnectorExecution } from '@kbn/actions-plugin/server/remote/local_execution';
 import type { Logger } from '@kbn/core/server';
 import { recordRemoteHeap, recordRemoteTiming } from '@kbn/core-remote-common';
 import type { RemoteWorkflowStep } from '@kbn/workflows-extensions/server';
@@ -28,13 +30,14 @@ const logger: Logger = {
   isLevelEnabled: () => false,
 };
 
-/** Only ES-endpoint-backed calls are admitted; other backings keep their existing placement. */
+/** Runs original inference with scoped native ES and original local connector execution. */
 export const runInferenceStep = async ({
   scopeId,
   context,
   policyApi,
   featuresApi,
   data,
+  connectors,
   runHandler,
 }: {
   scopeId: string;
@@ -42,6 +45,7 @@ export const runInferenceStep = async ({
   policyApi: InferencePolicyApi;
   featuresApi: InferenceFeaturesApi;
   data: InferenceDataPlane;
+  connectors?: SpecRuntime;
   runHandler: (services: InferenceWorkflowServices) => Promise<unknown>;
 }): Promise<unknown> => {
   const handlerContext = context.handlerContext;
@@ -67,6 +71,7 @@ export const runInferenceStep = async ({
   );
   const [{ createWorkerInference, UncarvedInferenceBacking }, { parseMaxStepSize }] =
     await Promise.all([implementation, import('../steps/ai/utils/parse_max_step_size')]);
+  const localExecutions: LocalConnectorExecution[] = [];
   const inference = createWorkerInference({
     scopeId,
     policy,
@@ -74,6 +79,22 @@ export const runInferenceStep = async ({
     internalClient: data.internal(scopeId),
     userClient: data.user(scopeId),
     logger,
+    ...(connectors
+      ? {
+          executeAction: async (options) => {
+            const { executeLegacyInferenceAction } = await import('./execute_legacy_action');
+            const execution = await executeLegacyInferenceAction({
+              options,
+              runtime: connectors,
+              data,
+              scopeId,
+              signal: handlerContext.abortSignal,
+            });
+            localExecutions.push(execution);
+            return execution.result;
+          },
+        }
+      : {}),
   });
   recordRemoteHeap('INFERENCE_SERVICE_AFTER', scopeId);
   recordRemoteTiming('inference_service_first_use', {
@@ -101,5 +122,7 @@ export const runInferenceStep = async ({
   } catch (error) {
     if (error instanceof UncarvedInferenceBacking) return fallback();
     throw error;
+  } finally {
+    await Promise.all(localExecutions.map((execution) => execution.finalize()));
   }
 };

@@ -90,8 +90,26 @@ export const getWorkerConnectorDescriptors = (
     isMissingSecrets: connector.isMissingSecrets,
     referencedByCount: connector.referencedByCount,
     isSystemAction: connector.isSystemAction,
-    config:
-      connector.actionTypeId === '.inference'
-        ? { inferenceId: connector.config?.inferenceId, taskType: connector.config?.taskType }
-        : {},
+    config: {
+      ...Object.fromEntries(
+        [
+          'apiProvider',
+          'defaultModel',
+          'contextWindowLength',
+          'temperature',
+          'enableNativeFunctionCalling',
+          'inferenceId',
+          'taskType',
+        ].flatMap((key) => {
+          const value = connector.config?.[key];
+          return ['string', 'number', 'boolean'].includes(typeof value) ? [[key, value]] : [];
+        })
+      ),
+      ...(connector.config?.providerConfig &&
+      typeof connector.config.providerConfig === 'object' &&
+      'model_id' in connector.config.providerConfig &&
+      typeof connector.config.providerConfig.model_id === 'string'
+        ? { providerConfig: { model_id: connector.config.providerConfig.model_id } }
+        : {}),
+    },
   }));

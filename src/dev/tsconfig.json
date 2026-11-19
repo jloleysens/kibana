@@ -9,6 +9,7 @@
     "@kbn/actions-plugin",
     "@kbn/cases-plugin",
     "@kbn/inference-plugin",
+    "@kbn/inference-workflows-plugin",
     "@kbn/workflows-execution-engine",
     "@kbn/workflows-extensions",
     "@kbn/stack-connectors-plugin",

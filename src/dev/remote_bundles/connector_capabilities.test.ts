@@ -122,7 +122,7 @@ it('bounds the shared native Actions capability without importing any connector 
       },
     ],
   });
-  expect(trackerImports).toEqual(['dynamic-import']);
+  expect(trackerImports).toEqual(['dynamic-import', 'dynamic-import']);
   // Measured 5,608,160B standalone; ~21% headroom, independent of per-type budgets.
   expect(
     result.outputFiles.reduce((total, file) => total + file.contents.length, 0)

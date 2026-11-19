@@ -103,7 +103,7 @@ it('measures the real workflow bundle and bounds the idle host without loading s
       'x-pack/platform/plugins/shared/actions/server/remote/spec_runtime.ts',
       'x-pack/platform/plugins/shared/actions/server/remote/tokens.ts',
     ]);
-    expect(shellInputs.inputBytes).toBeLessThanOrEqual(2400);
+    expect(shellInputs.inputBytes).toBeLessThanOrEqual(3300);
     process.stdout.write(`${JSON.stringify({ shellInputs })}\n`);
     const outputs = new Map(
       Object.entries(metafile.outputs).map(([path, output]) => [realpathSync(path), output])

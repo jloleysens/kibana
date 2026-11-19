@@ -121,3 +121,37 @@ it('exports only connector selection metadata, never unrelated config or injecte
   expect(descriptors[1].config).toEqual({ inferenceId: 'endpoint', taskType: 'chat_completion' });
   expect(JSON.stringify(descriptors)).not.toMatch(/not-exported|secrets|apiUrl|apiKey/);
 });
+
+it('preserves only public scalar model-selection facts needed by original legacy adapters', () => {
+  const [descriptor] = getWorkerConnectorDescriptors([
+    {
+      id: 'legacy',
+      name: 'Legacy',
+      actionTypeId: '.gen-ai',
+      config: {
+        apiProvider: 'OpenAI',
+        defaultModel: 'gpt-4o',
+        contextWindowLength: 4096,
+        temperature: 0.2,
+        enableNativeFunctionCalling: true,
+        headers: { authorization: 'secret' },
+        apiUrl: 'secret',
+        providerConfig: { model_id: 'model', api_key: 'secret' },
+      },
+      isPreconfigured: false,
+      isDeprecated: false,
+      isConnectorTypeDeprecated: false,
+      isSystemAction: false,
+      referencedByCount: 0,
+    },
+  ]);
+  expect(descriptor.config).toEqual({
+    apiProvider: 'OpenAI',
+    defaultModel: 'gpt-4o',
+    contextWindowLength: 4096,
+    temperature: 0.2,
+    enableNativeFunctionCalling: true,
+    providerConfig: { model_id: 'model' },
+  });
+  expect(JSON.stringify(descriptor)).not.toMatch(/secret|headers|authorization|api_key|apiUrl/);
+});

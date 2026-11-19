@@ -6,6 +6,8 @@
  */
 
 import { inject } from 'inversify';
+import { SpecRuntimeToken } from '@kbn/actions-plugin/server/remote/tokens';
+import type { SpecRuntime } from '@kbn/actions-plugin/server/remote/spec_runtime';
 import type { RemoteWorkflowStep } from '@kbn/workflows-extensions/server';
 import {
   InferencePolicyToken,
@@ -24,7 +26,8 @@ export class AiClassifyStep implements RemoteWorkflowStep {
   constructor(
     @inject(InferencePolicyToken) private readonly policyApi: InferencePolicyApi,
     @inject(InferenceFeaturesToken) private readonly featuresApi: InferenceFeaturesApi,
-    @inject(WorkflowDataPlaneToken) private readonly data: InferenceDataPlane
+    @inject(WorkflowDataPlaneToken) private readonly data: InferenceDataPlane,
+    @inject(SpecRuntimeToken) private readonly connectors: SpecRuntime
   ) {}
 
   async run(...args: Parameters<RemoteWorkflowStep['run']>): ReturnType<RemoteWorkflowStep['run']> {
@@ -35,6 +38,7 @@ export class AiClassifyStep implements RemoteWorkflowStep {
       policyApi: this.policyApi,
       featuresApi: this.featuresApi,
       data: this.data,
+      connectors: this.connectors,
       runHandler: async (services) => {
         const handler = createAiClassifyHandler(async () => services);
         return handler(context.handlerContext as Parameters<typeof handler>[0]);

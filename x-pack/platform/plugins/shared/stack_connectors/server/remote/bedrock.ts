@@ -30,4 +30,15 @@ export class BedrockConnector {
       context.signal
     );
   }
+  async runLocal(
+    ...[scopeId, input, context]: Parameters<BedrockConnector['run']>
+  ): ReturnType<SpecRuntime['runLocal']> {
+    return this.runtime.runLocal(
+      getConnectorType<SubActionServices>(),
+      { scopedClusterClient: this.data.user(scopeId) },
+      scopeId,
+      input,
+      context.signal
+    );
+  }
 }
