@@ -358,3 +358,22 @@ it('accepts only lease-bound late OAuth persistence after the requesting scope d
   });
   await expect(api.token('scope', 'invocation', update)).rejects.toThrow('lease');
 });
+
+it('starts late OAuth route retention only after the requesting scope closes', async () => {
+  const timer = jest.spyOn(
+    jest.requireActual<typeof import('node:timers')>('node:timers'),
+    'setTimeout'
+  );
+  const { api, input, controller } = setup();
+  try {
+    await api.prepare('scope', 'invocation', input);
+    mockToken.mockResolvedValue({ hasErrors: false, connectorToken: null, refreshLease: 'lease' });
+    await api.token('scope', 'invocation', { operation: 'beginRefresh', id: 'token' });
+    expect(timer.mock.calls.some(([, duration]) => duration === 125_000)).toBe(false);
+    controller.abort();
+    expect(timer.mock.calls.some(([, duration]) => duration === 125_000)).toBe(true);
+    await api.token('scope', 'invocation', { operation: 'endRefresh', refreshLease: 'lease' });
+  } finally {
+    timer.mockRestore();
+  }
+});

@@ -579,6 +579,7 @@ it('bounds an abandoned OAuth transaction and logs the lost-response risk before
     await first.execute({ operation: 'acquireRefreshLock' });
     await first.execute({ operation: 'get', options: {} });
     const lease = await first.execute({ operation: 'beginRefresh', id: stored.id ?? '' });
+    expect(timer.mock.calls.some(([, duration]) => duration === 120_000)).toBe(false);
     controller.abort();
     let acquired = false;
     const acquisition = next.execute({ operation: 'acquireRefreshLock' }).then(() => {

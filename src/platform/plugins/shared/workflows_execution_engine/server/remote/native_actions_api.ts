@@ -50,7 +50,7 @@ export class NativeActions implements NativeActionsApi {
       readonly scopeId: string;
       readonly invocationId: string;
       readonly execution: PreparedExecution;
-      readonly timeout: NodeJS.Timeout;
+      readonly cleanup: () => void;
     }
   >();
   constructor(
@@ -190,7 +190,7 @@ export class NativeActions implements NativeActionsApi {
           return await lease.execution.token(request);
         } finally {
           if (request.operation === 'endRefresh') {
-            clearTimeout(lease.timeout);
+            lease.cleanup();
             this.refreshLeases.delete(request.refreshLease);
           }
         }
@@ -199,12 +199,22 @@ export class NativeActions implements NativeActionsApi {
       this.scopes.get<KibanaRequest>(scopeId);
       const execution = this.scopesState.get(scopeId)?.pending.get(invocationId);
       if (!execution) throw new Error('Unknown native connector invocation');
+      const signal = this.scopes.getAbortSignal(scopeId);
       const response = await execution.token(request);
       if (request.operation === 'beginRefresh' && response.refreshLease) {
         const id = response.refreshLease;
-        const timeout = setTimeout(() => this.refreshLeases.delete(id), 125_000);
-        timeout.unref();
-        this.refreshLeases.set(id, { scopeId, invocationId, execution, timeout });
+        let timeout: NodeJS.Timeout | undefined;
+        const onAbort = () => {
+          timeout = setTimeout(() => this.refreshLeases.delete(id), 125_000);
+          timeout.unref();
+        };
+        const cleanup = () => {
+          clearTimeout(timeout);
+          signal.removeEventListener('abort', onAbort);
+        };
+        this.refreshLeases.set(id, { scopeId, invocationId, execution, cleanup });
+        signal.addEventListener('abort', onAbort, { once: true });
+        if (signal.aborted) onAbort();
       }
       return response;
     }, this.logger);

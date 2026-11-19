@@ -26,7 +26,7 @@ export class ConnectorTokenState {
   private refreshLease?: {
     id: string;
     token: string;
-    timeout: NodeJS.Timeout;
+    timeout?: NodeJS.Timeout;
     persistence?: Promise<StoredToken>;
     settled?: boolean;
   };
@@ -69,15 +69,7 @@ export class ConnectorTokenState {
             'OAuth refresh transaction requires a held lock and invocation-local read'
           );
         const token = randomUUID();
-        // A lost worker cannot retain the shared refresh mutex indefinitely.
-        const timeout = setTimeout(() => {
-          this.logger?.error(
-            'OAuth refresh transaction expired before completion; credentials may be lost'
-          );
-          this.endRefreshLease();
-        }, 120_000);
-        timeout.unref();
-        this.refreshLease = { id: request.id, token, timeout };
+        this.refreshLease = { id: request.id, token };
         return { hasErrors: false, connectorToken: null, refreshLease: token };
       }
       case 'endRefresh':
@@ -278,6 +270,16 @@ export class ConnectorTokenState {
     this.signal.removeEventListener('abort', this.onAbort);
     this.rejectRefreshLock?.(new Error('Connector token invocation is closed'));
     this.rejectRefreshLock = undefined;
+    if (this.refreshLease && !this.refreshLease.persistence && !this.refreshLease.timeout) {
+      // Only a closed invocation needs a lost-worker deadline, never a live refresh.
+      this.refreshLease.timeout = setTimeout(() => {
+        this.logger?.error(
+          'OAuth refresh transaction expired before completion; credentials may be lost'
+        );
+        this.endRefreshLease();
+      }, 120_000);
+      this.refreshLease.timeout.unref();
+    }
     if (this.refreshLease?.settled) this.clear();
     if (!this.earsRefresh && !this.refreshLease) this.clear();
   }
