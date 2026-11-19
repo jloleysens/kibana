@@ -309,6 +309,15 @@ const main = async (): Promise<void> => {
       ['ai.attachment.delete', { conversation_id: 'conversation', attachment_id: 'text' }],
       ['ai.agent', { message: 'Original agent request' }],
       [
+        'nightshift.composeHydrateNotifications',
+        {
+          writers: [
+            { directory: '/workspace/memories', notification: 'Native memory', completed: true },
+          ],
+          recalled_ids: ['memory'],
+        },
+      ],
+      [
         'search.rerank',
         {
           rerank_text: 'Second',
@@ -362,6 +371,13 @@ const main = async (): Promise<void> => {
       };
       assert(!result.error, result.error?.message);
       assert(result.output);
+      if (type === 'nightshift.composeHydrateNotifications')
+        assert.deepEqual(result.output, {
+          model_context: '<system_update>\nNative memory\n</system_update>',
+          workflow_context: {
+            'nightshift.semantic_memory.recall': { version: 1, data: { recalled_ids: ['memory'] } },
+          },
+        });
       if (type === 'search.rerank')
         assert.deepEqual(result.output, [
           { title: 'Second' },

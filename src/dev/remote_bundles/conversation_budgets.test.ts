@@ -73,6 +73,7 @@ it('bounds original native conversation client first business execution and conv
         'ai.attachment.list',
         'ai.attachment.delete',
         'ai.agent',
+        'nightshift.composeHydrateNotifications',
         'search.rerank',
       ]);
       for (const event of result.events) {

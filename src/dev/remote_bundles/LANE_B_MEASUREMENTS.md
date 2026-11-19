@@ -29,7 +29,7 @@ directory; retains failed attempts. Workflows, Cases, Notes, fingerprints and
 outcome docs remain for independent review; all identifiers have a lane-B prefix.
 
 `--smoke` runs only three instrumented profiles (ordinary Kibana, child_process,
-in_process), two runs per family: **42 real persisted runs**. Not a timing claim.
+in_process), two runs per family: **48 real persisted runs**. Not a timing claim.
 The full matrix intentionally runs serially and restarts Kibana many times.
 
 ## Fixed method / outputs
@@ -71,7 +71,7 @@ The full matrix intentionally runs serially and restarts Kibana many times.
   `finalTimingClaims:false` is deliberate: a harness cannot certify a quiet laptop.
 - Separate instrumented memory/callback profiles: baseline, child_process and
   in_process, fixed family order extensions -> Cases -> inference -> conversation
-  -> attachments -> rerank -> agent. Per-step Core
+  -> attachments -> rerank -> agent -> nightshift-compose. Per-step Core
   heap markers + 100ms per-process RSS/heap/cumulative process CPU samples.
   Acknowledged SIGUSR2 samples force GC in **each owned process** before/after each
   run. `memory-curve.jsonl` retains individual PIDs and combined Kibana+worker RSS/
@@ -217,3 +217,12 @@ the real native normalization/projection, not to claim LLM/resource authz proof.
 Live harness performs the original agent execution through real ES inference to
 the loopback fake, independently reads conversation/event data and allowlisted
 stored execution provenance, and asserts generic coordinator invoke0.
+
+## Nightshift: partial family, not sixteen-step coverage
+
+The additional Nightshift workload executes **only** the original pure
+`nightshift.composeHydrateNotifications` handler (same function as the original
+authoring definition), nonempty writer content plus an incomplete writer and
+recalled-memory IDs. No coordinator business callback. Fifteen other Nightshift
+types remain unfinished. The harness's `nightshift` family label must not be
+read as full Nightshift service coverage.

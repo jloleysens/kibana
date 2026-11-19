@@ -14,11 +14,25 @@ export type LaneBFamily =
   | 'conversation'
   | 'attachments'
   | 'rerank'
-  | 'agent';
+  | 'agent'
+  | 'nightshift';
 
 /** Uses the same original business steps for ordinary Kibana and each worker backend. */
 export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: string) => {
   const steps = {
+    nightshift: [
+      {
+        name: 'compose',
+        type: 'nightshift.composeHydrateNotifications',
+        with: {
+          writers: [
+            { directory: '/workspace/memories', notification: id, completed: true },
+            { directory: '/workspace/cortex', completed: false },
+          ],
+          recalled_ids: [id],
+        },
+      },
+    ],
     agent: [
       {
         name: 'agent',
@@ -262,6 +276,11 @@ export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: s
     ],
   }[family];
   const document = {
+    nightshift: {
+      modelContext: '{{ steps.compose.output.model_context }}',
+      recalledId:
+        '{{ steps.compose.output.workflow_context["nightshift.semantic_memory.recall"].data.recalled_ids[0] }}',
+    },
     agent: {
       conversationId: '{{ steps.agent.output.conversation_id }}',
       message: '{{ steps.agent.output.message }}',

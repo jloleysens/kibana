@@ -200,6 +200,8 @@ const execute = async (
   };
   const persisted = await api<{
     _source: {
+      modelContext?: string;
+      recalledId?: string;
       message?: string;
       tokens?: string;
       caseId?: string;
@@ -220,7 +222,13 @@ const execute = async (
     };
   }>(`${es}/lane-b-quiet-outcomes/_doc/${step('persist')._id}`);
   save(join(directory, `${workflowExecutionId}-business.json`), persisted);
-  if (family === 'agent') {
+  if (family === 'nightshift') {
+    assert.equal(
+      persisted._source.modelContext,
+      `<system_update>\n${id}\n\nMaterialization of /workspace/cortex/ encountered an error; its contents may be incomplete or missing.\n</system_update>`
+    );
+    assert.equal(persisted._source.recalledId, id);
+  } else if (family === 'agent') {
     assert.equal(persisted._source.message, 'Lane B verified response');
     assert.equal(persisted._source.conversationId, workflowExecutionId);
     const conversation = await api<{
@@ -617,7 +625,16 @@ export const runLaneBMeasurements = async (): Promise<void> => {
     for (const cell of smoke ? memoryCells : [...timingCells, ...memoryCells]) {
       const families: LaneBFamily[] =
         cell.memory || cell.delayMs === 0
-          ? ['extensions', 'cases', 'inference', 'conversation', 'attachments', 'rerank', 'agent']
+          ? [
+              'extensions',
+              'cases',
+              'inference',
+              'conversation',
+              'attachments',
+              'rerank',
+              'agent',
+              'nightshift',
+            ]
           : ['extensions', 'cases'];
       const groups = cell.memory ? [families] : families.map((family) => [family]);
       for (const group of groups)
