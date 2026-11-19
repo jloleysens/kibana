@@ -66,6 +66,19 @@ const main = async (): Promise<void> => {
     response.setHeader('content-type', 'application/json');
     response.setHeader('x-elastic-product', 'Elasticsearch');
     const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+    if (path.includes('/_inference/') && request.method === 'POST') {
+      const input = JSON.parse(body);
+      assert.deepEqual(input.input, ['First', 'Second']);
+      response.end(
+        JSON.stringify({
+          rerank: [
+            { index: 1, relevance_score: 0.9 },
+            { index: 0, relevance_score: 0.1 },
+          ],
+        })
+      );
+      return;
+    }
     if (path.includes('/_doc/') && request.method === 'GET') {
       const id = path.split('/_doc/')[1];
       if (id !== 'prime' && !exists) {
@@ -277,6 +290,15 @@ const main = async (): Promise<void> => {
       ['ai.attachment.read', { conversation_id: 'conversation', attachment_id: 'text' }],
       ['ai.attachment.list', { conversation_id: 'conversation' }],
       ['ai.attachment.delete', { conversation_id: 'conversation', attachment_id: 'text' }],
+      [
+        'search.rerank',
+        {
+          rerank_text: 'Second',
+          data: [{ title: 'First' }, { title: 'Second' }, { title: 'Tail' }],
+          fields: [['title']],
+          rank_window_size: 2,
+        },
+      ],
     ] as const) {
       const start = sample();
       const time = performance.now();
@@ -291,7 +313,7 @@ const main = async (): Promise<void> => {
       const context: StepHandlerContext = {
         input,
         rawInput: input,
-        config: {},
+        config: type === 'search.rerank' ? { inference_id: 'fixture-rerank' } : {},
         abortSignal: new AbortController().signal,
         stepId: type,
         stepType: type,
@@ -322,6 +344,12 @@ const main = async (): Promise<void> => {
       };
       assert(!result.error, result.error?.message);
       assert(result.output);
+      if (type === 'search.rerank')
+        assert.deepEqual(result.output, [
+          { title: 'Second' },
+          { title: 'First' },
+          { title: 'Tail' },
+        ]);
       const end = sample();
       events.push({
         type,

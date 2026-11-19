@@ -7,11 +7,36 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-export type LaneBFamily = 'extensions' | 'cases' | 'inference' | 'conversation' | 'attachments';
+export type LaneBFamily =
+  | 'extensions'
+  | 'cases'
+  | 'inference'
+  | 'conversation'
+  | 'attachments'
+  | 'rerank';
 
 /** Uses the same original business steps for ordinary Kibana and each worker backend. */
 export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: string) => {
   const steps = {
+    rerank: [
+      {
+        name: 'rerank',
+        type: 'search.rerank',
+        inference_id: `${endpoint}-rerank`,
+        with: {
+          rerank_text: id,
+          data: [
+            { title: 'First', retained: 1 },
+            { title: 'Second', retained: 2 },
+            { title: 'Tail', retained: 3 },
+          ],
+          fields: [['title']],
+          rank_window_size: 2,
+          max_input_field_length: 10,
+          max_input_total_length: 20,
+        },
+      },
+    ],
     extensions: [
       {
         name: 'entities',
@@ -212,6 +237,12 @@ export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: s
     ],
   }[family];
   const document = {
+    rerank: {
+      first: '{{ steps.rerank.output[0].title }}',
+      second: '{{ steps.rerank.output[1].title }}',
+      tail: '{{ steps.rerank.output[2].title }}',
+      retained: '{{ steps.rerank.output[0].retained }}',
+    },
     attachments: {
       conversationId: '{{ steps.create.output.conversation_id }}',
       content: '{{ steps.read.output.data.content }}',

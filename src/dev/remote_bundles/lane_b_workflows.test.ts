@@ -10,7 +10,7 @@
 import { Liquid } from 'liquidjs';
 import { createLaneBWorkflow } from './lane_b_workflows';
 
-it.each(['extensions', 'cases', 'inference', 'conversation', 'attachments'] as const)(
+it.each(['extensions', 'cases', 'inference', 'conversation', 'attachments', 'rerank'] as const)(
   '%s retains a real persisted outcome',
   (family) => {
     const workflow = createLaneBWorkflow(family, 'proof', 'endpoint');

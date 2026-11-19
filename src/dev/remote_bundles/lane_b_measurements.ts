@@ -208,6 +208,10 @@ const execute = async (
       previousContent?: string;
       version?: string;
       deleted?: string;
+      first?: string;
+      second?: string;
+      tail?: string;
+      retained?: string;
       entityId?: string;
       prompt?: string;
       category?: string;
@@ -227,6 +231,20 @@ const execute = async (
     );
     assert.equal(comment.comment, id);
     assert.equal(persisted._source.caseId, caseId);
+  } else if (family === 'rerank') {
+    assert.equal(persisted._source.first, 'Second');
+    assert.equal(persisted._source.second, 'First');
+    assert.equal(persisted._source.tail, 'Tail');
+    assert.equal(persisted._source.retained, '2');
+    const fakeRequests = lines<{ query: string; texts: string[] }>(
+      join(directory, '..', 'rerank-fake-requests.jsonl')
+    ).filter(({ query }) => query === id);
+    assert(
+      fakeRequests.length > 0,
+      'The original rerank handler must reach the real ES inference endpoint and local fake'
+    );
+    for (const request of fakeRequests) assert.deepEqual(request.texts, ['First', 'Second']);
+    save(join(directory, `${workflowExecutionId}-rerank-requests.json`), fakeRequests);
   } else if (family === 'attachments') {
     const conversationId = persisted._source.conversationId;
     assert(conversationId);
@@ -422,9 +440,25 @@ export const runLaneBMeasurements = async (): Promise<void> => {
   const fake = createServer(async (request, response) => {
     let text = '';
     for await (const chunk of request) text += chunk;
-    const body: { stream?: boolean; tools?: Array<{ function: { name: string } }> } = JSON.parse(
-      text || '{}'
-    );
+    const body: {
+      stream?: boolean;
+      tools?: Array<{ function: { name: string } }>;
+      texts?: string[];
+      query?: string;
+    } = JSON.parse(text || '{}');
+    if (request.url === '/rerank') {
+      assert(Array.isArray(body.texts));
+      appendFileSync(join(output, 'rerank-fake-requests.jsonl'), `${JSON.stringify(body)}\n`);
+      response.setHeader('content-type', 'application/json');
+      response.end(
+        JSON.stringify(
+          body.texts
+            .map((content, index) => ({ index, score: index + 0.1, text: content }))
+            .reverse()
+        )
+      );
+      return;
+    }
     const tool = body.tools?.[0]?.function;
     const message = tool
       ? {
@@ -485,6 +519,7 @@ export const runLaneBMeasurements = async (): Promise<void> => {
   });
   let child: ChildProcess | undefined;
   let endpointCreated = false;
+  let rerankEndpointCreated = false;
   const endpoint = `lane-b-quiet-${Date.now()}`;
   try {
     await new Promise<void>((done) => fake.listen(0, '127.0.0.1', done));
@@ -503,6 +538,15 @@ export const runLaneBMeasurements = async (): Promise<void> => {
       'PUT'
     );
     endpointCreated = true;
+    await api(
+      `${es}/_inference/rerank/${endpoint}-rerank`,
+      {
+        service: 'hugging_face',
+        service_settings: { api_key: 'fake', url: `http://127.0.0.1:${address.port}/rerank` },
+      },
+      'PUT'
+    );
+    rerankEndpointCreated = true;
     const timingCells: Cell[] = [
       { backend: 'baseline', delayMs: 0, memory: false },
       ...[0, 1, 5, 30].map((delayMs) => ({
@@ -523,7 +567,7 @@ export const runLaneBMeasurements = async (): Promise<void> => {
     for (const cell of smoke ? memoryCells : [...timingCells, ...memoryCells]) {
       const families: LaneBFamily[] =
         cell.memory || cell.delayMs === 0
-          ? ['extensions', 'cases', 'inference', 'conversation', 'attachments']
+          ? ['extensions', 'cases', 'inference', 'conversation', 'attachments', 'rerank']
           : ['extensions', 'cases'];
       const groups = cell.memory ? [families] : families.map((family) => [family]);
       for (const group of groups)
@@ -734,8 +778,13 @@ export const runLaneBMeasurements = async (): Promise<void> => {
     } finally {
       fake.closeAllConnections();
       await new Promise<void>((done) => fake.close(() => done()));
-      if (endpointCreated)
-        await api(`${es}/_inference/${endpoint}?force=true`, undefined, 'DELETE');
+      try {
+        if (endpointCreated)
+          await api(`${es}/_inference/${endpoint}?force=true`, undefined, 'DELETE');
+      } finally {
+        if (rerankEndpointCreated)
+          await api(`${es}/_inference/${endpoint}-rerank?force=true`, undefined, 'DELETE');
+      }
     }
   }
 };

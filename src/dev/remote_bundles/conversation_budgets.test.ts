@@ -16,7 +16,7 @@ import { buildRemoteBundle } from './build';
 import { discoverRemoteManifests } from './discover';
 import { nearestRank } from './load_statistics';
 
-it('bounds original native conversation client first business execution and conversation/attachment step increments', async () => {
+it('bounds original native conversation client first business execution and conversation/attachment/rerank step increments', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'conversation-budgets-'));
   try {
     const bundle = await buildRemoteBundle({
@@ -71,6 +71,7 @@ it('bounds original native conversation client first business execution and conv
         'ai.attachment.read',
         'ai.attachment.list',
         'ai.attachment.delete',
+        'search.rerank',
       ]);
       for (const event of result.events) {
         expect(event.heapIncrement).toBeLessThanOrEqual(2 * 1024 * 1024);

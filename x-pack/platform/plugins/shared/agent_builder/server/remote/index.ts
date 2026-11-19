@@ -26,6 +26,12 @@ export const remoteModule: RemoteModule = {
   contributions: [
     {
       kind: WorkflowStepKind,
+      stepType: 'search.rerank',
+      modulePath: require.resolve('./rerank_step'),
+      exportName: 'RerankStep',
+    },
+    {
+      kind: WorkflowStepKind,
       stepType: 'ai.attachment.list',
       modulePath: require.resolve('./list_attachment_step'),
       exportName: 'ListAttachmentStep',
