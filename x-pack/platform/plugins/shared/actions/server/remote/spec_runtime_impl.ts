@@ -22,6 +22,7 @@ import {
   isUserError,
 } from '@kbn/task-manager-plugin/server/task_running/errors';
 import type { Logger } from '@kbn/core/server';
+import { sanitizeConnectorError } from './connector_error';
 import type { ClassicConnectorType } from './classic_connector_types';
 import { ConnectorUsageCollector } from '../usage/connector_usage_collector';
 import type { ConnectorFinalization, NativeActionsApi } from './types';
@@ -84,6 +85,7 @@ export class SpecRuntime implements SpecRuntimeApi {
   >();
   private readonly drains = new Map<string, Promise<void>>();
   private readonly pending = new Map<string, ConnectorFinalization[]>();
+  private readonly retries = new Map<string, string[]>();
   constructor(private readonly actions: NativeActionsApi) {}
 
   async run(
@@ -140,7 +142,10 @@ export class SpecRuntime implements SpecRuntimeApi {
             },
             networkSettings: createConnectorNetworkSettings(configurationUtilities),
             platform: createPlatformServices(configurationUtilities),
-            clientTypes: {},
+            getClientType: async (id) =>
+              (await import('@kbn/connector-specs/src/lib/clients/get_client_type')).getClientType(
+                id
+              ),
             errors: { createTaskRunError, TaskErrorSource, getErrorSource, isUserError },
           });
           let actionType = context.actionTypes.get(spec.metadata.id);
@@ -383,7 +388,17 @@ export class SpecRuntime implements SpecRuntimeApi {
     const executionStartedAt = Date.now();
     const enqueue = (runtime: ConnectorFinalization['runtime']) => {
       const pending = this.pending.get(scopeId) ?? [];
-      pending.push({ invocationId, runtime });
+      const { error, ...result } = runtime.result;
+      pending.push({
+        invocationId,
+        runtime: {
+          ...runtime,
+          result: {
+            ...result,
+            ...(error ? { error: sanitizeConnectorError(error) } : {}),
+          },
+        },
+      });
       this.pending.set(scopeId, pending);
       queued = true;
     };
@@ -442,8 +457,6 @@ export class SpecRuntime implements SpecRuntimeApi {
     try {
       await this.drain(scopeId);
     } finally {
-      this.pending.delete(scopeId);
-      this.drains.delete(scopeId);
       this.contexts.delete(scopeId);
     }
   }
@@ -452,10 +465,22 @@ export class SpecRuntime implements SpecRuntimeApi {
     const existing = this.drains.get(scopeId);
     if (existing) return existing;
     const pending = this.pending.get(scopeId) ?? [];
-    if (pending.length === 0) return;
-    const drain = this.actions.finalize(scopeId, pending).then(() => {
-      this.pending.delete(scopeId);
-    });
+    const retryIds = this.retries.get(scopeId);
+    if (!retryIds && pending.length === 0) return;
+    this.pending.delete(scopeId);
+    this.retries.set(scopeId, retryIds ?? pending.map(({ invocationId }) => invocationId));
+    const persistence = retryIds
+      ? this.actions.finalizeRetry(scopeId, retryIds)
+      : this.actions
+          .finalize(scopeId, pending)
+          .catch(() => this.actions.finalizeRetry(scopeId, this.retries.get(scopeId) ?? []));
+    const drain = persistence
+      .then(() => {
+        this.retries.delete(scopeId);
+      })
+      .finally(() => {
+        this.drains.delete(scopeId);
+      });
     this.drains.set(scopeId, drain);
     return drain;
   }

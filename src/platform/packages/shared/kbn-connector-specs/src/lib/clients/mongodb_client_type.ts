@@ -164,9 +164,9 @@ export const mongodbClientType: ClientTypeSpec<MongoClient> = {
     const connectUri = srvTargets ? pinToResolvedHosts(connectionString, srvTargets) : uri;
     const tlsOptions = ctx.platform.buildTlsOptions(targets, ctx.logger);
 
-    const { MongoClient: MongoClientCtor } = await import(
-      /* webpackChunkName: "mongodbDriver" */ 'mongodb'
-    );
+    const {
+      default: { MongoClient: MongoClientCtor },
+    } = await import(/* webpackChunkName: "mongodbDriver" */ 'mongodb');
     const client = new MongoClientCtor(connectUri, {
       ...tlsOptions,
       auth: { username: credentials.username, password: credentials.password },

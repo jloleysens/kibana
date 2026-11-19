@@ -30,6 +30,7 @@ const setup = () => {
       ReturnType<NativeActionsApi['prepare']>,
       Parameters<NativeActionsApi['prepare']>
     >(async () => ({ prepared })),
+    finalizeRetry: jest.fn().mockResolvedValue(undefined),
     finalize: jest.fn<
       ReturnType<NativeActionsApi['finalize']>,
       Parameters<NativeActionsApi['finalize']>

@@ -1476,7 +1476,8 @@ export class WorkflowsExecutionEnginePlugin
                 );
                 return {};
               }
-            }
+            },
+            this.logger
           )
       );
       this.coreSetup.remote.bind(

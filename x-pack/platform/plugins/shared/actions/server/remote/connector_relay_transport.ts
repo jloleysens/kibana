@@ -5,6 +5,7 @@
  * 2.0.
  */
 
+import type { Logger } from '@kbn/core/server';
 import type { RelayActionClient } from '@kbn/connector-specs';
 import { isSelectedActionEnabled, type SelectedActions } from '@kbn/connector-specs-runtime';
 import { z, lazySchema } from '@kbn/zod/v4';
@@ -58,7 +59,8 @@ export class ConnectorRelayTransport {
     options: Pick<ActionRuntimeOptions, 'params' | 'config' | 'secrets'> & {
       readonly actionType: Pick<ActionRuntimeOptions['actionType'], 'id'>;
     },
-    private readonly signal: AbortSignal
+    private readonly signal: AbortSignal,
+    private readonly logger?: Pick<Logger, 'error'>
   ) {
     if (
       options.actionType.id === '.slack2' &&
@@ -105,6 +107,7 @@ export class ConnectorRelayTransport {
         result: await this.client.listBindings(tenantKey, request.options),
       };
     } catch (error) {
+      this.logger?.error(error);
       // Axios failures and Relay error bodies can echo the system bearer/certificate; only status crosses RPC.
       return {
         error: { ...(error instanceof RelayRequestError ? { statusCode: error.statusCode } : {}) },

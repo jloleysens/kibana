@@ -117,18 +117,25 @@ export class PreparedExecution {
               options.connectorTokenClient,
               options,
               signal,
-              refreshEars
+              refreshEars,
+              options.logger
             );
           }
           if (options.relayClient) {
-            this.relayTransport = new ConnectorRelayTransport(options.relayClient, options, signal);
+            this.relayTransport = new ConnectorRelayTransport(
+              options.relayClient,
+              options,
+              signal,
+              options.logger
+            );
           }
           this.dashboardState = new ConnectorDashboardState(
             options.services.savedObjectsClient,
             options.actionType.id,
             options.params,
             signal,
-            options.actionType.getDashboardAttributes
+            options.actionType.getDashboardAttributes,
+            options.logger
           );
           const inferenceStreamingFacts = getInferenceFacts ? await getInferenceFacts() : undefined;
           signal.throwIfAborted();

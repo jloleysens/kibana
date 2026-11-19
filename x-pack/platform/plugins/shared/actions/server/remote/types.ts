@@ -82,6 +82,7 @@ export interface NativeActionsApi {
     request: ConnectorTokenRequest
   ): Promise<ConnectorTokenResponse>;
   finalize(scopeId: string, results: ConnectorFinalization[]): Promise<void>;
+  finalizeRetry(scopeId: string, invocationIds: string[]): Promise<void>;
 }
 
 export type ConnectorTokenRequest =

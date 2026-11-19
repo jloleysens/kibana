@@ -17,6 +17,7 @@ it.each([false, true])(
   'awaits worker-owned original lease eviction after handler failure=%s',
   async (fail) => {
     const actions: NativeActionsApi = {
+      finalizeRetry: jest.fn(),
       prepare: jest.fn(),
       finalize: jest.fn(),
       token: jest.fn(),

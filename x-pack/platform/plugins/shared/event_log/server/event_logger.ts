@@ -5,6 +5,7 @@
  * 2.0.
  */
 
+import { randomUUID } from 'node:crypto';
 import { schema } from '@kbn/config-schema';
 import type { Logger } from '@kbn/core/server';
 import { merge } from 'lodash';
@@ -30,6 +31,7 @@ interface IEventLoggerCtorParams {
 }
 
 export class EventLogger implements IEventLogger {
+  private readonly durableBatches = new WeakMap<IEvent[], DocWithOptionalId[]>();
   private esContext: EsContext;
   private eventLogService: EventLogService;
   private initialProperties: IEvent;
@@ -83,7 +85,11 @@ export class EventLogger implements IEventLogger {
   }
 
   async logEvents(events: IEvent[]): Promise<void> {
-    const docs = events.map((event) => this.createDocument(event));
+    let docs = this.durableBatches.get(events);
+    if (!docs) {
+      docs = events.map((event) => this.createDocument(event, randomUUID()));
+      this.durableBatches.set(events, docs);
+    }
     if (this.eventLogService.isIndexingEntries() && docs.length > 0) {
       await this.esContext.esAdapter.indexDocuments(docs, true);
     }

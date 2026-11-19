@@ -55,7 +55,7 @@ export const mysqlClientType: ClientTypeSpec<Mysql2Pool> = {
     const { timeout } = ctx.networkSettings.getResponseSettings();
 
     ctx.logger.info(`[mysql] Opening connection pool for ${host}:${port}/${database}`);
-    const lib = await import('mysql2/promise');
+    const { default: lib } = await import('mysql2/promise');
     return lib.createPool({
       host,
       port,

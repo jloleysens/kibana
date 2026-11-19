@@ -271,7 +271,24 @@ export class ClusterClientAdapter<
         body: bulkBody,
       });
 
-      if (response.errors) {
+      const indexedDocs = docs.filter((doc) => doc.body !== undefined);
+      const hasUnacknowledgedErrors =
+        response.items.length !== indexedDocs.length ||
+        response.items.some((item, index) => {
+          const result = item.create;
+          if (!result) return true;
+          if (result.status < 300) return false;
+          // An ambiguous acknowledged create may already have succeeded. Only our exact ID
+          // conflict acknowledges that retry; never accept arbitrary conflicts or other failures.
+          return !(
+            requireAcknowledgement &&
+            result.status === 409 &&
+            result.error?.type === 'version_conflict_engine_exception' &&
+            indexedDocs[index]?.id &&
+            result._id === indexedDocs[index].id
+          );
+        });
+      if (response.errors && hasUnacknowledgedErrors) {
         const error = new Error('Error writing some bulk events');
         error.stack += '\n' + util.inspect(response.items, { depth: null });
         if (requireAcknowledgement) throw error;

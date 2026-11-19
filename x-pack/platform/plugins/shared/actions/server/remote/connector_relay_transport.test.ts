@@ -74,6 +74,7 @@ const setup = (useSystemIdentity = false, subAction = 'sendMessage') => {
     prepare: jest.fn(async () => ({ prepared })),
     token: jest.fn(),
     relay,
+    finalizeRetry: async () => {},
     finalize: jest.fn(async () => {}),
   };
   return { actions, prepared, transport, signal, createEphemeralToken, ssl };
@@ -193,4 +194,17 @@ it('refuses posting from read-only prepared operations, oversized inputs, closur
   await expect(transport.execute({ operation: 'listBindings' })).rejects.toThrow('not available');
   signal.abort();
   await expect(transport.execute({ operation: 'listBindings' })).rejects.toThrow();
+});
+
+it('serializes Relay failures without service request metadata', async () => {
+  const { transport } = setup(true);
+  requestMock.mockRejectedValueOnce(
+    Object.assign(new Error('unavailable'), {
+      config: { headers: { Authorization: 'Bearer coordinator-only-secret' } },
+    })
+  );
+  const wire = JSON.stringify(await transport.execute({ operation: 'listBindings' }));
+  expect(wire).toBe('{"error":{}}');
+  expect(wire).not.toContain('Authorization');
+  expect(wire).not.toContain('coordinator-only-secret');
 });

@@ -3005,3 +3005,32 @@ describe('acknowledged indexDocuments', () => {
     expect(clusterClient.bulk).not.toHaveBeenCalled();
   });
 });
+
+describe('idempotent acknowledged event creates', () => {
+  afterEach(async () => {
+    await clusterClientAdapter.shutdown();
+  });
+  test.each([true, false])(
+    'accepts only conflicts matching the explicit ID (matches=%s)',
+    async (matches) => {
+      clusterClient.bulk.mockResponse({
+        errors: true,
+        took: 1,
+        items: [
+          {
+            create: {
+              _index: 'event-log',
+              _id: matches ? 'stable' : 'other',
+              status: 409,
+              error: { type: 'version_conflict_engine_exception', reason: 'already exists' },
+            },
+          },
+        ],
+      });
+      const docs = [{ id: 'stable', body: { message: 'durable' }, index: 'event-log' }];
+      const result = clusterClientAdapter.indexDocuments(docs, true);
+      if (matches) await expect(result).resolves.toBeUndefined();
+      else await expect(result).rejects.toThrow('Error writing some bulk events');
+    }
+  );
+});

@@ -100,6 +100,7 @@ const main = async (): Promise<void> => {
       prepares++;
       return { prepared };
     },
+    finalizeRetry: async () => {},
     finalize: async (_scope, finalizations) => {
       finalized += finalizations.length;
     },

@@ -1053,6 +1053,7 @@ const main = async (): Promise<void> => {
         },
       };
     },
+    finalizeRetry: async () => {},
     finalize: async (_s, results) => {
       finalizes.push(results.length);
     },

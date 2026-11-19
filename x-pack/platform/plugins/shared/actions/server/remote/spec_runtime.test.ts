@@ -32,6 +32,7 @@ const actions: NativeActionsApi = {
   relay: jest.fn(),
   token: jest.fn(),
   prepare: jest.fn(),
+  finalizeRetry: async () => {},
   finalize: jest.fn(),
 };
 const services = { authTypes: [], isConnectorAuthorizationError };
