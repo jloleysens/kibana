@@ -178,12 +178,22 @@ export interface AttachmentStateManager {
   markClean(): void;
 }
 
+export type AttachmentStateTypeDefinition = Pick<
+  AttachmentTypeDefinition,
+  'id' | 'validate' | 'resolve' | 'isReadonly' | 'isStale'
+>;
+
 export interface CreateAttachmentStateManagerOptions {
   /**
    * Function to fetch the type definition from the attachment type registry.
    * Used to validate attachment data before storing it into conversation state.
    */
-  getTypeDefinition: (type: string) => AttachmentTypeDefinition | undefined;
+  getTypeDefinition: (type: string) => AttachmentStateTypeDefinition | undefined;
+  /** Resolves origins through an authenticated service when no local resolve context exists. */
+  resolveOrigin?: (
+    type: string,
+    origin: string
+  ) => ReturnType<NonNullable<AttachmentTypeDefinition['resolve']>>;
 }
 
 interface AttachmentStore {
@@ -329,13 +339,17 @@ class AttachmentStateManagerImpl implements AttachmentStateManager {
         throw new Error(`Attachment type "${input.type}" does not support resolving from origin`);
       }
 
-      if (!resolveContext) {
+      if (!resolveContext && !this.options.resolveOrigin) {
         throw new Error(
           `Resolve context is required to add attachment of type "${input.type}" with origin`
         );
       }
 
-      const resolved = await typeDefinition.resolve(input.origin, resolveContext);
+      const resolved = this.options.resolveOrigin
+        ? await this.options.resolveOrigin(input.type, input.origin)
+        : resolveContext
+        ? await typeDefinition.resolve(input.origin, resolveContext)
+        : undefined;
       if (resolved === undefined) {
         throw new Error(
           `Failed to resolve content from origin for attachment type "${input.type}"`

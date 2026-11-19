@@ -61,6 +61,9 @@ interface Output {
   note_id?: string;
   notes?: Array<{ note_id: string; text: string }>;
   reviews?: Array<{ title: string }>;
+  attachments?: Array<{ id: string; active: boolean }>;
+  version?: number;
+  success?: boolean;
 }
 interface Step {
   stepId: string;
@@ -195,6 +198,10 @@ const execute = async (
       conversationId?: string;
       status?: string;
       summary?: string;
+      content?: string;
+      previousContent?: string;
+      version?: string;
+      deleted?: string;
       entityId?: string;
       prompt?: string;
       category?: string;
@@ -214,6 +221,59 @@ const execute = async (
     );
     assert.equal(comment.comment, id);
     assert.equal(persisted._source.caseId, caseId);
+  } else if (family === 'attachments') {
+    const conversationId = persisted._source.conversationId;
+    assert(conversationId);
+    assert.equal(persisted._source.content, `${id} updated`);
+    assert.equal(persisted._source.previousContent, id);
+    assert.equal(persisted._source.version, '2');
+    assert.equal(persisted._source.deleted, 'true');
+    assert.equal(step('read').version, 2);
+    assert.equal(step('delete').success, true);
+    assert.equal(step('list').attachments?.length, 2);
+    assert(
+      step('deleted').attachments?.some(
+        ({ id: attachmentId, active }) => attachmentId === 'text' && !active
+      )
+    );
+    await api(`/api/agent_builder/conversations/${conversationId}`);
+    const stored = await api<{
+      _source: {
+        attachments: Array<{
+          id: string;
+          type: string;
+          active: boolean;
+          readonly: boolean;
+          current_version: number;
+          origin?: string;
+          versions: Array<{
+            version: number;
+            data: { content?: string; workflowId?: string; yaml?: string };
+          }>;
+        }>;
+        events: Array<{ type: string }>;
+      };
+    }>(`${es}/.chat-conversations/_doc/${conversationId}`);
+    const text = stored._source.attachments.find(({ id: attachmentId }) => attachmentId === 'text');
+    assert(text);
+    assert.equal(text.current_version, 2);
+    assert.equal(text.active, false);
+    assert.deepEqual(
+      text.versions.map(({ data }) => data.content),
+      [id, `${id} updated`]
+    );
+    const reference = stored._source.attachments.find(
+      ({ id: attachmentId }) => attachmentId === 'workflow-reference'
+    );
+    assert(reference);
+    assert.equal(reference.origin, id);
+    assert.equal(reference.readonly, true);
+    assert.equal(reference.versions[0].data.workflowId, id);
+    assert(reference.versions[0].data.yaml?.includes(id));
+    assert(stored._source.events.some(({ type }) => type === 'attachment_added'));
+    assert(stored._source.events.some(({ type }) => type === 'attachment_updated'));
+    assert(stored._source.events.some(({ type }) => type === 'attachment_deleted'));
+    save(join(directory, `${workflowExecutionId}-attachments.json`), stored);
   } else if (family === 'conversation') {
     const conversationId = persisted._source.conversationId;
     assert(conversationId);
@@ -457,7 +517,7 @@ export const runLaneBMeasurements = async (): Promise<void> => {
     for (const cell of smoke ? memoryCells : [...timingCells, ...memoryCells]) {
       const families: LaneBFamily[] =
         cell.memory || cell.delayMs === 0
-          ? ['extensions', 'cases', 'inference', 'conversation']
+          ? ['extensions', 'cases', 'inference', 'conversation', 'attachments']
           : ['extensions', 'cases'];
       const groups = cell.memory ? [families] : families.map((family) => [family]);
       for (const group of groups)

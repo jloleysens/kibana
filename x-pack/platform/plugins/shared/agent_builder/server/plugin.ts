@@ -57,6 +57,8 @@ import { RecommendedEndpointsPoller } from './recommended_endpoints_poller';
 import { registerDeductiveAgent } from './services/execution/run_agent/deductive/register_deductive_agent';
 import { getDeploymentInfo } from './utils/deployment_info';
 import { ConversationRegistryToken } from './remote/conversation_tokens';
+import { AttachmentRegistry } from './remote/attachment_registry';
+import { AttachmentRegistryToken } from './remote/attachment_tokens';
 import { ConversationRegistry } from './remote/conversation_registry';
 
 export class AgentBuilderPlugin
@@ -213,6 +215,17 @@ export class AgentBuilderPlugin
         return services.execution;
       },
     });
+
+    coreSetup.remote.bind(
+      AttachmentRegistryToken,
+      (scopes) =>
+        new AttachmentRegistry(scopes, async () => {
+          const services = this.serviceManager.internalStart;
+          if (!services) throw new Error('Attachment service is not started');
+          const [coreStart, startDeps] = await coreSetup.getStartServices();
+          return { attachments: services.attachments, coreStart, spaces: startDeps.spaces };
+        })
+    );
 
     registerAttachmentWorkflowSteps(setupDeps.workflowsExtensions, {
       getAttachmentClient: async (request) => {

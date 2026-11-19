@@ -7,8 +7,15 @@
 
 import type { RemoteModule } from '@kbn/core-remote-common';
 import { ConversationRegistryToken, WorkflowStepKind } from './conversation_tokens';
+import { AttachmentRegistryToken } from './attachment_tokens';
 export const remoteModule: RemoteModule = {
   providers: [
+    {
+      token: AttachmentRegistryToken,
+      placement: 'coordinator',
+      modulePath: require.resolve('./attachment_registry'),
+      exportName: 'AttachmentRegistry',
+    },
     {
       token: ConversationRegistryToken,
       placement: 'coordinator',
@@ -17,6 +24,36 @@ export const remoteModule: RemoteModule = {
     },
   ],
   contributions: [
+    {
+      kind: WorkflowStepKind,
+      stepType: 'ai.attachment.list',
+      modulePath: require.resolve('./list_attachment_step'),
+      exportName: 'ListAttachmentStep',
+    },
+    {
+      kind: WorkflowStepKind,
+      stepType: 'ai.attachment.read',
+      modulePath: require.resolve('./read_attachment_step'),
+      exportName: 'ReadAttachmentStep',
+    },
+    {
+      kind: WorkflowStepKind,
+      stepType: 'ai.attachment.delete',
+      modulePath: require.resolve('./delete_attachment_step'),
+      exportName: 'DeleteAttachmentStep',
+    },
+    {
+      kind: WorkflowStepKind,
+      stepType: 'ai.attachment.update',
+      modulePath: require.resolve('./update_attachment_step'),
+      exportName: 'UpdateAttachmentStep',
+    },
+    {
+      kind: WorkflowStepKind,
+      stepType: 'ai.attachment.add',
+      modulePath: require.resolve('./add_attachment_step'),
+      exportName: 'AddAttachmentStep',
+    },
     {
       kind: WorkflowStepKind,
       stepType: 'ai.conversation.create',

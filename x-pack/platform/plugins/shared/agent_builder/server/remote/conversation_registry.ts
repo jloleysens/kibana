@@ -6,11 +6,11 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { chatSystemIndex, isAgentBuilderError } from '@kbn/agent-builder-common';
+import { chatSystemIndex } from '@kbn/agent-builder-common';
 import type { KibanaRequest } from '@kbn/core/server';
 import { remotable, recordRemoteTiming } from '@kbn/core-remote-common';
 import type { ScopeLookup } from '@kbn/core-remote-server';
-import { serializeExecutionError } from '../services/execution/utils/serialize_execution_error';
+import { createRegistryTransportError } from './registry_errors';
 import type { createClient } from '../services/conversation/client/client';
 import { listTemplates } from '../services/conversation/templates/registry';
 import { validateConversationEvents } from '../services/conversation_events/validation';
@@ -62,21 +62,7 @@ export class ConversationRegistry implements ConversationRegistryApi {
       signal.throwIfAborted();
       return result;
     } catch (error) {
-      const serialized = serializeExecutionError(error);
-      const ErrorType =
-        [EvalError, RangeError, ReferenceError, SyntaxError, TypeError, URIError].find(
-          (Constructor) => error instanceof Constructor
-        ) ?? Error;
-      const transportError =
-        error instanceof AggregateError
-          ? new AggregateError([], serialized.message)
-          : new ErrorType(serialized.message);
-      Object.assign(transportError, {
-        workflowAgentBuilderErrorName: error instanceof Error ? error.name : 'Error',
-        workflowAgentBuilderWasTyped: isAgentBuilderError(error),
-        workflowAgentBuilderError: serialized,
-      });
-      throw transportError;
+      throw createRegistryTransportError(error);
     } finally {
       const elapsed = process.cpuUsage(cpu);
       recordRemoteTiming('agent_builder_registry', {

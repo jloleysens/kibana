@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-export type LaneBFamily = 'extensions' | 'cases' | 'inference' | 'conversation';
+export type LaneBFamily = 'extensions' | 'cases' | 'inference' | 'conversation' | 'attachments';
 
 /** Uses the same original business steps for ordinary Kibana and each worker backend. */
 export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: string) => {
@@ -78,6 +78,84 @@ export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: s
         with: { case_id: '{{ steps.create.output.case.id }}', include_comments: true },
       },
     ],
+    attachments: [
+      {
+        name: 'create',
+        type: 'ai.conversation.create',
+        with: {
+          conversation_id: '{{ execution.id }}',
+          title: id,
+          access_control: { access_mode: 'public', entries: [] },
+        },
+      },
+      {
+        name: 'add',
+        type: 'ai.attachment.add',
+        with: {
+          conversation_id: '{{ steps.create.output.conversation_id }}',
+          id: 'text',
+          type: 'text',
+          data: { content: id },
+        },
+      },
+      {
+        name: 'reference',
+        type: 'ai.attachment.add',
+        with: {
+          conversation_id: '{{ steps.create.output.conversation_id }}',
+          id: 'workflow-reference',
+          type: 'workflow.yaml',
+          origin: id,
+        },
+      },
+      {
+        name: 'update',
+        type: 'ai.attachment.update',
+        with: {
+          conversation_id: '{{ steps.create.output.conversation_id }}',
+          attachment_id: 'text',
+          data: { content: `${id} updated` },
+        },
+      },
+      {
+        name: 'read',
+        type: 'ai.attachment.read',
+        with: {
+          conversation_id: '{{ steps.create.output.conversation_id }}',
+          attachment_id: 'text',
+        },
+      },
+      {
+        name: 'history',
+        type: 'ai.attachment.read',
+        with: {
+          conversation_id: '{{ steps.create.output.conversation_id }}',
+          attachment_id: 'text',
+          version: 1,
+        },
+      },
+      {
+        name: 'list',
+        type: 'ai.attachment.list',
+        with: { conversation_id: '{{ steps.create.output.conversation_id }}' },
+      },
+      {
+        name: 'delete',
+        type: 'ai.attachment.delete',
+        with: {
+          conversation_id: '{{ steps.create.output.conversation_id }}',
+          attachment_id: 'text',
+        },
+      },
+      {
+        name: 'deleted',
+        type: 'ai.attachment.list',
+        with: {
+          conversation_id: '{{ steps.create.output.conversation_id }}',
+          include_deleted: true,
+        },
+      },
+    ],
     conversation: [
       {
         name: 'create',
@@ -134,6 +212,13 @@ export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: s
     ],
   }[family];
   const document = {
+    attachments: {
+      conversationId: '{{ steps.create.output.conversation_id }}',
+      content: '{{ steps.read.output.data.content }}',
+      previousContent: '{{ steps.history.output.data.content }}',
+      version: '{{ steps.read.output.version }}',
+      deleted: '{{ steps.delete.output.success }}',
+    },
     conversation: {
       conversationId: '{{ steps.create.output.conversation_id }}',
       status: '{{ steps.read.output.metadata.status }}',

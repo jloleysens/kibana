@@ -5,8 +5,6 @@
  * 2.0.
  */
 
-import { deserializeExecutionError } from '@kbn/agent-builder-common';
-import type { SerializedExecutionError } from '@kbn/agent-builder-common';
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
 import {
   createClient,
@@ -18,26 +16,7 @@ import type {
   ConversationLogLevel,
 } from './conversation_tokens';
 
-interface RegistryError extends Error {
-  workflowAgentBuilderError?: SerializedExecutionError;
-  workflowAgentBuilderWasTyped?: boolean;
-  workflowAgentBuilderErrorName?: string;
-}
-
-const restoreRegistryError = async <T>(result: Promise<T>): Promise<T> => {
-  try {
-    return await result;
-  } catch (error) {
-    if (error instanceof Error) {
-      const registryError = error as RegistryError;
-      if (registryError.workflowAgentBuilderWasTyped && registryError.workflowAgentBuilderError)
-        throw deserializeExecutionError(registryError.workflowAgentBuilderError);
-      if (registryError.workflowAgentBuilderErrorName)
-        error.name = registryError.workflowAgentBuilderErrorName;
-    }
-    throw error;
-  }
-};
+import { restoreRegistryError } from './registry_errors';
 
 /** Runs the original storage/OCC/ACL client with per-run identity and live registry callbacks. */
 export const createNativeConversation = async ({

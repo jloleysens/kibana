@@ -32,6 +32,8 @@ export type {
   AttachmentChange,
   AttachmentSnapshot,
   AttachmentStateManager,
+  AttachmentStateTypeDefinition,
+  CreateAttachmentStateManagerOptions,
   AttachmentUpdateInput,
   ResolvedAttachmentRef,
 } from './attachment_state_manager';

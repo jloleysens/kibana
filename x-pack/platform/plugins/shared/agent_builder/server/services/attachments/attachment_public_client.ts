@@ -22,14 +22,16 @@ import type {
   BulkCreateAttachmentsResult,
   ListAttachmentsResult,
 } from '@kbn/agent-builder-server';
-import type { AttachmentStateManager } from '@kbn/agent-builder-server/attachments';
+import type {
+  AttachmentStateManager,
+  CreateAttachmentStateManagerOptions,
+} from '@kbn/agent-builder-server/attachments';
 import {
   attachmentChangesToEvents,
   createAttachmentStateManager,
 } from '@kbn/agent-builder-server/attachments';
 import type { ConversationClient, ConversationService } from '../conversation';
 import { userMessageActor } from '../conversation/client/rounds_to_events';
-import type { AttachmentServiceStart } from './types';
 import { hasClientId, isAttachmentReferencedInRounds } from './attachment_guards';
 
 /**
@@ -43,19 +45,23 @@ export type AttachmentPublicClientSource = Extract<
   'http_api' | 'workflow' | 'server_api'
 >;
 
-interface Deps {
+type Deps = {
   request: KibanaRequest;
-  conversationsService: ConversationService;
-  attachmentsService: AttachmentServiceStart;
-  coreStart: CoreStart;
-  spaces?: SpacesPluginStart;
-  /**
-   * Bound at construction: recorded as `source` on every attachment event this client emits.
-   * Routes pass `'http_api'`, workflow steps pass `'workflow'`, `AttachmentsStart.getScopedClient`
-   * in `plugin.ts` passes `'server_api'` for external plugin callers.
-   */
+  conversationsService: Pick<ConversationService, 'getScopedClient'>;
+  attachmentsService: Pick<CreateAttachmentStateManagerOptions, 'getTypeDefinition'>;
   source: AttachmentPublicClientSource;
-}
+} & (
+  | {
+      coreStart: Pick<CoreStart, 'savedObjects'>;
+      spaces?: SpacesPluginStart;
+      resolveOrigin?: never;
+    }
+  | {
+      coreStart?: never;
+      spaces?: never;
+      resolveOrigin: NonNullable<CreateAttachmentStateManagerOptions['resolveOrigin']>;
+    }
+);
 
 export const createAttachmentPublicClient = ({
   request,
@@ -63,13 +69,23 @@ export const createAttachmentPublicClient = ({
   attachmentsService,
   coreStart,
   spaces,
+  resolveOrigin,
   source,
 }: Deps): AttachmentPublicClient => {
+  const getResolveContext = () => {
+    if (resolveOrigin) return undefined;
+    return {
+      request,
+      spaceId: spaces?.spacesService.getSpaceId(request) ?? 'default',
+      savedObjectsClient: coreStart.savedObjects.getScopedClient(request),
+    };
+  };
   const loadState = async (conversationId: string) => {
     const conversationClient = await conversationsService.getScopedClient({ request });
     const conversation = await conversationClient.get(conversationId);
     const stateManager = createAttachmentStateManager(conversation.attachments ?? [], {
       getTypeDefinition: attachmentsService.getTypeDefinition,
+      resolveOrigin,
     });
     return { conversation, conversationClient, stateManager };
   };
@@ -152,12 +168,7 @@ export const createAttachmentPublicClient = ({
         throw createAttachmentAlreadyExistsError({ attachmentId: id });
       }
 
-      const spaceId = spaces?.spacesService.getSpaceId(request) ?? 'default';
-      const resolveContext = {
-        request,
-        spaceId,
-        savedObjectsClient: coreStart.savedObjects.getScopedClient(request),
-      };
+      const resolveContext = getResolveContext();
 
       let attachment;
       try {
@@ -278,12 +289,7 @@ export const createAttachmentPublicClient = ({
     }): Promise<BulkCreateAttachmentsResult> {
       const { conversation, conversationClient, stateManager } = await loadState(conversationId);
 
-      const spaceId = spaces?.spacesService.getSpaceId(request) ?? 'default';
-      const resolveContext = {
-        request,
-        spaceId,
-        savedObjectsClient: coreStart.savedObjects.getScopedClient(request),
-      };
+      const resolveContext = getResolveContext();
 
       const created = [];
       const errors = [];

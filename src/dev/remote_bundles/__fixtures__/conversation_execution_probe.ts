@@ -230,6 +230,13 @@ const main = async (): Promise<void> => {
     const clientBytes = [...closure([clientEntry[0]])]
       .filter((file) => !core.has(file) && !sdkClosure.has(file))
       .reduce((total, file) => total + metadata.outputs[file].bytes, 0);
+    const attachments = {
+      describe: async () => [{ id: 'text', isReadonly: false, canResolve: false }],
+      validate: async (_scope: string, _type: string, data: object) => ({ valid: true, data }),
+      resolve: async () => {
+        throw new Error('The by-value budget fixture must not resolve an origin');
+      },
+    };
     const events = [];
     for (const [type, input] of [
       [
@@ -245,6 +252,22 @@ const main = async (): Promise<void> => {
         { conversation_id: 'conversation', type: 'text_note', data: { text: 'Native' } },
       ],
       ['ai.conversation.metadata.read', { conversation_id: 'conversation' }],
+      [
+        'ai.attachment.add',
+        {
+          conversation_id: 'conversation',
+          id: 'text',
+          type: 'text',
+          data: { content: 'Original' },
+        },
+      ],
+      [
+        'ai.attachment.update',
+        { conversation_id: 'conversation', attachment_id: 'text', data: { content: 'Updated' } },
+      ],
+      ['ai.attachment.read', { conversation_id: 'conversation', attachment_id: 'text' }],
+      ['ai.attachment.list', { conversation_id: 'conversation' }],
+      ['ai.attachment.delete', { conversation_id: 'conversation', attachment_id: 'text' }],
     ] as const) {
       const start = sample();
       const time = performance.now();
@@ -253,7 +276,8 @@ const main = async (): Promise<void> => {
       const loaded = await graph.implementations[contribution.modulePath]();
       const Ctor = loaded[contribution.exportName] as new (
         operations: object,
-        data: object
+        data: object,
+        attachments: object
       ) => RemoteWorkflowStep;
       const context: StepHandlerContext = {
         input,
@@ -279,7 +303,7 @@ const main = async (): Promise<void> => {
           }),
         },
       };
-      const result = (await new Ctor(registry, { internal: () => fakeClient }).run(
+      const result = (await new Ctor(registry, { internal: () => fakeClient }, attachments).run(
         'scope',
         {},
         { handlerContext: context }
@@ -296,6 +320,10 @@ const main = async (): Promise<void> => {
         ms: performance.now() - time,
       });
     }
+    const final = await native.client.get('conversation');
+    assert.equal(final.attachments?.[0].current_version, 2);
+    assert.equal(final.attachments?.[0].active, false);
+    assert.deepEqual(final.attachments?.[0].versions[1].data, { content: 'Updated' });
     process.stdout.write(
       JSON.stringify({
         sharedHeap,

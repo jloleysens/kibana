@@ -29,7 +29,7 @@ directory; retains failed attempts. Workflows, Cases, Notes, fingerprints and
 outcome docs remain for independent review; all identifiers have a lane-B prefix.
 
 `--smoke` runs only three instrumented profiles (ordinary Kibana, child_process,
-in_process), two runs per family: **24 real persisted runs**. Not a timing claim.
+in_process), two runs per family: **30 real persisted runs**. Not a timing claim.
 The full matrix intentionally runs serially and restarts Kibana many times.
 
 ## Fixed method / outputs
@@ -47,11 +47,12 @@ The full matrix intentionally runs serially and restarts Kibana many times.
   Note create/read; Cases create/update/comment/find/get; inference prompt,
   summarize and classify via a local OpenAI-compatible fake ES inference endpoint;
   conversation create/metadata patch/registered event/read through the original
-  native ES/OCC/ACL client. Every run persists an ES outcome; independent
-  Case/comment/fingerprint/conversation/event/outcome reads validate it. No mocked business service or empty fingerprint fast path.
+  native ES/OCC/ACL client; attachment add/update/read/list/delete plus historical
+  read and a real by-reference workflow YAML origin resolution. Every run persists an ES outcome; independent
+  Case/comment/fingerprint/conversation/event/attachment/outcome reads validate it. No mocked business service or empty fingerprint fast path.
 - Uninstrumented timing: ordinary Kibana (`remoteExecution.enabled:false`) vs
   child_process; delays **0/1/5/30ms one-way per outbound IPC frame** for extension
-  and Cases. Inference and conversation measured at delay0. Three independent fresh-Kibana+worker
+  and Cases. Inference, conversation and attachments measured at delay0. Three independent fresh-Kibana+worker
   cold blocks per family/cell, five subsequent warm leases per block. Raw engine
   execution `duration` and submission-to-terminal-observation retained; latter
   includes 100ms polling quantization, not independent verification GETs. Cold
@@ -61,7 +62,8 @@ The full matrix intentionally runs serially and restarts Kibana many times.
   forced GC, seam logging and load hooks explicitly absent from timing profiles.
   `finalTimingClaims:false` is deliberate: a harness cannot certify a quiet laptop.
 - Separate instrumented memory/callback profiles: baseline, child_process and
-  in_process, fixed family order extensions -> Cases -> inference -> conversation. Per-step Core
+  in_process, fixed family order extensions -> Cases -> inference -> conversation
+  -> attachments. Per-step Core
   heap markers + 100ms per-process RSS/heap/cumulative process CPU samples.
   Acknowledged SIGUSR2 samples force GC in **each owned process** before/after each
   run. `memory-curve.jsonl` retains individual PIDs and combined Kibana+worker RSS/
@@ -102,6 +104,14 @@ agent registry checks and original event validation stay coordinator-side;
 validation precedes OCC. Original audit/event/telemetry/log hooks batch on drain;
 client references release on drain or run abort. Safe typed error DTOs preserve
 original AgentBuilder error prototypes without private request/header metadata.
+Attachment handlers reuse the original state manager, version hashing, reconciliation
+and atomic event+snapshot writes in the worker. Only live type validation and
+origin resolution call the typed coordinator registry; the original resolver gets
+the authenticated run request/space and normal scoped SO client. No fake Core/SO
+objects cross, no direct saved-object storage claim. The live workflow-YAML origin
+proof exercises the original workflow authorization and repository, not a fabricated
+SO resolver. Attachment exclusive first-business increments0.10–0.43MB remain
+inside the existing2MiB guard; shared conversation guard unchanged.
 
 ## Pre-existing product safety finding — upstream owner decision
 
