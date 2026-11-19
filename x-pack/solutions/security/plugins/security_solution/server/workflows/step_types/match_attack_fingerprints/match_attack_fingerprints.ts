@@ -9,9 +9,9 @@ import type { QueryDslQueryContainer, SortResults } from '@elastic/elasticsearch
 import type { ElasticsearchClient } from '@kbn/core-elasticsearch-server';
 import { asSpaceId } from '@kbn/core-spaces-common';
 import { isNotFoundError } from '@kbn/es-errors';
-import { KibanaApiCallError } from '@kbn/workflows-extensions/server';
+import { KibanaApiCallError } from '@kbn/workflows-runtime';
 import type { StepHandlerContext } from '@kbn/workflows-extensions/server';
-import { DEFAULT_ALERTS_INDEX } from '../../../../common/constants';
+import { DEFAULT_ALERTS_INDEX } from '../../../../common/alert_index';
 import { MAX_ALERT_IDS } from '../../../../common/workflows/step_types/common/constants';
 import { DEFAULT_MAX_ENTITIES } from '../../../../common/workflows/step_types/get_alert_entities_step/get_alert_entities_step_common';
 import { getAlertEntities } from '../get_alert_entities_step/get_alert_entities';
@@ -68,6 +68,8 @@ export interface MatchReview {
  * worker's first write must not auto-create the index from the generic template.
  */
 let fingerprintCreateAllowed = (): boolean => true;
+
+export const isFingerprintCreateAllowed = (): boolean => fingerprintCreateAllowed();
 
 export const setFingerprintCreateAllowed = (allowed: boolean | (() => boolean)): void => {
   fingerprintCreateAllowed = typeof allowed === 'function' ? allowed : () => allowed;
@@ -742,7 +744,8 @@ const privilegesMappingType = (
 const assertFingerprintWritesAllowed = async (
   esClient: ElasticsearchClient,
   abortSignal: AbortSignal | undefined,
-  logger: StepHandlerContext['logger']
+  logger: StepHandlerContext['logger'],
+  canCreateFingerprint: () => Promise<boolean>
 ): Promise<void> => {
   try {
     const exists = await esClient.indices.exists(
@@ -750,7 +753,7 @@ const assertFingerprintWritesAllowed = async (
       { signal: abortSignal }
     );
     if (exists !== true) {
-      if (!fingerprintCreateAllowed()) {
+      if (!(await canCreateFingerprint())) {
         throw new FingerprintIndexUnscopedError();
       }
       return;
@@ -837,6 +840,7 @@ const applyDecision = (
  */
 export const matchAttackFingerprints = async ({
   abortSignal,
+  canCreateFingerprint = async () => fingerprintCreateAllowed(),
   attacks,
   contextManager,
   esClient,
@@ -846,6 +850,7 @@ export const matchAttackFingerprints = async ({
   spaceId,
 }: {
   abortSignal?: AbortSignal;
+  canCreateFingerprint?: () => Promise<boolean>;
   attacks: readonly Record<string, unknown>[];
   contextManager: StepHandlerContext['contextManager'];
   esClient: ElasticsearchClient;
@@ -861,7 +866,7 @@ export const matchAttackFingerprints = async ({
     return { reviews: [], attachments: [] };
   }
 
-  await assertFingerprintWritesAllowed(esClient, abortSignal, logger);
+  await assertFingerprintWritesAllowed(esClient, abortSignal, logger, canCreateFingerprint);
 
   const enriched = await mapPool(parsed, ENRICH_CONCURRENCY, (attack) =>
     enrichAttack(attack, esClient, spaceId, abortSignal, logger)

@@ -13,11 +13,9 @@ import { EXCEPTION_LIST_ITEM_URL } from '@kbn/securitysolution-list-constants';
 import { ExceptionListItem } from '@kbn/securitysolution-exceptions-common/api';
 import type {
   CreateExceptionListItemSchema,
-  EntriesArray,
   NamespaceType,
 } from '@kbn/securitysolution-io-ts-list-types';
 import type {
-  ExceptionEntryInput,
   ExceptionItemBaseInput,
   ExceptionItemOutcome,
   ExceptionItemOutput,
@@ -25,10 +23,9 @@ import type {
 import { CREATE_RULE_EXCEPTIONS_URL } from '../../../common/api/detection_engine/rule_exceptions';
 import { DETECTION_ENGINE_RULES_URL } from '../../../common/api_urls';
 import { RuleExceptionList } from '../../../common/api/detection_engine/model/rule_schema';
-import {
-  MissingExceptionEntryOperandError,
-  toApiEntries as toApiEntriesUnwrapped,
-} from '../../../common/detection_engine/rule_exceptions/to_api_entries';
+import { toApiEntries } from './to_api_entries';
+
+export { toApiEntries } from './to_api_entries';
 
 /**
  * The step action on whose behalf a util call runs; used as the verb phrase
@@ -47,22 +44,6 @@ type CreateExceptionItemBody = Pick<
   CreateExceptionListItemSchema,
   'name' | 'description' | 'type' | 'entries' | 'os_types' | 'tags' | 'expire_time' | 'comments'
 >;
-
-/**
- * Maps the step's flat, UI-verb entry shape (see `exceptionEntrySchema`) onto
- * the exceptions API's entry union, rewrapping the mapper's operand error as a
- * step `ValidationError`.
- */
-export const toApiEntries = (entries: ExceptionEntryInput[]): EntriesArray => {
-  try {
-    return toApiEntriesUnwrapped(entries);
-  } catch (error) {
-    if (error instanceof MissingExceptionEntryOperandError) {
-      throw new ExecutionError({ type: 'ValidationError', message: error.message });
-    }
-    throw error;
-  }
-};
 
 /**
  * Builds the create-item request body shared by the rule exceptions API and

@@ -7,8 +7,8 @@
 
 import assert from 'assert';
 
-import type { Condition } from '@kbn/streamlang';
-import { isFilterCondition } from '@kbn/streamlang';
+import type { Condition } from '@kbn/streamlang-conditions';
+import { isFilterCondition } from '@kbn/streamlang-conditions';
 import { EXTRACTION_MODE, type ExtractionMode } from './entity_schema';
 
 /**

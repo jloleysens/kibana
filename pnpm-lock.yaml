@@ -3818,6 +3818,9 @@ importers:
       '@kbn/streamlang':
         specifier: workspace:*
         version: link:x-pack/platform/packages/shared/kbn-streamlang
+      '@kbn/streamlang-conditions':
+        specifier: workspace:*
+        version: link:x-pack/platform/packages/shared/kbn-streamlang-conditions
       '@kbn/streamlang-yaml-editor':
         specifier: workspace:*
         version: link:x-pack/platform/packages/shared/kbn-streamlang-yaml-editor
@@ -9230,6 +9233,8 @@ importers:
   x-pack/platform/packages/shared/kbn-slo-schema: {}
 
   x-pack/platform/packages/shared/kbn-streamlang: {}
+
+  x-pack/platform/packages/shared/kbn-streamlang-conditions: {}
 
   x-pack/platform/packages/shared/kbn-streamlang-tests: {}
 

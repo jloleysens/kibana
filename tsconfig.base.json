@@ -2725,6 +2725,8 @@
       "@kbn/storybook/*": ["./src/platform/packages/shared/kbn-storybook/*"],
       "@kbn/streamlang": ["./x-pack/platform/packages/shared/kbn-streamlang"],
       "@kbn/streamlang/*": ["./x-pack/platform/packages/shared/kbn-streamlang/*"],
+      "@kbn/streamlang-conditions": ["./x-pack/platform/packages/shared/kbn-streamlang-conditions"],
+      "@kbn/streamlang-conditions/*": ["./x-pack/platform/packages/shared/kbn-streamlang-conditions/*"],
       "@kbn/streamlang-tests": ["./x-pack/platform/packages/shared/kbn-streamlang-tests"],
       "@kbn/streamlang-tests/*": ["./x-pack/platform/packages/shared/kbn-streamlang-tests/*"],
       "@kbn/streamlang-yaml-editor": ["./x-pack/platform/packages/shared/kbn-streamlang-yaml-editor"],

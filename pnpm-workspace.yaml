@@ -1357,6 +1357,7 @@ packages:
   - 'x-pack/platform/packages/shared/kbn-slo-constants'
   - 'x-pack/platform/packages/shared/kbn-slo-schema'
   - 'x-pack/platform/packages/shared/kbn-streamlang'
+  - 'x-pack/platform/packages/shared/kbn-streamlang-conditions'
   - 'x-pack/platform/packages/shared/kbn-streamlang-tests'
   - 'x-pack/platform/packages/shared/kbn-streamlang-yaml-editor'
   - 'x-pack/platform/packages/shared/kbn-streams-ai'

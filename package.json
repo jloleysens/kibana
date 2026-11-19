@@ -1297,6 +1297,7 @@
     "@kbn/std": "workspace:*",
     "@kbn/storage-adapter": "workspace:*",
     "@kbn/streamlang": "workspace:*",
+    "@kbn/streamlang-conditions": "workspace:*",
     "@kbn/streamlang-yaml-editor": "workspace:*",
     "@kbn/streams-ai": "workspace:*",
     "@kbn/streams-app-plugin": "workspace:*",

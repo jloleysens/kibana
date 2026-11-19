@@ -16,3 +16,10 @@ export interface AlertGraphEsApi {
 }
 
 export const AlertGraphEsToken = createToken<AlertGraphEsApi>('security.alertGraphEs');
+
+export interface FingerprintPolicyApi {
+  canCreate(scopeId: string): Promise<boolean>;
+}
+export const FingerprintPolicyToken = createToken<FingerprintPolicyApi>(
+  'security.fingerprintPolicy'
+);

@@ -6,10 +6,16 @@
  */
 
 import type { RemoteModule } from '@kbn/core-remote-common';
-import { AlertGraphEsToken, WorkflowStepKind } from './tokens';
+import { AlertGraphEsToken, WorkflowStepKind, FingerprintPolicyToken } from './tokens';
 
 export const remoteModule: RemoteModule = {
   providers: [
+    {
+      token: FingerprintPolicyToken,
+      placement: 'coordinator',
+      modulePath: require.resolve('./fingerprint_policy'),
+      exportName: 'FingerprintPolicy',
+    },
     {
       token: AlertGraphEsToken,
       placement: 'coordinator',
@@ -18,6 +24,30 @@ export const remoteModule: RemoteModule = {
     },
   ],
   contributions: [
+    {
+      kind: WorkflowStepKind,
+      stepType: 'security.getAlertEntities',
+      modulePath: require.resolve(
+        '../workflows/step_types/get_alert_entities_step/get_alert_entities_step_runtime'
+      ),
+      exportName: 'GetAlertEntitiesStep',
+    },
+    {
+      kind: WorkflowStepKind,
+      stepType: 'security.buildExceptionEntriesFilter',
+      modulePath: require.resolve(
+        '../workflows/step_types/build_exception_entries_filter_step/build_exception_entries_filter_step_runtime'
+      ),
+      exportName: 'BuildExceptionEntriesFilterStep',
+    },
+    {
+      kind: WorkflowStepKind,
+      stepType: 'security.matchAttackFingerprints',
+      modulePath: require.resolve(
+        '../workflows/step_types/match_attack_fingerprints/match_attack_fingerprints_step_runtime'
+      ),
+      exportName: 'MatchAttackFingerprintsStep',
+    },
     {
       kind: WorkflowStepKind,
       stepType: 'security.assignAlert',

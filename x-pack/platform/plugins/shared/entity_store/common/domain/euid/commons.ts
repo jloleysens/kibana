@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { get } from 'lodash';
+import get from 'lodash/get';
 import type { Condition } from '@kbn/streamlang';
 import type {
   CalculatedEntityIdentity,

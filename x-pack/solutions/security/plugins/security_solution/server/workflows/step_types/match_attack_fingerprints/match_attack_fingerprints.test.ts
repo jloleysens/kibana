@@ -359,6 +359,34 @@ describe('matchAttackFingerprints', () => {
     expect(index).not.toHaveBeenCalled();
   });
 
+  it('uses the scoped asynchronous worker guard instead of the worker module default', async () => {
+    const { esClient, contextManager, index } = createHarness();
+    const canCreateFingerprint = jest.fn(async () => false);
+    await expect(
+      matchAttackFingerprints({
+        attacks: [attackDocument(ATTACK_ID, ['a1', 'a2'])],
+        contextManager,
+        esClient,
+        logger,
+        spaceId: 'default',
+        canCreateFingerprint,
+      })
+    ).rejects.toBeInstanceOf(FingerprintIndexUnscopedError);
+    expect(canCreateFingerprint).toHaveBeenCalledTimes(1);
+    expect(index).not.toHaveBeenCalled();
+    canCreateFingerprint.mockResolvedValue(true);
+    const result = await matchAttackFingerprints({
+      attacks: [attackDocument(ATTACK_ID, ['a1', 'a2'])],
+      contextManager,
+      esClient,
+      logger,
+      spaceId: 'default',
+      canCreateFingerprint,
+    });
+    expect(result.reviews).toHaveLength(1);
+    expect(index).toHaveBeenCalled();
+  });
+
   it('allows a missing index once the template install reports success', async () => {
     let allowed = false;
     setFingerprintCreateAllowed(() => allowed);
