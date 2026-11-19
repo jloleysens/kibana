@@ -60,6 +60,10 @@ export class CasesClientOperations implements CasesClientOperationsApi {
       const result = await run(client);
       signal.throwIfAborted();
       return result;
+    } catch (error) {
+      // Cap'n Web recreates custom subclasses as Error; carry the original workflow error type.
+      if (error instanceof Error) Object.assign(error, { workflowCasesErrorName: error.name });
+      throw error;
     } finally {
       const elapsed = process.cpuUsage(cpu);
       recordRemoteTiming('cases_client_operation', {

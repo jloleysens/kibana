@@ -5,12 +5,16 @@
  * 2.0.
  */
 
-import { expose } from '@kbn/core-remote-common';
+import { MessageChannel } from 'node:worker_threads';
+import { expose, openPortSession } from '@kbn/core-remote-common';
+import { ExecutionError } from '@kbn/workflows-runtime';
 import { httpServerMock } from '@kbn/core/server/mocks';
 import { createCasesClientMock } from '../client/mocks';
 import { CaseSchema } from '../../common/types/domain/case/v1';
 import { createCaseResponseFixture } from '../../common/fixtures/create_case';
 import { CasesClientOperations } from './client_operations';
+import type { CasesClientOperationsApi } from './client_operations_tokens';
+import { createWorkflowCasesClient } from './create_workflow_client';
 
 const setup = () => {
   const request = httpServerMock.createKibanaRequest();
@@ -96,4 +100,32 @@ it('does not expose a generic client callback over RPC', () => {
   expect(methods).toContain('caseCreate');
   expect(methods).toContain('caseFind');
   expect(methods).not.toContain('call');
+});
+
+it.each(['CaseError', 'TypeError'])('preserves %s through actual serialized RPC', async (name) => {
+  const { api, client } = setup();
+  const denied =
+    name === 'TypeError' ? new TypeError('Original failure') : new Error('Original failure');
+  denied.name = name;
+  client.cases.get.mockRejectedValue(denied);
+  const { port1, port2 } = new MessageChannel();
+  try {
+    const remote = openPortSession<CasesClientOperationsApi>(port1);
+    openPortSession(port2, expose(api));
+    const facade = createWorkflowCasesClient(remote, 'run');
+    await expect(facade.cases.get({ id: 'case' })).rejects.toMatchObject({
+      name,
+      message: 'Original failure',
+    });
+    try {
+      await facade.cases.get({ id: 'case' });
+    } catch (error) {
+      if (!(error instanceof Error)) throw error;
+      expect(ExecutionError.fromError(error).toSerializableObject()).toMatchObject({ type: name });
+      if (name === 'TypeError') expect(error).toBeInstanceOf(TypeError);
+    }
+  } finally {
+    port1.close();
+    port2.close();
+  }
 });

@@ -9,6 +9,21 @@ import type { ActionSource } from '../../common/types/domain';
 import type { WorkflowCasesClient } from '../workflows/types';
 import type { CasesClientOperationsApi } from './client_operations_tokens';
 
+const restoreCasesErrorName = async <T>(result: Promise<T>): Promise<T> => {
+  try {
+    return await result;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      'workflowCasesErrorName' in error &&
+      typeof error.workflowCasesErrorName === 'string'
+    ) {
+      error.name = error.workflowCasesErrorName;
+    }
+    throw error;
+  }
+};
+
 /** Exposes only the Cases methods used by original workflow handlers. */
 export const createWorkflowCasesClient = (
   api: CasesClientOperationsApi,
@@ -16,32 +31,42 @@ export const createWorkflowCasesClient = (
   actionSource?: ActionSource
 ): WorkflowCasesClient => ({
   cases: {
-    get: (...args) => api.caseGet(scopeId, args, actionSource),
-    create: (...args) => api.caseCreate(scopeId, args, actionSource),
-    bulkGet: (...args) => api.caseBulkGet(scopeId, args, actionSource),
-    bulkUpdate: (...args) => api.caseBulkUpdate(scopeId, args, actionSource),
-    delete: (...args) => api.caseDelete(scopeId, args, actionSource),
-    find: (...args) => api.caseFind(scopeId, args, actionSource),
-    similar: (...args) => api.caseSimilar(scopeId, args, actionSource),
-    getCasesByAlertID: (...args) => api.caseGetCasesByAlertID(scopeId, args, actionSource),
-    bulkAddObservables: (...args) => api.caseBulkAddObservables(scopeId, args, actionSource),
-    bulkDeleteObservables: (...args) => api.caseBulkDeleteObservables(scopeId, args, actionSource),
-    deleteObservable: (...args) => api.caseDeleteObservable(scopeId, args, actionSource),
-    updateObservable: (...args) => api.caseUpdateObservable(scopeId, args, actionSource),
-    replaceCustomField: (...args) => api.caseReplaceCustomField(scopeId, args, actionSource),
-    push: (...args) => api.casePush(scopeId, args, actionSource),
+    get: (...args) => restoreCasesErrorName(api.caseGet(scopeId, args, actionSource)),
+    create: (...args) => restoreCasesErrorName(api.caseCreate(scopeId, args, actionSource)),
+    bulkGet: (...args) => restoreCasesErrorName(api.caseBulkGet(scopeId, args, actionSource)),
+    bulkUpdate: (...args) => restoreCasesErrorName(api.caseBulkUpdate(scopeId, args, actionSource)),
+    delete: (...args) => restoreCasesErrorName(api.caseDelete(scopeId, args, actionSource)),
+    find: (...args) => restoreCasesErrorName(api.caseFind(scopeId, args, actionSource)),
+    similar: (...args) => restoreCasesErrorName(api.caseSimilar(scopeId, args, actionSource)),
+    getCasesByAlertID: (...args) =>
+      restoreCasesErrorName(api.caseGetCasesByAlertID(scopeId, args, actionSource)),
+    bulkAddObservables: (...args) =>
+      restoreCasesErrorName(api.caseBulkAddObservables(scopeId, args, actionSource)),
+    bulkDeleteObservables: (...args) =>
+      restoreCasesErrorName(api.caseBulkDeleteObservables(scopeId, args, actionSource)),
+    deleteObservable: (...args) =>
+      restoreCasesErrorName(api.caseDeleteObservable(scopeId, args, actionSource)),
+    updateObservable: (...args) =>
+      restoreCasesErrorName(api.caseUpdateObservable(scopeId, args, actionSource)),
+    replaceCustomField: (...args) =>
+      restoreCasesErrorName(api.caseReplaceCustomField(scopeId, args, actionSource)),
+    push: (...args) => restoreCasesErrorName(api.casePush(scopeId, args, actionSource)),
   },
   attachments: {
-    add: (...args) => api.attachmentAdd(scopeId, args, actionSource),
-    bulkCreate: (...args) => api.attachmentBulkCreate(scopeId, args, actionSource),
-    bulkDelete: (...args) => api.attachmentBulkDelete(scopeId, args, actionSource),
-    getAll: (...args) => api.attachmentGetAll(scopeId, args, actionSource),
+    add: (...args) => restoreCasesErrorName(api.attachmentAdd(scopeId, args, actionSource)),
+    bulkCreate: (...args) =>
+      restoreCasesErrorName(api.attachmentBulkCreate(scopeId, args, actionSource)),
+    bulkDelete: (...args) =>
+      restoreCasesErrorName(api.attachmentBulkDelete(scopeId, args, actionSource)),
+    getAll: (...args) => restoreCasesErrorName(api.attachmentGetAll(scopeId, args, actionSource)),
   },
   configure: {
-    get: (...args) => api.configureGet(scopeId, args, actionSource),
-    getConnectors: (...args) => api.configureGetConnectors(scopeId, args, actionSource),
+    get: (...args) => restoreCasesErrorName(api.configureGet(scopeId, args, actionSource)),
+    getConnectors: (...args) =>
+      restoreCasesErrorName(api.configureGetConnectors(scopeId, args, actionSource)),
   },
   templates: {
-    getTemplate: (...args) => api.templateGetTemplate(scopeId, args, actionSource),
+    getTemplate: (...args) =>
+      restoreCasesErrorName(api.templateGetTemplate(scopeId, args, actionSource)),
   },
 });
