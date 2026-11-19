@@ -16,7 +16,7 @@ import { build, type Metafile } from 'esbuild';
 import { buildRemoteBundle } from './build';
 import { discoverRemoteManifests } from './discover';
 import { measureShellInputs } from './shell_inputs';
-import { nearestRank } from './load_statistics';
+import { measureShellHeap } from './shell_heap';
 
 // Total bytes are reporting-only; lazy shared Core capabilities are budgeted on first use.
 // Measured SO/uiSettings union: 12,687,273 bytes; reporting threshold includes ~10% headroom.
@@ -124,6 +124,20 @@ it('measures the real workflow bundle and bounds the idle host without loading s
       format: 'esm',
       outfile: connectorProbe,
     });
+    const isolatedProbe = join(directory, 'shell_heap_probe.mjs');
+    await build({
+      entryPoints: [resolve(__dirname, '__fixtures__/shell_heap_probe.ts')],
+      bundle: true,
+      platform: 'node',
+      format: 'esm',
+      outfile: isolatedProbe,
+    });
+    const shellHeap = measureShellHeap(isolatedProbe, dirname(bundle.entry));
+    process.stdout.write(`${JSON.stringify({ shellHeap })}\n`);
+    expect(new Set(shellHeap.samples.map(({ pid }) => pid)).size).toBe(5);
+    // Supervisor-approved isolated-method calibration: 54,664B median + ~17% headroom;
+    // same two reviewed shell sources, no new dependency inputs.
+    expect(shellHeap.median).toBeLessThanOrEqual(64_000);
     const shellHeapSamples: number[] = [];
     for (let index = 0; index < 3; index++) {
       const execution = JSON.parse(
@@ -155,8 +169,7 @@ it('measures the real workflow bundle and bounds the idle host without loading s
       expect(execution.finalizes).toEqual([2]);
     }
     process.stdout.write(`${JSON.stringify({ shellHeapSamples })}\n`);
-    // Merged graph: same 292 static inputs / two exclusive sources; measured max 44,960B + ~11%.
-    expect(nearestRank(shellHeapSamples, 0.5)).toBeLessThanOrEqual(50_000);
+    // Business-curve shell deltas remain reporting-only; isolated samples above own the SAME guard.
     expect(loadedInputs.size).toBeGreaterThan(0);
     expect(
       [...loadedInputs].filter((path) =>

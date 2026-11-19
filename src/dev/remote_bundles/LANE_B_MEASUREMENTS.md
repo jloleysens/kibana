@@ -226,3 +226,24 @@ authoring definition), nonempty writer content plus an incomplete writer and
 recalled-memory IDs. No coordinator business callback. Fifteen other Nightshift
 types remain unfinished. The harness's `nightshift` family label must not be
 read as full Nightshift service coverage.
+
+## Actions shell guard — explicit supervisor policy change
+
+The two unchanged shell source inputs remain allowlisted, at3,147B under the
+unchanged3,300B source ceiling. Reviewed runLegacy/runLocal/runClassic APIs were
+already present at this session's baseline. The prior business-process sampling
+method produced noisy35KB..675KB deltas; its50,000B gate was calibrated after
+the session6 merge, not before those APIs.
+
+Supervisor approved a dedicated fresh process for EACH shell-import sample,
+only the engine baseline loaded, no metadata/business fixture or inherited
+NODE_OPTIONS preload. Two forced GCs with10ms settles before/after; five
+samples, all values+spread reported. The precise variants measured five54,664B
+and five54,648B samples, each spread0; they correctly FAILED the old50,000B
+ceiling. Supervisor then EXPLICITLY approved64,000B (~17% headroom). This is a
+recorded threshold/policy change, NOT a claim the old guard passed. Other
+per-step/shared/idle/noUI/allowlist/source ceilings remain unchanged. Standing
+rule: future shell heap/source increases require reviewed API additions with
+unchanged allowlist and this isolated method; new inputs always require a code
+fix. No threshold may be silently recalibrated. These guard results are not
+final end-to-end timing measurements.
