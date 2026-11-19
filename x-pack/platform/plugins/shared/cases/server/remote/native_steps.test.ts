@@ -34,7 +34,13 @@ it.each(contributions)(
     const api = new CasesClientOperations(
       {
         get: jest.fn(),
-        getRunState: jest.fn(),
+        getRunState: jest.fn().mockReturnValue({
+          workflowRunId: 'trusted-run',
+          workflowId: 'trusted-workflow',
+          workflowName: 'Persisted',
+          spaceId: 'default',
+          admittedChildren: new Set(),
+        }),
         admitChild: jest.fn(),
         getAbortSignal: () => new AbortController().signal,
       },
@@ -62,7 +68,13 @@ it('executes the original create handler and original lower-level client operati
   const api = new CasesClientOperations(
     {
       get: jest.fn().mockReturnValue(request),
-      getRunState: jest.fn(),
+      getRunState: jest.fn().mockReturnValue({
+        workflowRunId: 'trusted-run',
+        workflowId: 'trusted-workflow',
+        workflowName: 'Persisted',
+        spaceId: 'default',
+        admittedChildren: new Set(),
+      }),
       admitChild: jest.fn(),
       getAbortSignal: () => new AbortController().signal,
     },

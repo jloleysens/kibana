@@ -28,11 +28,7 @@ export const runCasesStep = async (
   if (!handlerContext) throw new Error('Cases requires executor-local handler context');
   handlerContext.abortSignal.throwIfAborted();
   const definition = await restoreCasesErrorName(
-    Promise.resolve(
-      factory(async (_request, options) =>
-        createWorkflowCasesClient(api, scopeId, options?.actionSource)
-      )
-    )
+    Promise.resolve(factory(async () => createWorkflowCasesClient(api, scopeId)))
   );
   if (!('handler' in definition)) throw new Error('Cases requires an ordinary handler');
   recordRemoteTiming('cases_native_handler', {

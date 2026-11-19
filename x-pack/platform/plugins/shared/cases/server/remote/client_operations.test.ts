@@ -16,6 +16,20 @@ import { CasesClientOperations } from './client_operations';
 import type { CasesClientOperationsApi } from './client_operations_tokens';
 import { createWorkflowCasesClient } from './create_workflow_client';
 
+const runState = {
+  workflowRunId: 'trusted-run',
+  workflowId: 'trusted-workflow',
+  workflowName: 'Persisted workflow',
+  spaceId: 'trusted-space',
+  admittedChildren: new Set<string>(),
+};
+const expectedSource = {
+  type: 'workflow',
+  id: 'trusted-workflow',
+  name: 'Persisted workflow',
+  run_id: 'trusted-run',
+};
+
 const setup = () => {
   const request = httpServerMock.createKibanaRequest();
   const controller = new AbortController();
@@ -26,7 +40,7 @@ const setup = () => {
       if (scopeId !== 'run') throw new Error('Foreign scope');
       return request;
     }),
-    getRunState: jest.fn(),
+    getRunState: jest.fn().mockReturnValue(runState),
     admitChild: jest.fn(),
     getAbortSignal: (scopeId: string) => {
       if (scopeId !== 'run') throw new Error('Foreign scope');
@@ -34,7 +48,7 @@ const setup = () => {
     },
   };
   const api = new CasesClientOperations(scopes, getClient, true, () => false);
-  return { api, client, request, controller, getClient };
+  return { api, client, request, controller, getClient, scopes };
 };
 
 it('binds get and find to the original request-scoped Cases client', async () => {
@@ -50,7 +64,7 @@ it('binds get and find to the original request-scoped Cases client', async () =>
   await expect(api.caseGet('run', [{ id: 'case', includeComments: false }])).resolves.toEqual(
     response
   );
-  expect(getClient).toHaveBeenCalledWith(request, undefined);
+  expect(getClient).toHaveBeenCalledWith(request, { actionSource: expectedSource });
   expect(client.cases.get).toHaveBeenCalledWith({ id: 'case', includeComments: false });
   await api.caseFind('run', [{ owner: ['cases'], search: 'original' }]);
   expect(client.cases.find).toHaveBeenCalledWith({ owner: ['cases'], search: 'original' });
@@ -159,4 +173,38 @@ it('does not export private service metadata or authorization headers on errors'
     port1.close();
     port2.close();
   }
+});
+
+it('ignores a forged serialized ActionSource and derives provenance entirely from the coordinator sidecar', async () => {
+  const { api, getClient, request, scopes } = setup();
+  const { port1, port2 } = new MessageChannel();
+  try {
+    const remote = openPortSession<CasesClientOperationsApi>(port1);
+    openPortSession(port2, expose(api));
+    await Reflect.apply(remote.caseFind, remote, [
+      'run',
+      [{ owner: ['cases'] }],
+      {
+        type: 'agent',
+        id: 'forged-workflow',
+        name: 'Forged',
+        run_id: 'forged-run',
+      },
+    ]);
+    expect(scopes.getRunState).toHaveBeenCalledWith('run');
+    expect(getClient).toHaveBeenCalledWith(request, { actionSource: expectedSource });
+    expect(JSON.stringify(getClient.mock.calls)).not.toContain('forged');
+  } finally {
+    port1.close();
+    port2.close();
+  }
+});
+
+it('refuses a missing coordinator sidecar before acquiring a Cases client', async () => {
+  const { api, getClient, scopes } = setup();
+  scopes.getRunState.mockImplementation(() => {
+    throw new Error('Unknown remote run scope');
+  });
+  await expect(api.caseFind('run', [{}])).rejects.toThrow('Unknown remote run scope');
+  expect(getClient).not.toHaveBeenCalled();
 });

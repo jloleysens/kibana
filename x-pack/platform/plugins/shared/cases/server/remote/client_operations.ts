@@ -9,7 +9,7 @@ import type { KibanaRequest } from '@kbn/core/server';
 import { recordRemoteTiming, remotable } from '@kbn/core-remote-common';
 import type { ScopeLookup } from '@kbn/core-remote-server';
 import type { GetCasesClientFn } from '../client/types';
-import type { ActionSource } from '../../common/types/domain';
+import { ActionSourceTypes, toActionSource } from '../../common/types/domain';
 import type { CasesClientOperationsApi } from './client_operations_tokens';
 
 const createCasesTransportError = (error: Error): Error => {
@@ -63,7 +63,6 @@ export class CasesClientOperations implements CasesClientOperationsApi {
     scopeId: string,
     operation: string,
     args: object,
-    source: ActionSource | undefined,
     run: (client: Awaited<ReturnType<GetCasesClientFn>>) => Promise<T>
   ): Promise<T> {
     const start = performance.now();
@@ -72,10 +71,15 @@ export class CasesClientOperations implements CasesClientOperationsApi {
       const signal = this.scopes.getAbortSignal(scopeId);
       signal.throwIfAborted();
       const request = this.scopes.get<KibanaRequest>(scopeId);
-      const client = await this.getCasesClient(
-        request,
-        source ? { actionSource: source } : undefined
-      );
+      const state = this.scopes.getRunState(scopeId);
+      const client = await this.getCasesClient(request, {
+        actionSource: toActionSource({
+          type: ActionSourceTypes.workflow,
+          id: state.workflowId,
+          name: state.workflowName,
+          runId: state.workflowRunId,
+        }),
+      });
       signal.throwIfAborted();
       const result = await run(client);
       signal.throwIfAborted();
@@ -95,163 +99,153 @@ export class CasesClientOperations implements CasesClientOperationsApi {
   }
 
   caseGet(
-    ...[scopeId, args, source]: Parameters<CasesClientOperationsApi['caseGet']>
+    ...[scopeId, args]: Parameters<CasesClientOperationsApi['caseGet']>
   ): ReturnType<CasesClientOperationsApi['caseGet']> {
-    return this.#call(scopeId, 'cases.get', args, source, (client) => client.cases.get(...args));
+    return this.#call(scopeId, 'cases.get', args, (client) => client.cases.get(...args));
   }
 
   caseCreate(
-    ...[scopeId, args, source]: Parameters<CasesClientOperationsApi['caseCreate']>
+    ...[scopeId, args]: Parameters<CasesClientOperationsApi['caseCreate']>
   ): ReturnType<CasesClientOperationsApi['caseCreate']> {
-    return this.#call(scopeId, 'cases.create', args, source, (client) =>
-      client.cases.create(...args)
-    );
+    return this.#call(scopeId, 'cases.create', args, (client) => client.cases.create(...args));
   }
 
   caseBulkGet(
-    ...[scopeId, args, source]: Parameters<CasesClientOperationsApi['caseBulkGet']>
+    ...[scopeId, args]: Parameters<CasesClientOperationsApi['caseBulkGet']>
   ): ReturnType<CasesClientOperationsApi['caseBulkGet']> {
-    return this.#call(scopeId, 'cases.bulkGet', args, source, (client) =>
-      client.cases.bulkGet(...args)
-    );
+    return this.#call(scopeId, 'cases.bulkGet', args, (client) => client.cases.bulkGet(...args));
   }
 
   caseBulkUpdate(
-    ...[scopeId, args, source]: Parameters<CasesClientOperationsApi['caseBulkUpdate']>
+    ...[scopeId, args]: Parameters<CasesClientOperationsApi['caseBulkUpdate']>
   ): ReturnType<CasesClientOperationsApi['caseBulkUpdate']> {
-    return this.#call(scopeId, 'cases.bulkUpdate', args, source, (client) =>
+    return this.#call(scopeId, 'cases.bulkUpdate', args, (client) =>
       client.cases.bulkUpdate(...args)
     );
   }
 
   caseDelete(
-    ...[scopeId, args, source]: Parameters<CasesClientOperationsApi['caseDelete']>
+    ...[scopeId, args]: Parameters<CasesClientOperationsApi['caseDelete']>
   ): ReturnType<CasesClientOperationsApi['caseDelete']> {
-    return this.#call(scopeId, 'cases.delete', args, source, (client) =>
-      client.cases.delete(...args)
-    );
+    return this.#call(scopeId, 'cases.delete', args, (client) => client.cases.delete(...args));
   }
 
   caseFind(
-    ...[scopeId, args, source]: Parameters<CasesClientOperationsApi['caseFind']>
+    ...[scopeId, args]: Parameters<CasesClientOperationsApi['caseFind']>
   ): ReturnType<CasesClientOperationsApi['caseFind']> {
-    return this.#call(scopeId, 'cases.find', args, source, (client) => client.cases.find(...args));
+    return this.#call(scopeId, 'cases.find', args, (client) => client.cases.find(...args));
   }
 
   caseSimilar(
-    ...[scopeId, args, source]: Parameters<CasesClientOperationsApi['caseSimilar']>
+    ...[scopeId, args]: Parameters<CasesClientOperationsApi['caseSimilar']>
   ): ReturnType<CasesClientOperationsApi['caseSimilar']> {
-    return this.#call(scopeId, 'cases.similar', args, source, (client) =>
-      client.cases.similar(...args)
-    );
+    return this.#call(scopeId, 'cases.similar', args, (client) => client.cases.similar(...args));
   }
 
   caseGetCasesByAlertID(
-    ...[scopeId, args, source]: Parameters<CasesClientOperationsApi['caseGetCasesByAlertID']>
+    ...[scopeId, args]: Parameters<CasesClientOperationsApi['caseGetCasesByAlertID']>
   ): ReturnType<CasesClientOperationsApi['caseGetCasesByAlertID']> {
-    return this.#call(scopeId, 'cases.getCasesByAlertID', args, source, (client) =>
+    return this.#call(scopeId, 'cases.getCasesByAlertID', args, (client) =>
       client.cases.getCasesByAlertID(...args)
     );
   }
 
   caseBulkAddObservables(
-    ...[scopeId, args, source]: Parameters<CasesClientOperationsApi['caseBulkAddObservables']>
+    ...[scopeId, args]: Parameters<CasesClientOperationsApi['caseBulkAddObservables']>
   ): ReturnType<CasesClientOperationsApi['caseBulkAddObservables']> {
-    return this.#call(scopeId, 'cases.bulkAddObservables', args, source, (client) =>
+    return this.#call(scopeId, 'cases.bulkAddObservables', args, (client) =>
       client.cases.bulkAddObservables(...args)
     );
   }
 
   caseBulkDeleteObservables(
-    ...[scopeId, args, source]: Parameters<CasesClientOperationsApi['caseBulkDeleteObservables']>
+    ...[scopeId, args]: Parameters<CasesClientOperationsApi['caseBulkDeleteObservables']>
   ): ReturnType<CasesClientOperationsApi['caseBulkDeleteObservables']> {
-    return this.#call(scopeId, 'cases.bulkDeleteObservables', args, source, (client) =>
+    return this.#call(scopeId, 'cases.bulkDeleteObservables', args, (client) =>
       client.cases.bulkDeleteObservables(...args)
     );
   }
 
   caseDeleteObservable(
-    ...[scopeId, args, source]: Parameters<CasesClientOperationsApi['caseDeleteObservable']>
+    ...[scopeId, args]: Parameters<CasesClientOperationsApi['caseDeleteObservable']>
   ): ReturnType<CasesClientOperationsApi['caseDeleteObservable']> {
-    return this.#call(scopeId, 'cases.deleteObservable', args, source, (client) =>
+    return this.#call(scopeId, 'cases.deleteObservable', args, (client) =>
       client.cases.deleteObservable(...args)
     );
   }
 
   caseUpdateObservable(
-    ...[scopeId, args, source]: Parameters<CasesClientOperationsApi['caseUpdateObservable']>
+    ...[scopeId, args]: Parameters<CasesClientOperationsApi['caseUpdateObservable']>
   ): ReturnType<CasesClientOperationsApi['caseUpdateObservable']> {
-    return this.#call(scopeId, 'cases.updateObservable', args, source, (client) =>
+    return this.#call(scopeId, 'cases.updateObservable', args, (client) =>
       client.cases.updateObservable(...args)
     );
   }
 
   caseReplaceCustomField(
-    ...[scopeId, args, source]: Parameters<CasesClientOperationsApi['caseReplaceCustomField']>
+    ...[scopeId, args]: Parameters<CasesClientOperationsApi['caseReplaceCustomField']>
   ): ReturnType<CasesClientOperationsApi['caseReplaceCustomField']> {
-    return this.#call(scopeId, 'cases.replaceCustomField', args, source, (client) =>
+    return this.#call(scopeId, 'cases.replaceCustomField', args, (client) =>
       client.cases.replaceCustomField(...args)
     );
   }
 
   casePush(
-    ...[scopeId, args, source]: Parameters<CasesClientOperationsApi['casePush']>
+    ...[scopeId, args]: Parameters<CasesClientOperationsApi['casePush']>
   ): ReturnType<CasesClientOperationsApi['casePush']> {
-    return this.#call(scopeId, 'cases.push', args, source, (client) => client.cases.push(...args));
+    return this.#call(scopeId, 'cases.push', args, (client) => client.cases.push(...args));
   }
 
   attachmentAdd(
-    ...[scopeId, args, source]: Parameters<CasesClientOperationsApi['attachmentAdd']>
+    ...[scopeId, args]: Parameters<CasesClientOperationsApi['attachmentAdd']>
   ): ReturnType<CasesClientOperationsApi['attachmentAdd']> {
-    return this.#call(scopeId, 'attachments.add', args, source, (client) =>
+    return this.#call(scopeId, 'attachments.add', args, (client) =>
       client.attachments.add(...args)
     );
   }
 
   attachmentBulkCreate(
-    ...[scopeId, args, source]: Parameters<CasesClientOperationsApi['attachmentBulkCreate']>
+    ...[scopeId, args]: Parameters<CasesClientOperationsApi['attachmentBulkCreate']>
   ): ReturnType<CasesClientOperationsApi['attachmentBulkCreate']> {
-    return this.#call(scopeId, 'attachments.bulkCreate', args, source, (client) =>
+    return this.#call(scopeId, 'attachments.bulkCreate', args, (client) =>
       client.attachments.bulkCreate(...args)
     );
   }
 
   attachmentBulkDelete(
-    ...[scopeId, args, source]: Parameters<CasesClientOperationsApi['attachmentBulkDelete']>
+    ...[scopeId, args]: Parameters<CasesClientOperationsApi['attachmentBulkDelete']>
   ): ReturnType<CasesClientOperationsApi['attachmentBulkDelete']> {
-    return this.#call(scopeId, 'attachments.bulkDelete', args, source, (client) =>
+    return this.#call(scopeId, 'attachments.bulkDelete', args, (client) =>
       client.attachments.bulkDelete(...args)
     );
   }
 
   attachmentGetAll(
-    ...[scopeId, args, source]: Parameters<CasesClientOperationsApi['attachmentGetAll']>
+    ...[scopeId, args]: Parameters<CasesClientOperationsApi['attachmentGetAll']>
   ): ReturnType<CasesClientOperationsApi['attachmentGetAll']> {
-    return this.#call(scopeId, 'attachments.getAll', args, source, (client) =>
+    return this.#call(scopeId, 'attachments.getAll', args, (client) =>
       client.attachments.getAll(...args)
     );
   }
 
   configureGet(
-    ...[scopeId, args, source]: Parameters<CasesClientOperationsApi['configureGet']>
+    ...[scopeId, args]: Parameters<CasesClientOperationsApi['configureGet']>
   ): ReturnType<CasesClientOperationsApi['configureGet']> {
-    return this.#call(scopeId, 'configure.get', args, source, (client) =>
-      client.configure.get(...args)
-    );
+    return this.#call(scopeId, 'configure.get', args, (client) => client.configure.get(...args));
   }
 
   configureGetConnectors(
-    ...[scopeId, args, source]: Parameters<CasesClientOperationsApi['configureGetConnectors']>
+    ...[scopeId, args]: Parameters<CasesClientOperationsApi['configureGetConnectors']>
   ): ReturnType<CasesClientOperationsApi['configureGetConnectors']> {
-    return this.#call(scopeId, 'configure.getConnectors', args, source, (client) =>
+    return this.#call(scopeId, 'configure.getConnectors', args, (client) =>
       client.configure.getConnectors(...args)
     );
   }
 
   templateGetTemplate(
-    ...[scopeId, args, source]: Parameters<CasesClientOperationsApi['templateGetTemplate']>
+    ...[scopeId, args]: Parameters<CasesClientOperationsApi['templateGetTemplate']>
   ): ReturnType<CasesClientOperationsApi['templateGetTemplate']> {
-    return this.#call(scopeId, 'templates.getTemplate', args, source, (client) =>
+    return this.#call(scopeId, 'templates.getTemplate', args, (client) =>
       client.templates.getTemplate(...args)
     );
   }
