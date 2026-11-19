@@ -20,7 +20,7 @@ const main = async (): Promise<void> => {
       id,
       root: 'workflows.executor',
       dependencies: ['workflows.stepCatalog'],
-      contributions: ['workflows.step'],
+      contributions: ['workflows.step', 'workflows.connector'],
     },
     outdir: resolve(directory),
   });

@@ -299,6 +299,7 @@ export class RemoteService implements RemoteSetup {
       for (const contribution of remoteModule.contributions ?? []) {
         if (!kindIds.has(remoteTokenId(contribution.kind))) continue;
         contributions.push({
+          kindId: remoteTokenId(contribution.kind),
           stepType: contribution.stepType,
           modulePath: contribution.modulePath,
           exportName: contribution.exportName,

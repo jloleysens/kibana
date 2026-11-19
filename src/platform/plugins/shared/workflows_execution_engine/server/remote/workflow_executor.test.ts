@@ -109,6 +109,121 @@ describe('WorkflowExecutor', () => {
     expect(stepRunner.describe).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { type: 'jenkins.getJob', connectorType: 'jenkins', system: false },
+    { type: 'http', connectorType: 'http-system', system: true },
+  ])(
+    'keeps the original ConnectorStepImpl normalization and limits for native $type',
+    async ({ type, connectorType, system }) => {
+      const store = createStore(
+        execution([
+          {
+            name: 'connector',
+            type,
+            'max-step-size': '1kb',
+            ...(!system ? { 'connector-id': 'saved-id' } : {}),
+            with: { value: 42 },
+          },
+        ])
+      );
+      const steps = catalog([]);
+      steps.supportsConnector.mockImplementation((candidate) => candidate === connectorType);
+      steps.runConnector.mockResolvedValue({ status: 'ok', data: { native: true } });
+      const runner: WorkflowStepRunnerApi = {
+        describe: jest.fn(async () => [
+          {
+            type,
+            mode: 'connector' as const,
+            isSpecConnector: !system,
+            configKeys: [],
+            hasStart: false,
+            hasOnCancel: false,
+            digest: 'connector',
+          },
+        ]),
+        invoke: jest.fn(),
+        cancel: jest.fn(),
+      };
+      const result = await new WorkflowExecutor(steps, store.storage, log(), undefined, runner).run(
+        {
+          dependencyPlan: store.dependencyPlan,
+          scopeId: 'scope',
+          workflowRunId: 'run-1',
+          spaceId: 'default',
+        }
+      );
+      expect(result.status).toBe(ExecutionStatus.COMPLETED);
+      expect(steps.run).not.toHaveBeenCalled();
+      expect(runner.invoke).not.toHaveBeenCalled();
+      expect(steps.runConnector).toHaveBeenCalledWith(
+        connectorType,
+        'scope',
+        {
+          connectorType: system ? '.http-system' : 'jenkins',
+          connectorNameOrId: system ? 'system-connector-.http-system' : 'saved-id',
+          input: system
+            ? { value: 42, fetcher: { max_content_length: 1024 } }
+            : {
+                subAction: 'getJob',
+                subActionParams: { value: 42 },
+                fetchOptions: { max_content_length: 1024 },
+              },
+          system,
+        },
+        { signal: expect.objectContaining({ aborted: false }) }
+      );
+      const executionDoc = await store.storage.getExecution('scope', 'run-1', 'default');
+      const docs = await store.storage.getSteps('scope', executionDoc.stepExecutionIds ?? []);
+      expect(docs.find(({ stepId }) => stepId === 'connector')?.output).toEqual({ native: true });
+    }
+  );
+
+  it('keeps original response-size rejection after a native connector returns', async () => {
+    const type = 'jenkins.getJob';
+    const store = createStore(
+      execution([
+        {
+          name: 'connector',
+          type,
+          'connector-id': 'saved-id',
+          'max-step-size': '1kb',
+          with: {},
+        },
+      ])
+    );
+    const steps = catalog([]);
+    steps.supportsConnector.mockReturnValue(true);
+    steps.runConnector.mockResolvedValue({ status: 'ok', data: { text: 'x'.repeat(2048) } });
+    const runner: WorkflowStepRunnerApi = {
+      describe: jest.fn(async () => [
+        {
+          type,
+          mode: 'connector' as const,
+          isSpecConnector: true,
+          configKeys: [],
+          hasStart: false,
+          hasOnCancel: false,
+          digest: 'connector',
+        },
+      ]),
+      invoke: jest.fn(),
+      cancel: jest.fn(),
+    };
+    const result = await new WorkflowExecutor(steps, store.storage, log(), undefined, runner).run({
+      dependencyPlan: store.dependencyPlan,
+      scopeId: 'scope',
+      workflowRunId: 'run-1',
+      spaceId: 'default',
+    });
+    expect(result.status).toBe(ExecutionStatus.FAILED);
+    expect(runner.invoke).not.toHaveBeenCalled();
+    const executionDoc = await store.storage.getExecution('scope', 'run-1', 'default');
+    const docs = await store.storage.getSteps('scope', executionDoc.stepExecutionIds ?? []);
+    expect(docs.find(({ stepId }) => stepId === 'connector')?.error).toEqual(
+      expect.objectContaining({ type: 'StepSizeLimitExceeded' })
+    );
+  });
+
   it('passes executor-local synchronous helpers to native contributions', async () => {
     const store = createStore(execution([{ name: 'native', type: GRAPH, with: {} }]));
     const steps = catalog([]);
@@ -568,6 +683,8 @@ function log(): WorkflowLogApi {
 function catalog(caseTitles: string[]): jest.Mocked<WorkflowStepCatalogApi> {
   return {
     supports: jest.fn((stepType: string) => stepType === GRAPH || stepType === CASE),
+    supportsConnector: jest.fn(() => false),
+    runConnector: jest.fn(),
     run: jest.fn(async (stepType: string, _scopeId: string, input: unknown) => {
       if (stepType === GRAPH) {
         return { output: { stats: { nodes: 2 }, alerts: [], nodes: [], edges: [] } };

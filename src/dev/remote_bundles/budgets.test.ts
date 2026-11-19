@@ -29,7 +29,7 @@ it('bounds the real workflow bundle and idle host without loading steps or autho
         id: 'workflows',
         root: 'workflows.executor',
         dependencies: ['workflows.stepCatalog'],
-        contributions: ['workflows.step'],
+        contributions: ['workflows.step', 'workflows.connector'],
       },
       outdir: join(directory, 'bundle'),
     });

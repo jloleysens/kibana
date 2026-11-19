@@ -10,7 +10,7 @@
 import type { RemoteModule } from '@kbn/core-remote-common';
 import { WorkflowStep, WorkflowStepCatalogToken } from './tokens';
 
-export { WorkflowStep, WorkflowStepCatalogToken } from './tokens';
+export { WorkflowStep, WorkflowConnector, WorkflowStepCatalogToken } from './tokens';
 export type { RemoteStepContext, RemoteWorkflowStep, WorkflowStepCatalogApi } from './tokens';
 
 export const remoteModule: RemoteModule = {

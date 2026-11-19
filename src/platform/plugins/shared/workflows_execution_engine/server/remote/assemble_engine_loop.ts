@@ -188,7 +188,7 @@ export async function runWorkflowEngineInWorker(
     dependencies,
   });
   const nodesFactory = new NodesFactory(
-    connectorStandIn(scopeId, storage, workflowLogger, request.remoteSteps?.runner),
+    connectorStandIn(scopeId, storage, workflowLogger, steps, request.remoteSteps?.runner),
     workflowRuntime,
     workflowLogger,
     workflowExecutionGraph,
@@ -319,9 +319,25 @@ function connectorStandIn(
   scopeId: string,
   storage: WorkflowStorageApi,
   logger: Pick<IWorkflowEventLogger, 'logWarn'>,
+  steps: WorkflowStepCatalogApi,
   runner?: WorkflowStepRunnerApi
 ): ConnectorExecutor {
   const execute = async (params: Parameters<ConnectorExecutor['execute']>[0], system = false) => {
+    const connectorType = params.connectorType.replace(/^\./, '');
+    if (steps.supportsConnector(connectorType)) {
+      params.abortController.signal.throwIfAborted();
+      return steps.runConnector(
+        connectorType,
+        scopeId,
+        {
+          connectorType: params.connectorType,
+          connectorNameOrId: params.connectorNameOrId,
+          input: params.input,
+          system,
+        },
+        { signal: params.abortController.signal }
+      );
+    }
     if (!runner) return storage.executeConnector(scopeId, { ...params, system });
     params.abortController.signal.throwIfAborted();
     const invocationId = randomUUID();

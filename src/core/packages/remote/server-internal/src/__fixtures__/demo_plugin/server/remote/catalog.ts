@@ -12,7 +12,14 @@ type StepFactory = () => {
 };
 
 export class DemoCatalog {
-  constructor(private readonly steps: ReadonlyMap<string, StepFactory>) {}
+  constructor(
+    private readonly steps: ReadonlyMap<string, StepFactory>,
+    private readonly kinds: ReadonlyMap<string, string> = new Map()
+  ) {}
+
+  contributionKinds(): Record<string, string> {
+    return Object.fromEntries(this.kinds);
+  }
 
   async run(stepType: string, scopeId: string, input: unknown): Promise<unknown> {
     const create = this.steps.get(stepType);

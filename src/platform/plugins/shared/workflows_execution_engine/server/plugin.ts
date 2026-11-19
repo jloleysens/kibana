@@ -88,6 +88,7 @@ import { dispatchWorkflow } from './remote/dispatch_workflow';
 import { NativeChildApi } from './remote/native_child_api';
 import {
   WorkflowChildToken,
+  WorkflowConnectorKind,
   WorkflowControlToken,
   WorkflowDataPlaneToken,
   WorkflowExecutorToken,
@@ -295,7 +296,7 @@ export class WorkflowsExecutionEnginePlugin
         id: 'workflows',
         reuse: this.config.remoteExecution.reuse,
         root: WorkflowExecutorToken,
-        contributions: [WorkflowStepKind],
+        contributions: [WorkflowStepKind, WorkflowConnectorKind],
         dependencies: [WorkflowStepCatalogToken],
       });
     }

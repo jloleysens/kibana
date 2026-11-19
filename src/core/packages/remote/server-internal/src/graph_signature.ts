@@ -23,7 +23,7 @@ export const graphSignature = (spec: RemoteWorkerSpec): string =>
           .sort(),
         coordinator: [...spec.coordinatorTokenIds].sort(),
         steps: spec.contributions
-          .map(({ stepType, exportName }) => `${stepType}:${exportName}`)
+          .map(({ kindId, stepType, exportName }) => `${kindId ?? ''}:${stepType}:${exportName}`)
           .sort(),
       })
     )

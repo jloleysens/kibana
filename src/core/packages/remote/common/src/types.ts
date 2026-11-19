@@ -53,6 +53,7 @@ export interface RemoteWorkerSpec {
     readonly exportName: string;
   }>;
   readonly contributions: ReadonlyArray<{
+    readonly kindId?: string;
     readonly stepType: string;
     readonly modulePath: string;
     readonly exportName: string;

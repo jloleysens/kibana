@@ -35,6 +35,8 @@ export const WorkflowStepCatalogToken =
 
 export interface WorkflowStepCatalogApi {
   supports(stepType: string): boolean;
+  supportsConnector(connectorType: string): boolean;
+  runConnector: WorkflowStepCatalogApi['run'];
   run(
     stepType: string,
     scopeId: string,
@@ -42,6 +44,7 @@ export interface WorkflowStepCatalogApi {
     context: {
       /** Executor-local only; never forwarded to coordinator capabilities. */
       readonly handlerContext?: StepHandlerContext;
+      readonly signal?: AbortSignal;
       readonly attribution?: {
         readonly type: string;
         readonly id: string;
@@ -142,6 +145,7 @@ export interface WorkflowExecutorApi {
 
 /** Same stable id as the Workflows Extensions contribution kind. */
 export const WorkflowStepKind = createToken<unknown>('workflows.step');
+export const WorkflowConnectorKind = createToken<unknown>('workflows.connector');
 
 export const WorkflowStorageToken = createToken<WorkflowStorageApi>('workflows.storage');
 export const WorkflowLogToken = createToken<WorkflowLogApi>('workflows.log');

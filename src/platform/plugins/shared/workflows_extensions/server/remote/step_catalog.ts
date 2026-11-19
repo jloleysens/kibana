@@ -16,13 +16,48 @@ type StepFactory = () => RemoteWorkflowStep;
  * Unknown step types fail here; they are not executed on the coordinator.
  */
 export class WorkflowStepCatalog {
-  constructor(private readonly steps: ReadonlyMap<string, StepFactory>) {}
+  constructor(
+    private readonly steps: ReadonlyMap<string, StepFactory>,
+    private readonly kinds: ReadonlyMap<string, string> = new Map()
+  ) {}
 
   supports(stepType: string): boolean {
-    return this.steps.has(stepType);
+    return this.steps.has(stepType) && this.kind(stepType) === 'workflows.step';
+  }
+
+  supportsConnector(connectorType: string): boolean {
+    return this.steps.has(connectorType) && this.kind(connectorType) === 'workflows.connector';
+  }
+
+  async runConnector(
+    connectorType: string,
+    scopeId: string,
+    input: unknown,
+    context: RemoteStepContext
+  ): Promise<unknown> {
+    if (!this.supportsConnector(connectorType)) {
+      throw new Error(`Unsupported remote connector type "${connectorType}"`);
+    }
+    return this.invoke(connectorType, scopeId, input, context);
+  }
+
+  private kind(stepType: string): string {
+    return this.kinds.get(stepType) ?? 'workflows.step';
   }
 
   async run(
+    stepType: string,
+    scopeId: string,
+    input: unknown,
+    context: RemoteStepContext
+  ): Promise<unknown> {
+    if (!this.supports(stepType)) {
+      throw new Error(`Unsupported remote step type "${stepType}"`);
+    }
+    return this.invoke(stepType, scopeId, input, context);
+  }
+
+  private async invoke(
     stepType: string,
     scopeId: string,
     input: unknown,

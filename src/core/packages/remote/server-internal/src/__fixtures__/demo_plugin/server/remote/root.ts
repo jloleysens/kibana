@@ -76,6 +76,10 @@ export class Root {
     return this.value.label();
   }
 
+  contributionKinds(): Record<string, string> {
+    return this.catalog.contributionKinds();
+  }
+
   pid(): number {
     return process.pid;
   }

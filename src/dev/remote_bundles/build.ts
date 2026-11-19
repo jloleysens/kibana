@@ -93,7 +93,8 @@ export const buildRemoteBundle = async ({
     coordinatorTokenIds: selected
       .filter(({ placement }) => placement === 'coordinator')
       .map(({ token }) => token),
-    contributions: contributions.map(({ stepType, modulePath, exportName }) => ({
+    contributions: contributions.map(({ kind, stepType, modulePath, exportName }) => ({
+      kindId: kind,
       stepType,
       modulePath,
       exportName,

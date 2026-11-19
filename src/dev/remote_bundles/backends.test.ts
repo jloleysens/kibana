@@ -34,6 +34,7 @@ interface DemoApi {
   hasDispatchEnvironment(): Promise<boolean>;
   copy(value: { marker: string }): Promise<{ marker: string }>;
   loadedModules(): Promise<string[]>;
+  contributionKinds(): Promise<Record<string, string>>;
   run(request: { scopeId: string; steps: Array<{ type: string }> }): Promise<{
     outputs: Array<{ marker: string }>;
   }>;
@@ -84,6 +85,7 @@ it.each(['in_process', 'child_process'] as const)(
       const original = { marker: 'copy me' };
       expect(await session.stub.copy(original)).toEqual(original);
       expect(await session.stub.copy(original)).not.toBe(original);
+      expect(await session.stub.contributionKinds()).toEqual({ 'demo.echoStep': 'demo.step' });
       const initial = await session.stub.loadedModules();
       expect(initial.some((path) => path.endsWith('/executor_value.ts'))).toBe(
         backend === 'child_process'

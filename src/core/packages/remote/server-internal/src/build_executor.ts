@@ -91,8 +91,10 @@ export async function buildExecutor(
   }
 
   const factories = new Map<string, () => StepInstance>();
+  const kinds = new Map<string, string>();
   for (const contribution of spec.contributions) {
     let constructor: Promise<Constructor<StepInstance>> | undefined;
+    if (contribution.kindId) kinds.set(contribution.stepType, contribution.kindId);
     factories.set(contribution.stepType, () => ({
       async run(scopeId, input, context) {
         const cached = constructor !== undefined;
@@ -125,7 +127,7 @@ export async function buildExecutor(
     )) as Constructor<object>;
     container
       .bind(Symbol.for(spec.catalog.tokenId))
-      .toConstantValue(new Catalog(factories as never));
+      .toConstantValue(new Catalog(factories as never, kinds));
   }
 
   const Root = (await load(
