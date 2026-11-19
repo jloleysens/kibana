@@ -24,7 +24,7 @@ const encodeVarint = (value: number): Buffer => {
 };
 const nested = (field: number, content: Buffer): Buffer =>
   Buffer.concat([encodeVarint(field * 8 + 2), encodeVarint(content.length), content]);
-const fields = (buffer: Buffer): Array<{ field: number; content: Buffer }> => {
+const fields = (buffer: Buffer): Array<{ field: number; content: Buffer; integer?: number }> => {
   let offset = 0;
   const readVarint = (): number => {
     let value = 0;
@@ -38,10 +38,14 @@ const fields = (buffer: Buffer): Array<{ field: number; content: Buffer }> => {
     } while (byte >= 128);
     return value;
   };
-  const result: Array<{ field: number; content: Buffer }> = [];
+  const result: Array<{ field: number; content: Buffer; integer?: number }> = [];
   while (offset < buffer.length) {
     const tag = readVarint();
-    assert.equal(tag % 8, 2, 'Fixture expects length-delimited request fields only');
+    if (tag % 8 === 0) {
+      result.push({ field: Math.floor(tag / 8), content: Buffer.alloc(0), integer: readVarint() });
+      continue;
+    }
+    assert.equal(tag % 8, 2, 'Unexpected sandbox fixture request encoding');
     const length = readVarint();
     assert(offset + length <= buffer.length);
     result.push({ field: Math.floor(tag / 8), content: buffer.subarray(offset, offset + length) });
@@ -53,6 +57,15 @@ const fields = (buffer: Buffer): Array<{ field: number; content: Buffer }> => {
 /** Filesystem-only TLS wire fixture: exercises original sandbox RPCs, never executes code. */
 export const startLaneBSandboxFixture = async (logFile: string) => {
   const server = new Server();
+  const filesystems = new Map<string, Map<string, Buffer>>();
+  const filesystem = (conversationId: string): Map<string, Buffer> => {
+    let files = filesystems.get(conversationId);
+    if (!files) {
+      files = new Map();
+      filesystems.set(conversationId, files);
+    }
+    return files;
+  };
   const definition = (method: string) => ({
     path: '/sandbox.SandboxService/' + method,
     requestStream: false,
@@ -63,13 +76,16 @@ export const startLaneBSandboxFixture = async (logFile: string) => {
     responseDeserialize: (value: Buffer) => value,
   });
   const handle =
-    (operation: string, run: (request: Buffer) => { response: Buffer; record: object }) =>
+    (
+      operation: string,
+      run: (request: Buffer, conversationId: string) => { response: Buffer; record: object }
+    ) =>
     (call: ServerUnaryCall<Buffer, Buffer>, callback: sendUnaryData<Buffer>) => {
       try {
         const conversationId = call.metadata.get('x-conversation-id')[0];
         assert.equal(call.metadata.get('authorization')[0], 'ApiKey lane-b-stat-only-fixture');
-        assert.equal(typeof conversationId, 'string');
-        const { response, record } = run(call.request);
+        assert(typeof conversationId === 'string');
+        const { response, record } = run(call.request, conversationId);
         appendFileSync(logFile, JSON.stringify({ operation, conversationId, ...record }) + '\n');
         callback(null, response);
       } catch (error) {
@@ -81,21 +97,77 @@ export const startLaneBSandboxFixture = async (logFile: string) => {
       statFiles: definition('StatFiles'),
       mkdirs: definition('Mkdirs'),
       writeFiles: definition('WriteFiles'),
+      readFiles: definition('ReadFiles'),
     },
     {
-      statFiles: handle('stat', (request) => {
-        assert.deepEqual(
-          request,
-          Buffer.concat([Buffer.from([10, 10]), Buffer.from('/workspace')])
-        );
-        const metadata = Buffer.concat([request, Buffer.from([24, 1, 32, 1])]);
-        return { record: { path: '/workspace' }, response: nested(1, metadata) };
+      statFiles: handle('stat', (request, conversationId) => {
+        const paths = fields(request).map(({ content }) => content.toString('utf8'));
+        const stats = paths.map((path) => {
+          assert(path === '/workspace' || path.startsWith('/workspace/memories/'));
+          const file = filesystem(conversationId).get(path);
+          const directory = path === '/workspace';
+          return {
+            path,
+            exists: directory || file !== undefined,
+            isDir: directory,
+            size: file?.length ?? 0,
+          };
+        });
+        return {
+          record: { paths },
+          response: Buffer.concat(
+            stats.map(({ path, exists, isDir, size }) =>
+              nested(
+                1,
+                Buffer.concat([
+                  nested(1, Buffer.from(path)),
+                  Buffer.from([16]),
+                  encodeVarint(size),
+                  Buffer.from([24, Number(isDir), 32, Number(exists)]),
+                ])
+              )
+            )
+          ),
+        };
+      }),
+      readFiles: handle('read', (request, conversationId) => {
+        const files = fields(request).map(({ content }) => {
+          const entries = fields(content);
+          const path = entries.find(({ field }) => field === 1)?.content.toString('utf8');
+          assert(typeof path === 'string' && path.startsWith('/workspace/memories/'));
+          const maxBytes = entries.find(({ field }) => field === 2)?.integer;
+          const contentBytes = filesystem(conversationId).get(path);
+          const bytes = contentBytes?.subarray(0, maxBytes);
+          return { path, content: bytes ?? Buffer.alloc(0), success: contentBytes !== undefined };
+        });
+        return {
+          record: {
+            files: files.map(({ path, content, success }) => ({
+              path,
+              contentBase64: content.toString('base64'),
+              success,
+            })),
+          },
+          response: Buffer.concat(
+            files.map(({ path, content, success }) =>
+              nested(
+                1,
+                Buffer.concat([
+                  nested(1, Buffer.from(path)),
+                  nested(2, content),
+                  Buffer.from([24, Number(success)]),
+                ])
+              )
+            )
+          ),
+        };
       }),
       mkdirs: handle('mkdirs', (request) => {
         const paths = fields(request).map(({ content }) => content.toString('utf8'));
         assert(
           paths.every(
             (path) =>
+              path === '/workspace/memories' ||
               path === '/workspace/decision-trees' ||
               path === '/workspace/cortex' ||
               path.startsWith('/workspace/cortex/')
@@ -103,15 +175,19 @@ export const startLaneBSandboxFixture = async (logFile: string) => {
         );
         return { record: { paths }, response: Buffer.concat(paths.map(() => Buffer.from([8, 1]))) };
       }),
-      writeFiles: handle('write', (request) => {
+      writeFiles: handle('write', (request, conversationId) => {
         const files = fields(request).map(({ content }) => {
           const entries = fields(content);
           const path = entries.find(({ field }) => field === 1)?.content.toString('utf8');
           const text = entries.find(({ field }) => field === 2)?.content.toString('utf8');
           assert(
-            path?.startsWith('/workspace/decision-trees/') || path?.startsWith('/workspace/cortex/')
+            path?.startsWith('/workspace/memories/') ||
+              path?.startsWith('/workspace/decision-trees/') ||
+              path?.startsWith('/workspace/cortex/')
           );
-          assert.equal(typeof text, 'string');
+          assert(typeof text === 'string');
+          assert(path);
+          filesystem(conversationId).set(path, Buffer.from(text));
           return { path, content: text };
         });
         return {

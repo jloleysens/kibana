@@ -235,6 +235,11 @@ export class NightshiftInvestigationsPlugin
       getSandboxStart: () => this.sandboxStart,
       isNightshiftEnabled: isNightshiftEnabledSync,
     });
+    const telemetry = setupNightshiftTelemetry({
+      analytics: core.analytics,
+      logger: this.logger.get('telemetry'),
+    });
+
     core.remote.bind(
       SandboxWorkspacesToken,
       (scopes) =>
@@ -253,14 +258,13 @@ export class NightshiftInvestigationsPlugin
                 conversationId,
                 logger: this.logger.get('cortex'),
               }).reportHydrated(pages),
+          },
+          {
+            isEnabled: () => this.memoryEnabled,
+            reportMaterialized: (event) => telemetry.reportSemanticMemoryMaterialized(event),
           }
         )
     );
-    const telemetry = setupNightshiftTelemetry({
-      analytics: core.analytics,
-      logger: this.logger.get('telemetry'),
-    });
-
     this.cortexEnabled = this.ctx.config.get().cortex.enabled;
     this.memoryEnabled = this.ctx.config.get().memory.enabled;
     if (this.cortexEnabled) {

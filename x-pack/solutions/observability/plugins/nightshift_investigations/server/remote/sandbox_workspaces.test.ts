@@ -20,7 +20,7 @@ const setup = (getSandboxStart: () => SandboxPluginStart | undefined = () => und
   const controller = new AbortController();
   const scopes: ScopeLookup = {
     get: jest.fn(),
-    getRunState: jest.fn().mockReturnValue({ spaceId: 'ops' }),
+    getRunState: jest.fn().mockReturnValue({ spaceId: 'ops', workflowRunId: 'trusted-run' }),
     resolveStepType: jest.fn(),
     resolveStepOutputLimit: jest.fn(),
     admitChild: jest.fn(),
@@ -30,10 +30,16 @@ const setup = (getSandboxStart: () => SandboxPluginStart | undefined = () => und
     },
   };
   const allocate = jest.fn(async () => ({}));
-  const workspaces = new SandboxWorkspaces(scopes, allocate, getSandboxStart, {
-    isEnabled: () => true,
-    reportHydrated: jest.fn(),
-  });
+  const workspaces = new SandboxWorkspaces(
+    scopes,
+    allocate,
+    getSandboxStart,
+    {
+      isEnabled: () => true,
+      reportHydrated: jest.fn(),
+    },
+    { isEnabled: () => true, reportMaterialized: jest.fn() }
+  );
   return { workspaces, scopes, allocate, controller };
 };
 
@@ -186,7 +192,8 @@ it('fences Cortex paths and telemetry by the original run-owned workspace refere
     scopes,
     allocate,
     () => ({ getSession: jest.fn(), getSessionForSpace: () => session }),
-    { isEnabled: () => true, reportHydrated }
+    { isEnabled: () => true, reportHydrated },
+    { isEnabled: () => true, reportMaterialized: jest.fn() }
   );
   const reference = await workspaces.openCortexWorkspace(
     'run',
@@ -226,10 +233,16 @@ it('exports only the narrow capability surface, not TypeScript-private implement
     'allocate',
     'constructor',
     'isCortexEnabled',
+    'isMemoryEnabled',
+    'isReset',
     'mkdirs',
     'openCortexWorkspace',
     'openDecisionTreeWorkspace',
+    'openMemoryWorkspace',
+    'readFiles',
     'reportCortexHydrated',
+    'reportMemoryMaterialized',
+    'statFiles',
     'writeFiles',
   ]);
   for (const name of [
@@ -242,5 +255,74 @@ it('exports only the narrow capability surface, not TypeScript-private implement
     'runCommand',
   ]) {
     expect(name in adapter).toBe(false);
+  }
+});
+
+it('reads current Memory session state and exact bytes, and derives telemetry run provenance over RPC', async () => {
+  let reset = false;
+  const bytes = Buffer.from([0, 255, 97]);
+  const readFiles = jest.fn(async () => [
+    { path: '/workspace/memories/.index.json', content: bytes, success: true },
+  ]);
+  const session: SandboxSession = {
+    get isReset() {
+      return reset;
+    },
+    runCommand: jest.fn(),
+    readFiles,
+    statFiles: jest.fn(),
+    mkdirs: jest.fn(),
+    writeFiles: jest.fn(),
+  };
+  const { scopes, allocate } = setup();
+  const reportMaterialized = jest.fn();
+  const workspaces = new SandboxWorkspaces(
+    scopes,
+    allocate,
+    () => ({ getSession: jest.fn(), getSessionForSpace: () => session }),
+    { isEnabled: () => true, reportHydrated: jest.fn() },
+    { isEnabled: () => true, reportMaterialized }
+  );
+  const { port1, port2 } = new MessageChannel();
+  try {
+    const remote = openPortSession<SandboxWorkspacesApi>(port1);
+    openPortSession(port2, expose(workspaces));
+    const reference = await remote.openMemoryWorkspace('run', 'conversation');
+    if (!reference) throw new Error('Expected Memory workspace reference');
+    await expect(remote.isReset('run', reference)).resolves.toBe(false);
+    reset = true;
+    await expect(remote.isReset('run', reference)).resolves.toBe(true);
+    const requests = [{ path: '/workspace/memories/.index.json', maxReadBytes: 1024 }];
+    const results = await remote.readFiles('run', reference, requests);
+    expect(readFiles).toHaveBeenCalledWith(requests);
+    expect(Buffer.from(results[0].contentBase64, 'base64')).toEqual(bytes);
+    await remote.reportMemoryMaterialized('run', reference, {
+      agent_id: 'nightshift.investigation',
+      outcome: 'success',
+      workflow_execution_id: 'forged',
+      spaceId: 'foreign',
+    } as { agent_id: string; outcome: 'success' });
+    expect(reportMaterialized).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflow_execution_id: 'trusted-run',
+        agent_id: 'nightshift.investigation',
+      })
+    );
+    expect(reportMaterialized.mock.calls[0][0]).not.toHaveProperty('spaceId');
+    await expect(remote.readFiles('run2', reference, requests)).rejects.toThrow(
+      'Unknown sandbox workspace'
+    );
+    await expect(remote.readFiles('run', reference, [{ path: '/etc/passwd' }])).rejects.toThrow(
+      'Path outside'
+    );
+    await expect(
+      remote.statFiles('run', reference, ['/workspace/cortex/INDEX.md'])
+    ).rejects.toThrow('Path outside');
+    expect(readFiles).toHaveBeenCalledTimes(1);
+    expect(session.statFiles).not.toHaveBeenCalled();
+    expect(session.runCommand).not.toHaveBeenCalled();
+  } finally {
+    port1.close();
+    port2.close();
   }
 });

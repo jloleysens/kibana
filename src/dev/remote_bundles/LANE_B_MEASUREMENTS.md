@@ -11,7 +11,7 @@ One command, from the merged worktree (pinned Node):
 node scripts/measure_runner_lane_b.js \
   --config .scratch/runner-poc-lane-b/quiet-base.yml \
   --output .scratch/runner-poc-lane-b/quiet-$(date +%s) \
-  --sandbox-config-fixture
+  --sandbox-stat-fixture
 ```
 
 Required flat-key YAML base config: `server.port: 5635`,
@@ -25,7 +25,12 @@ Tree preparation also requires the original sandbox availability gate.
 `--sandbox-config-fixture` enables the original sandbox plugin with a nonsecret
 fixture key and the owned ephemeral loopback target for configuration only.
 That target is **not** a sandbox API; no sandbox allocation/FS I/O is proved.
-The session5 `s5-child.yml` is a working example. Config contents are not printed;
+The allocation/materialization labels require `--sandbox-stat-fixture` instead:
+an owned, ephemeral loopback **TLS** gRPC filesystem fixture, using repository dev
+certificates with the original client verification enabled. It implements stat,
+mkdir, read and write only, never command execution. Thus it proves the original
+sandbox client/session wire path, not real gVisor execution or pod restore.
+The session8 `s8-live.yml` is a working example. Config contents are not printed;
 identity records their hash. Generated local configs contain these local keys;
 keep output ignored and private. The command owns/restarts only its own Kibana,
 uses an OS-assigned loopback port for the fake, deletes only its uniquely named
@@ -35,7 +40,7 @@ directory; retains failed attempts. Workflows, Cases, Notes, fingerprints and
 outcome docs remain for independent review; all identifiers have a lane-B prefix.
 
 `--smoke` runs only three instrumented profiles (ordinary Kibana, child_process,
-in_process), two runs per family: **78 real persisted runs** (13 labels).
+in_process), two runs per family: **102 real persisted runs** (17 labels).
 `--families name,name` scopes a smoke run. Not a timing claim.
 The full matrix intentionally runs serially and restarts Kibana many times.
 
@@ -78,7 +83,7 @@ The full matrix intentionally runs serially and restarts Kibana many times.
   `finalTimingClaims:false` is deliberate: a harness cannot certify a quiet laptop.
 - Separate instrumented memory/callback profiles: baseline, child_process and
   in_process, fixed family order extensions -> Cases -> inference -> conversation
-  -> attachments -> rerank -> agent -> nightshift-compose -> Nightshift model/recovery/trees/agents. Per-step Core
+  -> attachments -> rerank -> agent -> nightshift-compose -> Nightshift model/recovery/trees/agents/render/allocation/tree+Cortex+Memory hydration. Per-step Core
   heap markers + 100ms per-process RSS/heap/cumulative process CPU samples.
   Acknowledged SIGUSR2 samples force GC in **each owned process** before/after each
   run. `memory-curve.jsonl` retains individual PIDs and combined Kibana+worker RSS/
@@ -225,7 +230,7 @@ Live harness performs the original agent execution through real ES inference to
 the loopback fake, independently reads conversation/event data and allowlisted
 stored execution provenance, and asserts generic coordinator invoke0.
 
-## Nightshift: partial family, six routed types
+## Nightshift: partial family, ten routed types
 
 - `nightshift`: original pure compose handler, no business callback.
 - `nightshift_model`: original worker projection; scoped SO/UI and connector model policy via typed coordinator operation. Explicit selected endpoint proof, not default-model backing coverage.
@@ -234,7 +239,14 @@ stored execution provenance, and asserts generic coordinator invoke0.
 - `nightshift_agents`: original worker defaults/output/visibility polling/retries; two fixed installers and live availability coordinator (SO/live registry). Both IDs exercised. Independent GETs prove idempotent persisted existence, not forced recreation of pre-existing agents.
 - `nightshift_render`: original worker validation/Slack escaping/text/Block Kit; original scoped authorized investigation read and Space-bound locator coordinator. Completed/started/failed phases; independent persisted conversation and outcome reads. Imports only the same-owner scalar runtime, not eager authoring schemas.
 
-Ten types remain unfinished. No full16-type, sandbox, memory, optimizer or lifecycle-notification proof is implied. Original suites, PID markers and zero generic coordinator invocation remain required. Final timing matrix is deferred.
+- `nightshift_sandbox`: original worker defaults/scoped ID/output; original gated allocation/stat/restore/45s timeout/retry via typed coordinator sandbox infrastructure. Exact independently captured stat plus persisted outcome.
+- `nightshift_tree_hydrate`: original native ES tree reads/filter/Markdown+learnings and 20s timeout/degradation; typed original sandbox mkdir/write. Populated version2 tree and exact file content independently checked.
+- `nightshift_cortex_hydrate`: original native ES store/duplicate pruning/render/file ordering/45s timeout/UNAVAILABLE retry; typed original sandbox filesystem and original bucketed telemetry.
+- `nightshift_memory_hydrate`: original native ES retrieval/Thompson ranking/catalog/disk checks/45s timeout/degradation; typed original sandbox filesystem, live reset-state read (not an opening-time snapshot), and telemetry with coordinator-owned workflow-run provenance. Two hydrates share a workspace: first recalls real pages, second reads the written catalog and reports no newly materialized pages.
+
+These four labels use `--sandbox-stat-fixture`. No untrusted code executes in the worker or fixture: original sandbox infrastructure, TLS, credentials, feature gate and session isolation remain coordinator-owned. Opaque references are run-owned and root-fenced, deleted on scope close; the original Space+conversation workspace identity deliberately remains reusable across runs, as before. The exported RPC surface excludes implementation helpers and shell commands.
+
+Six types remain unfinished (three optimizers/reinforcement and three lifecycle operations). No full16-type, real gVisor execution, optimizer or lifecycle-notification proof is implied. Original suites, PID markers and zero generic coordinator invocation remain required. Final timing matrix is deferred.
 
 ## Actions shell guard — explicit supervisor policy change
 
@@ -256,3 +268,5 @@ rule: future shell heap/source increases require reviewed API additions with
 unchanged allowlist and this isolated method; new inputs always require a code
 fix. No threshold may be silently recalibrated. These guard results are not
 final end-to-end timing measurements.
+
+Multi-family profile directories use a stable family-list hash to stay within filesystem name limits; `profile.json` records the complete ordered family list and cell.

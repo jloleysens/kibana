@@ -5,6 +5,8 @@
  * 2.0.
  */
 
+import { hydrateMemoryWorkspaceWithSessionState as originalMemoryHydrate } from '../memory/register_memory';
+import { hydrateMemoryWorkspaceWithSessionState } from '../memory/hydrate_workspace';
 import { hydrateCortexWorkspaceWithTelemetry as originalCortexHydrate } from '../cortex/register_cortex';
 import { hydrateCortexWorkspaceWithTelemetry } from '../cortex/hydrate_workspace';
 import { hydrateDecisionTreeWorkspace as originalHydrate } from '../decision_trees/register_decision_trees';
@@ -37,6 +39,7 @@ import {
 import { DECISION_TREE_SUBMIT_TOOL_ID } from '../tools/decision_tree/submit_optimizer_result_tool';
 
 it('preserves original helper/schema/constants exports and registered prompt tool identities', () => {
+  expect(originalMemoryHydrate).toBe(hydrateMemoryWorkspaceWithSessionState);
   expect(originalCortexHydrate).toBe(hydrateCortexWorkspaceWithTelemetry);
   expect(originalHydrate).toBe(hydrateDecisionTreeWorkspace);
   expect(originalPrepare).toBe(prepareReinforcementTurn);

@@ -20,7 +20,9 @@ import type { InvestigationToolCall } from '../decision_trees/accessed_trees';
 import { previewText } from './log_format';
 import { stepsFromRound, stepsFromToolCalls, type TranscriptStep } from './transcript';
 import { loadInvestigationRound } from '../investigation_round';
-import { materializeMemory, type MaterializeMemoryResult } from './materialize';
+import type { MaterializeMemoryResult } from './materialize';
+import { hydrateMemoryWorkspaceWithSessionState } from './hydrate_workspace';
+export { hydrateMemoryWorkspaceWithSessionState } from './hydrate_workspace';
 import {
   createLlmProposeMemoryExtractions,
   createLlmProposeMemoryLabels,
@@ -68,15 +70,7 @@ export const createMemoryStore = ({
   return createMemoryPageStore({ esClient, logger, spaceId, signal });
 };
 
-export const hydrateMemoryWorkspace = async ({
-  session,
-  esClient,
-  spaceId,
-  agentId,
-  query,
-  signal,
-  logger,
-}: {
+export const hydrateMemoryWorkspace = (options: {
   session: SandboxSession;
   esClient: ElasticsearchClient;
   spaceId: string;
@@ -84,13 +78,8 @@ export const hydrateMemoryWorkspace = async ({
   query?: string;
   signal?: AbortSignal;
   logger: Logger;
-}): Promise<MaterializeMemoryResult> => {
-  const store = createMemoryStore({ esClient, logger, spaceId, signal });
-  logger.debug(
-    `Memory hydrate space=${spaceId} agent=${agentId} query=${JSON.stringify(previewText(query))}`
-  );
-  return materializeMemory({ session, store, logger, query });
-};
+}): Promise<MaterializeMemoryResult> =>
+  hydrateMemoryWorkspaceWithSessionState({ ...options, getIsReset: () => options.session.isReset });
 
 export const loadRoundSteps = async ({
   agentBuilder,

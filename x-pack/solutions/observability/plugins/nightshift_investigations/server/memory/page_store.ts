@@ -251,7 +251,7 @@ export const createMemoryPageStore = ({
   now = () => Date.now() / 1000,
 }: {
   esClient: ElasticsearchClient;
-  logger: Logger;
+  logger: Pick<Logger, 'info' | 'warn' | 'debug'>;
   spaceId: string;
   signal?: AbortSignal;
   now?: () => number;

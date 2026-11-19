@@ -68,6 +68,7 @@ interface Output {
   version?: number;
   success?: boolean;
   failed?: boolean;
+  recalled_ids?: string[];
 }
 interface Step {
   stepId: string;
@@ -206,6 +207,8 @@ const execute = async (
     _source: {
       modelContext?: string;
       sandboxId?: string;
+      firstNotification?: string;
+      secondNotification?: string;
       selectedModel?: string;
       slackText?: string;
       startedText?: string;
@@ -237,7 +240,18 @@ const execute = async (
     };
   }>(`${es}/lane-b-quiet-outcomes/_doc/${step('persist')._id}`);
   save(join(directory, `${workflowExecutionId}-business.json`), persisted);
-  if (
+  if (family === 'nightshift_memory_hydrate') {
+    assert.equal(persisted._source.sandboxId, 'default__' + workflowExecutionId);
+    assert(persisted._source.firstNotification?.includes('/workspace/memories/' + id + '.md'));
+    assert.equal(persisted._source.secondNotification, '');
+    assert(step('hydrate').recalled_ids?.includes('memory_' + id));
+    assert(step('repeatHydrate').recalled_ids?.includes('memory_' + id));
+    const page = await api<{ _source: { content: string } }>(
+      `${es}/ai-index-idx-nightshift-semantic-memory/_doc/default:memory_${id}`
+    );
+    assert.equal(page._source.content, 'Verified Memory ' + id);
+    save(join(directory, `${workflowExecutionId}-memory-page.json`), page);
+  } else if (
     family === 'nightshift_sandbox' ||
     family === 'nightshift_tree_hydrate' ||
     family === 'nightshift_cortex_hydrate'
@@ -511,6 +525,23 @@ export const runLaneBMeasurements = async (): Promise<void> => {
   mkdirSync(output, { recursive: true });
   const smoke = args.includes('--smoke');
   assert(!args.includes('--families') || smoke, '--families requires --smoke');
+  const filesystemFamilies = [
+    'nightshift_sandbox',
+    'nightshift_tree_hydrate',
+    'nightshift_cortex_hydrate',
+    'nightshift_memory_hydrate',
+  ];
+  const requestedFamilyNames = args.includes('--families')
+    ? option('--families').split(',')
+    : undefined;
+  if (
+    !requestedFamilyNames ||
+    requestedFamilyNames.some((family) => filesystemFamilies.includes(family))
+  )
+    assert(
+      args.includes('--sandbox-stat-fixture'),
+      'Sandbox filesystem proof requires --sandbox-stat-fixture (TLS fixture, never code execution)'
+    );
   save(join(output, 'identity.json'), {
     source: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
     dirty: execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim(),
@@ -736,6 +767,7 @@ export const runLaneBMeasurements = async (): Promise<void> => {
               'nightshift_sandbox',
               'nightshift_tree_hydrate',
               'nightshift_cortex_hydrate',
+              'nightshift_memory_hydrate',
             ]
           : ['extensions', 'cases'];
       const selectedFamilies = args.includes('--families')
@@ -751,11 +783,15 @@ export const runLaneBMeasurements = async (): Promise<void> => {
         : requestedFamilies.map((family) => [family]);
       for (const group of groups)
         for (let block = 0; block < (cell.memory || smoke ? 1 : 3); block++) {
-          const profile = `${cell.memory ? 'memory' : 'timing'}-${cell.backend}-${
-            cell.delayMs
-          }-${group.join('-')}-${block}`;
+          const profile = `${cell.memory ? 'memory' : 'timing'}-${cell.backend}-${cell.delayMs}-${
+            group.length === 1
+              ? group[0]
+              : 'families-' +
+                createHash('sha256').update(JSON.stringify(group)).digest('hex').slice(0, 12)
+          }-${block}`;
           const directory = join(output, profile);
           mkdirSync(directory);
+          save(join(directory, 'profile.json'), { cell, families: group, block });
           writeFileSync(
             join(directory, 'machine-before.txt'),
             execFileSync('ps', ['-axo', 'pid,ppid,%cpu,rss,comm'], { encoding: 'utf8' })
@@ -867,6 +903,26 @@ export const runLaneBMeasurements = async (): Promise<void> => {
           );
           for (const family of group) {
             const id = `lane-b-quiet-${family.replaceAll('_', '-')}-${Date.now()}`;
+            if (family === 'nightshift_memory_hydrate') {
+              await api(
+                `${es}/ai-index-idx-nightshift-semantic-memory/_doc/default:memory_${id}?refresh=true`,
+                {
+                  '@timestamp': new Date().toISOString(),
+                  type: 'memory',
+                  title: 'Verified Memory ' + id,
+                  content: 'Verified Memory ' + id,
+                  tags: ['memory'],
+                  attributes: {
+                    space_id: 'default',
+                    slug: id,
+                    impressions: 1,
+                    conversions: 1,
+                    last_impression_time: new Date().toISOString(),
+                  },
+                },
+                'PUT'
+              );
+            }
             if (family === 'nightshift_cortex_hydrate') {
               await api(
                 `${es}/ai-index-idx-nightshift-cortex/_doc/default:cortex_service_${id}?refresh=true`,
@@ -974,6 +1030,26 @@ export const runLaneBMeasurements = async (): Promise<void> => {
                   written[0].files?.some(({ content }) => content.includes('# Verified tree'))
                 );
               }
+              if (family === 'nightshift_memory_hydrate') {
+                await api(
+                  `${es}/ai-index-idx-nightshift-semantic-memory/_doc/default:memory_${id}?refresh=true`,
+                  {
+                    '@timestamp': new Date().toISOString(),
+                    type: 'memory',
+                    title: 'Verified Memory ' + id,
+                    content: 'Verified Memory ' + id,
+                    tags: ['memory'],
+                    attributes: {
+                      space_id: 'default',
+                      slug: id,
+                      impressions: 1,
+                      conversions: 1,
+                      last_impression_time: new Date().toISOString(),
+                    },
+                  },
+                  'PUT'
+                );
+              }
               if (family === 'nightshift_cortex_hydrate') {
                 const requests = lines<{
                   operation: string;
@@ -988,12 +1064,37 @@ export const runLaneBMeasurements = async (): Promise<void> => {
                 assert.equal(written.length, 2);
                 assert(
                   written
-                    .flatMap(({ files }) => files ?? [])
+                    .flatMap(({ files: writtenFiles }) => writtenFiles ?? [])
                     .some(
                       ({ path, content }) =>
                         path === '/workspace/cortex/services/' + id + '.md' &&
                         content.includes('Verified Cortex ' + id)
                     )
+                );
+              }
+              if (family === 'nightshift_memory_hydrate') {
+                const requests = lines<{
+                  operation: string;
+                  conversationId: string;
+                  files?: Array<{ path: string; content: string }>;
+                }>(join(output, 'sandbox-stat-requests.jsonl'));
+                const workspaceRequests = requests.filter(
+                  ({ conversationId }) =>
+                    conversationId === 'default__' + result.workflowExecutionId
+                );
+                const files = workspaceRequests
+                  .filter(({ operation }) => operation === 'write')
+                  .flatMap(({ files: writtenFiles }) => writtenFiles ?? []);
+                assert(
+                  files.some(
+                    ({ path, content }) =>
+                      path === '/workspace/memories/' + id + '.md' &&
+                      content.includes('Verified Memory ' + id)
+                  )
+                );
+                assert(
+                  workspaceRequests.some(({ operation }) => operation === 'read'),
+                  'Second hydrate must read the original catalog'
                 );
               }
               const authorizationReads = lines<AuthorizationRead>(join(directory, 'timing.jsonl'))
@@ -1019,12 +1120,39 @@ export const runLaneBMeasurements = async (): Promise<void> => {
                   !requests.some(({ name }) => name.includes('WorkflowStepRunner.invoke')),
                   'Unexpected generic coordinator handler'
                 );
+              const nativeMarkers = lines<{ event: string; pid: number; stepType: string }>(
+                join(directory, 'timing.jsonl')
+              )
+                .slice(timingBefore)
+                .filter(({ event }) => event === 'nightshift_native_handler');
+              const expectedMarkers = {
+                nightshift_sandbox: ['obtain_sandbox'],
+                nightshift_tree_hydrate: ['obtain_sandbox', 'decision_tree_hydrate'],
+                nightshift_cortex_hydrate: ['obtain_sandbox', 'cortex_hydrate'],
+                nightshift_memory_hydrate: [
+                  'obtain_sandbox',
+                  'memory_materialize_to_sandbox',
+                  'memory_materialize_to_sandbox',
+                ],
+              };
+              if (cell.memory && family in expectedMarkers) {
+                const expected = expectedMarkers[family as keyof typeof expectedMarkers];
+                assert.deepEqual(
+                  nativeMarkers.map(({ stepType }) => stepType).sort(),
+                  cell.backend === 'baseline' ? [] : [...expected].sort()
+                );
+                for (const { pid } of nativeMarkers) {
+                  if (cell.backend === 'child_process') assert.notEqual(pid, child.pid);
+                  else assert.equal(pid, child.pid);
+                }
+              }
               const row = {
                 ...result,
                 family,
                 profile,
                 cold: repeat === 0,
                 callbacks,
+                nativeMarkers,
                 conversationAuthorizationReads: authorizationReads,
                 callbackPayloadBytes: requests.reduce((total, request) => total + request.bytes, 0),
               };

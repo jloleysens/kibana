@@ -10,6 +10,7 @@ import { posix } from 'node:path';
 import type { SandboxPluginStart, SandboxSession } from '@kbn/sandbox-plugin/server';
 import type { ScopeLookup } from '@kbn/core-remote-server';
 import { recordRemoteTiming, remotable } from '@kbn/core-remote-common';
+import type { SemanticMemoryMaterializedEvent } from '../telemetry/events';
 import type { CortexEntityType } from '../../common/cortex';
 import type { SandboxWorkspacesApi } from './sandbox_workspaces_tokens';
 import type { createWorkspaceAllocator } from './allocate_workspace';
@@ -24,7 +25,7 @@ export class SandboxWorkspaces implements SandboxWorkspacesApi {
       string,
       {
         session: SandboxSession;
-        root: '/workspace/decision-trees' | '/workspace/cortex';
+        root: '/workspace/decision-trees' | '/workspace/cortex' | '/workspace/memories';
         telemetryConversationId?: string;
       }
     >
@@ -39,8 +40,101 @@ export class SandboxWorkspaces implements SandboxWorkspacesApi {
         conversationId: string | undefined,
         pages: Array<{ entity_type: CortexEntityType }>
       ) => void | Promise<void>;
+    },
+    private readonly memory: {
+      isEnabled: () => boolean;
+      reportMaterialized: (event: SemanticMemoryMaterializedEvent) => void;
     }
   ) {}
+
+  async isMemoryEnabled(scopeId: string): Promise<boolean> {
+    return this.#perform(scopeId, 'memory_policy', {}, async () => this.memory.isEnabled());
+  }
+
+  async openMemoryWorkspace(scopeId: string, conversationId: string): Promise<string | undefined> {
+    return this.#openWorkspace(scopeId, conversationId, '/workspace/memories');
+  }
+
+  async isReset(scopeId: string, reference: string): Promise<boolean> {
+    return this.#perform(
+      scopeId,
+      'is_reset',
+      { reference },
+      async () => this.#getWorkspace(scopeId, reference).session.isReset
+    );
+  }
+
+  async statFiles(
+    scopeId: string,
+    reference: string,
+    paths: string[]
+  ): ReturnType<SandboxWorkspacesApi['statFiles']> {
+    return this.#perform(scopeId, 'stat', { reference, paths }, async () => {
+      const { session, root } = this.#getWorkspace(scopeId, reference);
+      paths.forEach((path) => this.#assertWorkspacePath(root, path));
+      return session.statFiles(paths);
+    });
+  }
+
+  async readFiles(
+    scopeId: string,
+    reference: string,
+    requests: Array<{ path: string; maxReadBytes?: number }>
+  ): ReturnType<SandboxWorkspacesApi['readFiles']> {
+    return this.#perform(scopeId, 'read', { reference, requests }, async () => {
+      const { session, root } = this.#getWorkspace(scopeId, reference);
+      requests.forEach(({ path }) => this.#assertWorkspacePath(root, path));
+      const results = await session.readFiles(
+        requests.map(({ path, maxReadBytes }) => ({ path, maxReadBytes }))
+      );
+      return results.map(({ path, content, success }) => ({
+        path,
+        contentBase64: content.toString('base64'),
+        success,
+      }));
+    });
+  }
+
+  async reportMemoryMaterialized(
+    scopeId: string,
+    reference: string,
+    event: Omit<SemanticMemoryMaterializedEvent, 'workflow_execution_id'>
+  ): Promise<void> {
+    return this.#perform(scopeId, 'memory_telemetry', { reference, event }, async () => {
+      const { root } = this.#getWorkspace(scopeId, reference);
+      if (root !== '/workspace/memories') throw new Error('Not a Memory workspace reference');
+      const { workflowRunId } = this.scopes.getRunState(scopeId);
+      const {
+        agent_id,
+        conversation_id,
+        outcome,
+        retrieval_mode,
+        search_fallback,
+        candidate_count,
+        recalled_count,
+        new_page_count,
+        catalog_size,
+        catalog_evicted_count,
+        pod_reset,
+        notification_chars,
+      } = event;
+      this.memory.reportMaterialized({
+        agent_id,
+        ...(conversation_id ? { conversation_id } : {}),
+        workflow_execution_id: workflowRunId,
+        outcome,
+        retrieval_mode,
+        search_fallback,
+        candidate_count,
+        recalled_count,
+        new_page_count,
+        catalog_size,
+        catalog_evicted_count,
+        pod_reset,
+        notification_chars,
+      });
+    });
+  }
 
   async isCortexEnabled(scopeId: string): Promise<boolean> {
     return this.#perform(scopeId, 'cortex_policy', {}, async () => this.cortex.isEnabled());
@@ -84,7 +178,7 @@ export class SandboxWorkspaces implements SandboxWorkspacesApi {
   async #openWorkspace(
     scopeId: string,
     conversationId: string,
-    root: '/workspace/decision-trees' | '/workspace/cortex',
+    root: '/workspace/decision-trees' | '/workspace/cortex' | '/workspace/memories',
     telemetryConversationId?: string
   ): Promise<string | undefined> {
     return this.#perform(scopeId, 'open', { conversationId }, async () => {

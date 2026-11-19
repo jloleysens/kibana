@@ -23,11 +23,37 @@ export type LaneBFamily =
   | 'nightshift_render'
   | 'nightshift_sandbox'
   | 'nightshift_tree_hydrate'
-  | 'nightshift_cortex_hydrate';
+  | 'nightshift_cortex_hydrate'
+  | 'nightshift_memory_hydrate';
 
 /** Uses the same original business steps for ordinary Kibana and each worker backend. */
 export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: string) => {
   const steps = {
+    nightshift_memory_hydrate: [
+      {
+        name: 'obtain',
+        type: 'nightshift.obtainSandbox',
+        with: { conversation_id: '{{ execution.id }}' },
+      },
+      {
+        name: 'hydrate',
+        type: 'nightshift.memoryMaterializeToSandbox',
+        with: {
+          sandbox_id: '{{ steps.obtain.output.sandbox_id }}',
+          agent_id: 'nightshift.investigation',
+          conversation_id: '{{ execution.id }}',
+        },
+      },
+      {
+        name: 'repeatHydrate',
+        type: 'nightshift.memoryMaterializeToSandbox',
+        with: {
+          sandbox_id: '{{ steps.obtain.output.sandbox_id }}',
+          agent_id: 'nightshift.investigation',
+          conversation_id: '{{ execution.id }}',
+        },
+      },
+    ],
     nightshift_cortex_hydrate: [
       {
         name: 'obtain',
@@ -385,6 +411,11 @@ export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: s
     ],
   }[family];
   const document = {
+    nightshift_memory_hydrate: {
+      sandboxId: '{{ steps.hydrate.output.sandbox_id }}',
+      firstNotification: '{{ steps.hydrate.output.notification }}',
+      secondNotification: '{{ steps.repeatHydrate.output.notification }}',
+    },
     nightshift_cortex_hydrate: {
       sandboxId: '{{ steps.hydrate.output.sandbox_id }}',
       conversationId: '{{ steps.hydrate.output.conversation_id }}',

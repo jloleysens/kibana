@@ -49,6 +49,13 @@ export const remoteModule: RemoteModule = {
   contributions: [
     {
       kind: createToken('workflows.step'),
+      stepType: 'nightshift.memoryMaterializeToSandbox',
+      needs: [SandboxWorkspacesToken],
+      modulePath: require.resolve('./memory_materialize_to_sandbox_step'),
+      exportName: 'MemoryMaterializeToSandboxStep',
+    },
+    {
+      kind: createToken('workflows.step'),
       stepType: 'nightshift.cortexHydrate',
       needs: [SandboxWorkspacesToken],
       modulePath: require.resolve('./cortex_hydrate_step'),

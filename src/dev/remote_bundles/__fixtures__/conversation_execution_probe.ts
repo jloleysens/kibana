@@ -66,6 +66,34 @@ const main = async (): Promise<void> => {
     response.setHeader('content-type', 'application/json');
     response.setHeader('x-elastic-product', 'Elasticsearch');
     const path = new URL(request.url ?? '/', 'http://localhost').pathname;
+    if (path.includes('ai-index-idx-nightshift-semantic-memory')) {
+      response.end(
+        JSON.stringify({
+          hits: {
+            hits: [
+              {
+                _id: 'default:memory_fixture',
+                _source: {
+                  '@timestamp': new Date().toISOString(),
+                  type: 'memory',
+                  title: 'Fixture memory',
+                  content: 'Nonempty memory page',
+                  tags: ['memory'],
+                  attributes: {
+                    slug: 'fixture',
+                    space_id: 'default',
+                    impressions: 1,
+                    conversions: 1,
+                    last_impression_time: new Date().toISOString(),
+                  },
+                },
+              },
+            ],
+          },
+        })
+      );
+      return;
+    }
     if (path.includes('ai-index-idx-nightshift-cortex')) {
       const source = {
         '@timestamp': new Date().toISOString(),
@@ -429,6 +457,10 @@ const main = async (): Promise<void> => {
         'nightshift.decisionTreeHydrate',
         { sandbox_id: 'default__fixture-conversation', agent_id: 'nightshift.investigation' },
       ],
+      [
+        'nightshift.memoryMaterializeToSandbox',
+        { sandbox_id: 'default__fixture-conversation', agent_id: 'nightshift.investigation' },
+      ],
       ['nightshift.cortexHydrate', { sandbox_id: 'default__fixture-conversation' }],
       ['nightshift.obtainSandbox', { conversation_id: 'fixture-conversation' }],
       ['nightshift.ensureInvestigationAgent', {}],
@@ -492,6 +524,19 @@ const main = async (): Promise<void> => {
       const sandboxWorkspaces = {
         allocate: async () => ({}),
         isCortexEnabled: async () => true,
+        isMemoryEnabled: async () => true,
+        openMemoryWorkspace: async () => 'memory-ref',
+        isReset: async () => false,
+        statFiles: async (_scope: string, _reference: string, paths: string[]) =>
+          paths.map((path) => ({
+            path,
+            exists: false,
+            is_dir: false,
+            size: 0,
+            modified_time_sec: 0,
+          })),
+        readFiles: async () => [],
+        reportMemoryMaterialized: async () => {},
         openCortexWorkspace: async () => 'cortex-ref',
         openDecisionTreeWorkspace: async () => 'tree-ref',
         mkdirs: async (_scope: string, _reference: string, paths: string[]) =>
@@ -508,6 +553,7 @@ const main = async (): Promise<void> => {
         reportCortexHydrated: async () => {},
       };
       const operations = [
+        'nightshift.memoryMaterializeToSandbox',
         'nightshift.obtainSandbox',
         'nightshift.cortexHydrate',
         'nightshift.decisionTreeHydrate',
@@ -547,6 +593,10 @@ const main = async (): Promise<void> => {
       }
       if (type === 'nightshift.decisionTreeHydrate')
         assert.equal((result.output as { tree_count: number }).tree_count, 1);
+      if (type === 'nightshift.memoryMaterializeToSandbox')
+        assert.deepEqual((result.output as { recalled_ids: string[] }).recalled_ids, [
+          'memory_fixture',
+        ]);
       if (type === 'nightshift.cortexHydrate')
         assert.deepEqual(result.output, {
           sandbox_id: 'default__fixture-conversation',
