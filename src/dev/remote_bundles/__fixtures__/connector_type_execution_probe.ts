@@ -92,6 +92,13 @@ const main = async (): Promise<void> => {
   const temp = mkdtempSync(join(tmpdir(), 'connector-type-fake-'));
   const domains = [
     'api.1password.com',
+    'api.atlassian.com',
+    'api.zoom.us',
+    'graph.microsoft.com',
+    'api.hubapi.com',
+    'api.figma.com',
+    'cloudresourcemanager.googleapis.com',
+    'api.notion.com',
     'api.rootly.com',
     'api.datadoghq.com',
     'api.newrelic.com',
@@ -249,6 +256,13 @@ const main = async (): Promise<void> => {
   };
   const bearer = { authType: 'bearer', token: 'fake-token' };
   const basic = { authType: 'basic', username: 'fake', password: 'fake' };
+  const authorizationCode = {
+    authType: 'oauth_authorization_code',
+    authorizationUrl: tlsUrl + '/authorize',
+    tokenUrl: tlsUrl + '/token',
+    clientId: 'fake-client',
+    clientSecret: 'fake-secret',
+  };
   const cases: Case[] = [
     {
       type: 'google_threat_intelligence',
@@ -616,17 +630,101 @@ const main = async (): Promise<void> => {
         privateKey: readFileSync(join(temp, 'key.pem'), 'utf8'),
       },
     },
+    {
+      type: 'github',
+      op: 'listTools',
+      config: { serverUrl: url + '/mcp' },
+      secrets: { ...authorizationCode },
+    },
+    {
+      type: 'servicenow_search',
+      op: 'whoAmI',
+      config: { instanceUrl: tlsUrl },
+      secrets: { ...authorizationCode },
+    },
+    {
+      type: 'box',
+      op: 'listTools',
+      config: { serverUrl: url + '/mcp' },
+      secrets: { ...authorizationCode },
+    },
+    {
+      type: 'jira-cloud',
+      op: 'getProjects',
+      config: { subdomain: 'fake', cloudId: 'fake' },
+      secrets: { ...authorizationCode },
+    },
+    {
+      type: 'monday_com',
+      op: 'listTools',
+      config: { serverUrl: url + '/mcp' },
+      secrets: { ...authorizationCode },
+    },
+    {
+      type: 'snowflake',
+      op: 'listDatabases',
+      config: { accountUrl: tlsUrl },
+      secrets: { ...authorizationCode },
+    },
+    {
+      type: 'dropbox',
+      op: 'listTools',
+      config: { serverUrl: url + '/mcp' },
+      secrets: { ...authorizationCode },
+    },
+    { type: 'zoom', op: 'whoAmI', config: {}, secrets: { ...authorizationCode } },
+    { type: 'one_drive', op: 'getMe', config: {}, secrets: { ...authorizationCode } },
+    { type: 'hubspot', op: 'listOwners', config: {}, secrets: { ...authorizationCode } },
+    { type: 'outlook', op: 'listFolders', config: {}, secrets: { ...authorizationCode } },
+    {
+      type: 'salesforce',
+      op: 'query',
+      config: {},
+      secrets: { ...authorizationCode, tokenUrl: tlsUrl + '/services/oauth2/token' },
+      params: { soql: 'SELECT Id FROM Account LIMIT 1' },
+    },
+    { type: 'figma', op: 'whoAmI', config: {}, secrets: { ...authorizationCode } },
+    {
+      type: 'google_cloud_storage',
+      op: 'listProjects',
+      config: {},
+      secrets: { ...authorizationCode },
+    },
+    {
+      type: 'notion',
+      op: 'getPage',
+      config: {},
+      secrets: { ...authorizationCode },
+      params: { pageId: '00000000-0000-4000-a000-000000000001' },
+    },
   ];
   let current = cases[0];
   let prepares = 0;
   const finalizes: number[] = [];
   const actions: NativeActionsApi = {
-    token: async () => ({ hasErrors: false, connectorToken: null }),
+    token: async (_scope, _invocation, request) => ({
+      hasErrors: false,
+      connectorToken:
+        request.operation === 'get' && current.secrets.authType === 'oauth_authorization_code'
+          ? {
+              id: 'per-user:fake',
+              profileUid: 'fake-profile',
+              connectorId: current.type,
+              credentialType: 'oauth',
+              credentials: { accessToken: 'Bearer fake-oauth-token', refreshToken: 'fake-refresh' },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            }
+          : null,
+    }),
     prepare: async (_s, invocationId, request) => {
       prepares++;
       return {
         prepared: {
           kibanaVersion: '9.7.0',
+          authMode: current.secrets.authType === 'oauth_authorization_code' ? 'per-user' : 'shared',
+          profileUid:
+            current.secrets.authType === 'oauth_authorization_code' ? 'fake-profile' : undefined,
           actionId: current.type,
           actionTypeId: '.' + current.type,
           name: current.type,

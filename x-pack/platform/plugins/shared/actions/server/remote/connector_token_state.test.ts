@@ -172,3 +172,95 @@ it('cannot retain a token read completed after invocation closure', async () => 
   finish({ hasErrors: false, connectorToken: stored });
   await expect(pending).rejects.toThrow('closed');
 });
+
+it('serializes remote refreshes with ordinary coordinator refreshes and releases on abort', async () => {
+  const { withConnectorTokenRefreshLock } = await import(
+    '../lib/with_connector_token_refresh_lock'
+  );
+  const first = setup();
+  await first.state.execute({ operation: 'acquireRefreshLock' });
+  let entered = false;
+  const ordinary = withConnectorTokenRefreshLock('prepared', async () => {
+    entered = true;
+  });
+  await Promise.resolve();
+  expect(entered).toBe(false);
+  first.controller.abort();
+  await ordinary;
+  expect(entered).toBe(true);
+  const second = setup();
+  await second.state.execute({ operation: 'acquireRefreshLock' });
+  await second.state.execute({ operation: 'releaseRefreshLock' });
+  second.state.close();
+});
+
+it('isolates per-user refresh locks and cancels queued acquisition without leaking a future grant', async () => {
+  const first = setup();
+  const queued = setup();
+  const perUser = setup(true);
+  await first.state.execute({ operation: 'acquireRefreshLock' });
+  const acquisition = queued.state.execute({ operation: 'acquireRefreshLock' });
+  await perUser.state.execute({ operation: 'acquireRefreshLock' });
+  await perUser.state.execute({ operation: 'releaseRefreshLock' });
+  perUser.state.close();
+  queued.state.close();
+  await expect(acquisition).rejects.toThrow('closed');
+  await first.state.execute({ operation: 'releaseRefreshLock' });
+  first.state.close();
+  const next = setup();
+  await next.state.execute({ operation: 'acquireRefreshLock' });
+  await expect(next.state.execute({ operation: 'acquireRefreshLock' })).rejects.toThrow(
+    'already requested'
+  );
+  await next.state.execute({ operation: 'releaseRefreshLock' });
+  next.state.close();
+});
+
+it('preserves refresh failures while releasing its coordinator lock', async () => {
+  const { store, state } = setup();
+  const failure = new Error('invalid_grant');
+  await expect(
+    store.withRefreshLock?.(async () => {
+      throw failure;
+    })
+  ).rejects.toBe(failure);
+  await expect(store.withRefreshLock?.(async () => 'token')).resolves.toBe('token');
+  state.close();
+});
+
+it('runs the original stored-token strategy under the same lock as ordinary execution', async () => {
+  const { getStoredTokenWithRefresh } = await import('../lib/get_stored_oauth_token_with_refresh');
+  const { withConnectorTokenRefreshLock } = await import(
+    '../lib/with_connector_token_refresh_lock'
+  );
+  const { loggingSystemMock } = await import('@kbn/core-logging-server-mocks');
+  const { store, state, token, client } = setup();
+  let release: () => void = () => {};
+  let acquired: () => void = () => {};
+  const ready = new Promise<void>((resolve) => {
+    acquired = resolve;
+  });
+  const ordinary = withConnectorTokenRefreshLock('prepared', async () => {
+    acquired();
+    await new Promise<void>((resolve) => {
+      release = resolve;
+    });
+  });
+  await ready;
+  const worker = getStoredTokenWithRefresh({
+    connectorId: 'prepared',
+    connectorTokenClient: store,
+    logger: loggingSystemMock.createLogger(),
+    authMethod: 'oauth_authorization_code',
+    refreshFn: async () => ({ accessToken: 'refreshed', tokenType: 'Bearer' }),
+  });
+  try {
+    expect(token.mock.calls[0][2]).toEqual({ operation: 'acquireRefreshLock' });
+    expect(client.get).not.toHaveBeenCalled();
+  } finally {
+    release();
+    await ordinary;
+    await worker;
+    state.close();
+  }
+});

@@ -50,6 +50,7 @@ export interface NativeActionsApi {
 }
 
 export type ConnectorTokenRequest =
+  | { readonly operation: 'acquireRefreshLock' | 'releaseRefreshLock' }
   | {
       readonly operation: 'get';
       readonly options: Pick<

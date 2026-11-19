@@ -46,7 +46,9 @@ export type ConnectorTokenClientContract = PublicMethodsOf<ConnectorTokenClient>
 export type ConnectorTokenStore = Pick<
   ConnectorTokenClientContract,
   'get' | 'updateOrReplace' | 'deleteConnectorTokens' | 'updateWithRefreshToken'
->;
+> & {
+  readonly withRefreshLock?: <T>(refresh: () => Promise<T>) => Promise<T>;
+};
 
 import type { Connector, ConnectorWithExtraFindData } from './application/connector/types';
 import type { ActionExecutionSource, ActionExecutionSourceType } from './lib';
