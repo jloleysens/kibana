@@ -37,6 +37,7 @@ import { CoordinatorGateway } from './coordinator_gateway';
 import { createBridge } from './executor_bridge';
 import { openIpcSession, type IpcSession } from './ipc_session';
 import { graphSignature } from './graph_signature';
+import { getIpcMessageDelayMs } from './ipc_transport';
 
 const loadModule = createRequire(__filename);
 const ENTRY = loadModule.resolve('./remote_worker_entry');
@@ -480,6 +481,8 @@ export class RemoteService implements RemoteSetup {
       this.limits.bundleDirectory ?? process.env.KBN_REMOTE_BUNDLE_DIR ?? 'target/remote_bundles';
     const entry = join(directory, id, 'graph.mjs');
     if (!existsSync(entry)) throw new Error(`Remote bundle missing: ${entry}`);
+    // Reject invalid measurement settings before allocating a child or an IPC session.
+    getIpcMessageDelayMs();
     const child = fork(entry, [], {
       execArgv: [
         `--max-old-space-size=${this.limits.maxOldGenerationSizeMb}`,
@@ -500,6 +503,7 @@ export class RemoteService implements RemoteSetup {
           'KBN_REMOTE_TIMING_LOG',
           'KBN_REMOTE_MODULE_LOG',
           'KBN_REMOTE_WIRE_LOG',
+          'KBN_REMOTE_MESSAGE_DELAY_MS',
         ].flatMap((key) => (process.env[key] === undefined ? [] : [[key, process.env[key]]]))
       ),
     });

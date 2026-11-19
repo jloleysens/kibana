@@ -53,3 +53,28 @@ Record source-version/cadence, external laptop interference and failed attempts.
 Do not count coordinator dispatch as worker-native execution. This harness does
 not itself establish step placement or cold first-use costs; use separate process/
 module/seam instrumentation for those so headline load profiles stay comparable.
+
+## Single-run network sensitivity (not a load-test result)
+
+`KBN_REMOTE_MESSAGE_DELAY_MS=0|1|5|30` on Kibana opts into an artificial outbound
+IPC delay; Core forwards it to child hosts. Each RPC frame incurs the configured
+delay once in each direction. This is **one-way** delay, not RTT: an isolated
+request/reply costs at least twice the value. Independent frames overlap instead
+of being serialized. Init/ready fork control messages are not delayed. Teardown
+cancels unsent frames; the default (unset or 0) allocates no delay timers.
+Only `child_process` IPC is affected, not source-loopback or worker-thread ports.
+The setting accepts integer milliseconds from 0 through 1000; invalid settings
+reject before child allocation. Do not enable it in ordinary baseline profiles.
+
+Compare one execution at a time with identical ordinary in-Kibana definitions,
+cold and warm, retaining individual durations and spread at every delay. Count
+coordinator calls by capability and step type in a separate instrumented profile;
+flag per-item loop RPC and serial dependent calls. Network delay is not bandwidth,
+packet loss, congestion, or proof of a production remote transport. CPU deltas
+around async handlers remain process-wide; run without overlapping work and
+report background noise rather than claiming thread-local attribution.
+
+For memory containment, optional `remoteExecution.reuse.maxRssBytes` retires a
+child after a lease closes its scopes if its RSS exceeds the ceiling. Sampling
+uses actual RSS without forced GC. It does not stop an active run or cap its peak.
+Shared-process backends do not apply a whole-process RSS retirement policy.

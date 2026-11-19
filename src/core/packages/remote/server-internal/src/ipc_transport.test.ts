@@ -113,3 +113,110 @@ it.each(['callback', 'throw'] as const)(
     expect(channel.listenerCount('disconnect')).toBe(0);
   }
 );
+
+describe('measurement-only per-direction message delay', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('delays outbound frames once without serializing independent pipelined frames', async () => {
+    const channel = new Channel();
+    const transport = new IpcTransport(channel, 30);
+    try {
+      const sends = [transport.send('first'), transport.send('second')];
+      jest.advanceTimersByTime(29);
+      expect(channel.send).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(1);
+      await Promise.all(sends);
+      expect(channel.send.mock.calls.map(([message]) => message)).toEqual([
+        { kind: 'remote-seam', payload: 'first' },
+        { kind: 'remote-seam', payload: 'second' },
+      ]);
+      expect(jest.getTimerCount()).toBe(0);
+    } finally {
+      transport.abort(new Error('test complete'));
+    }
+  });
+
+  it('adds one delay on the request and another on the response, not on receive', async () => {
+    const coordinatorChannel = new Channel();
+    const workerChannel = new Channel();
+    coordinatorChannel.send.mockImplementation((message, callback) => {
+      workerChannel.emit('message', message);
+      callback(null);
+      return true;
+    });
+    workerChannel.send.mockImplementation((message, callback) => {
+      coordinatorChannel.emit('message', message);
+      callback(null);
+      return true;
+    });
+    const coordinator = new IpcTransport(coordinatorChannel, 5);
+    const worker = new IpcTransport(workerChannel, 5);
+    try {
+      const request = coordinator.send('request');
+      const observed = jest.fn();
+      const received = worker.receive().then(observed);
+      jest.advanceTimersByTime(5);
+      await request;
+      await received;
+      expect(observed).toHaveBeenCalledWith('request');
+      const response = worker.send('response');
+      const answered = jest.fn();
+      const answer = coordinator.receive().then(answered);
+      jest.advanceTimersByTime(4);
+      expect(answered).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(1);
+      await response;
+      await answer;
+      expect(answered).toHaveBeenCalledWith('response');
+    } finally {
+      coordinator.abort(new Error('test complete'));
+      worker.abort(new Error('test complete'));
+    }
+  });
+
+  it('rejects pending sends immediately on teardown, clears timers and never transmits late', async () => {
+    const channel = new Channel();
+    const transport = new IpcTransport(channel, 30);
+    const sent = transport.send('never send');
+    const failure = new Error('lease ended');
+    transport.abort(failure);
+    await expect(sent).rejects.toBe(failure);
+    await expect(transport.send('also never')).rejects.toBe(failure);
+    expect(jest.getTimerCount()).toBe(0);
+    jest.advanceTimersByTime(30);
+    expect(channel.send).not.toHaveBeenCalled();
+    expect(channel.listenerCount('message')).toBe(0);
+  });
+
+  it.each([-1, 1.5, 1001, NaN])('rejects invalid delay %s before installing listeners', (delay) => {
+    const channel = new Channel();
+    expect(() => new IpcTransport(channel, delay)).toThrow('KBN_REMOTE_MESSAGE_DELAY_MS');
+    expect(channel.eventNames()).toEqual([]);
+  });
+
+  it('reads opt-in delay from the environment; the absent setting sends synchronously', async () => {
+    const previous = process.env.KBN_REMOTE_MESSAGE_DELAY_MS;
+    const channel = new Channel();
+    let transport: IpcTransport | undefined;
+    try {
+      delete process.env.KBN_REMOTE_MESSAGE_DELAY_MS;
+      transport = new IpcTransport(channel);
+      await transport.send('no delay');
+      expect(channel.send).toHaveBeenCalledTimes(1);
+      expect(jest.getTimerCount()).toBe(0);
+      transport.abort(new Error('next profile'));
+      process.env.KBN_REMOTE_MESSAGE_DELAY_MS = '1';
+      transport = new IpcTransport(channel);
+      const sent = transport.send('delayed');
+      expect(channel.send).toHaveBeenCalledTimes(1);
+      jest.advanceTimersByTime(1);
+      await sent;
+      expect(channel.send).toHaveBeenCalledTimes(2);
+    } finally {
+      transport?.abort(new Error('test complete'));
+      if (previous === undefined) delete process.env.KBN_REMOTE_MESSAGE_DELAY_MS;
+      else process.env.KBN_REMOTE_MESSAGE_DELAY_MS = previous;
+    }
+  });
+});

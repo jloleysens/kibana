@@ -23,6 +23,16 @@ export interface IpcChannel {
   off(event: 'disconnect', listener: () => void): void;
 }
 
+/** Validates the opt-in outbound IPC delay used only for network-sensitivity measurements. */
+export const getIpcMessageDelayMs = (
+  value = Number(process.env.KBN_REMOTE_MESSAGE_DELAY_MS ?? 0)
+): number => {
+  if (!Number.isInteger(value) || value < 0 || value > 1000) {
+    throw new Error('KBN_REMOTE_MESSAGE_DELAY_MS must be an integer between 0 and 1000');
+  }
+  return value;
+};
+
 /** Multiplexes JSON-string RPC frames without consuming init, ready or other fork messages. */
 export class IpcTransport implements RpcTransport {
   readonly encodingLevel = 'string' as const;
@@ -30,9 +40,18 @@ export class IpcTransport implements RpcTransport {
   private pending?: { resolve: (message: string) => void; reject: (error: Error) => void };
   private error?: Error;
   private readonly controller = new AbortController();
+  private readonly delayed = new Set<{
+    timer: ReturnType<typeof setTimeout>;
+    reject: (error: Error) => void;
+  }>();
   readonly signal = this.controller.signal;
 
-  constructor(private readonly channel: IpcChannel) {
+  constructor(
+    private readonly channel: IpcChannel,
+    // Measurement-only outbound delay; both peers apply it, once per message direction.
+    private readonly messageDelayMs = getIpcMessageDelayMs()
+  ) {
+    getIpcMessageDelayMs(messageDelayMs);
     channel.on('message', this.onMessage);
     channel.on('disconnect', this.onDisconnect);
   }
@@ -60,6 +79,21 @@ export class IpcTransport implements RpcTransport {
     this.abort(new Error('Remote IPC channel disconnected'));
 
   send(payload: string): Promise<void> {
+    if (this.error) return Promise.reject(this.error);
+    if (this.messageDelayMs === 0) return this.sendNow(payload);
+    return new Promise((resolve, reject) => {
+      const pending = {
+        timer: setTimeout(() => {
+          this.delayed.delete(pending);
+          this.sendNow(payload).then(resolve, reject);
+        }, this.messageDelayMs),
+        reject,
+      };
+      this.delayed.add(pending);
+    });
+  }
+
+  private sendNow(payload: string): Promise<void> {
     if (this.error) return Promise.reject(this.error);
     const log = process.env.KBN_REMOTE_WIRE_LOG;
     if (log) {
@@ -103,6 +137,11 @@ export class IpcTransport implements RpcTransport {
     this.channel.off('message', this.onMessage);
     this.channel.off('disconnect', this.onDisconnect);
     this.queue.length = 0;
+    for (const { timer, reject } of this.delayed) {
+      clearTimeout(timer);
+      reject(this.error);
+    }
+    this.delayed.clear();
     this.pending?.reject(this.error);
     this.pending = undefined;
     this.controller.abort(this.error);

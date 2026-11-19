@@ -573,3 +573,34 @@ it('bounds boot-timeout cleanup of a spawned child ignoring SIGTERM', async () =
     rmSync(directory, { recursive: true });
   }
 }, 5000);
+
+it('rejects an invalid measurement delay before spawning a child', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'remote-invalid-delay-'));
+  mkdirSync(join(directory, 'demo'));
+  writeFileSync(join(directory, 'demo', 'graph.mjs'), '');
+  const previous = process.env.KBN_REMOTE_MESSAGE_DELAY_MS;
+  const spawn = jest.spyOn(childProcess, 'fork');
+  const service = new RemoteService(logger, {
+    maxOldGenerationSizeMb: 256,
+    bundleDirectory: directory,
+  });
+  try {
+    process.env.KBN_REMOTE_MESSAGE_DELAY_MS = 'invalid';
+    service.discover([FIXTURE]);
+    service.register({
+      id: 'demo',
+      root: DemoRootToken,
+      contributions: [DemoStepKind],
+      dependencies: [DemoCatalogToken],
+    });
+    service.bind(EchoToken, () => new Echo());
+    await expect(service.start('child_process')).rejects.toThrow('KBN_REMOTE_MESSAGE_DELAY_MS');
+    expect(spawn).not.toHaveBeenCalled();
+    await service.stop();
+  } finally {
+    if (previous === undefined) delete process.env.KBN_REMOTE_MESSAGE_DELAY_MS;
+    else process.env.KBN_REMOTE_MESSAGE_DELAY_MS = previous;
+    spawn.mockRestore();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
