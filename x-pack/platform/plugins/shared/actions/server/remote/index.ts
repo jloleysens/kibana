@@ -11,6 +11,66 @@ export const remoteModule: RemoteModule = {
   contributions: [
     {
       kind: WorkflowConnectorKind,
+      stepType: 'tavily_mcp',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/tavily'),
+      exportName: 'TavilyConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'sharepoint-server',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/sharepoint_server'),
+      exportName: 'SharepointServerConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'greynoise',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/greynoise'),
+      exportName: 'GreynoiseConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'jina',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/jina_reader'),
+      exportName: 'JinaReaderConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'shodan',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/shodan'),
+      exportName: 'ShodanConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'urlvoid',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/urlvoid'),
+      exportName: 'UrlvoidConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'brave-search',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/brave_search'),
+      exportName: 'BraveSearchConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'aws_lambda',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/aws_lambda'),
+      exportName: 'AwsLambdaConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'amazon_s3',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/amazon_s3'),
+      exportName: 'AmazonS3Connector',
+    },
+    {
+      kind: WorkflowConnectorKind,
+      stepType: 'azure-blob',
+      modulePath: require.resolve('@kbn/connector-specs/server/remote/azure_blob'),
+      exportName: 'AzureBlobConnector',
+    },
+    {
+      kind: WorkflowConnectorKind,
       stepType: 'google_threat_intelligence',
       modulePath: require.resolve('@kbn/connector-specs/server/remote/google_threat_intelligence'),
       exportName: 'GoogleThreatIntelligenceConnector',

@@ -51,7 +51,7 @@ it('bounds first business execution of each simple-auth spec and the shared MCP 
         })
       ) as {
         samples: Array<{ phase: string; heapUsed: number }>;
-        events: Array<{ type: string; heapIncrement: number; requests: number }>;
+        events: Array<{ type: string; heapIncrement: number; requests: number; ms: number }>;
         sharedMs: number;
         mcpMs: number;
         prepares: number;
@@ -60,9 +60,14 @@ it('bounds first business execution of each simple-auth spec and the shared MCP 
       const [core, shell, actions, mcpSample] = result.samples;
       expect(shell.heapUsed - core.heapUsed).toBeLessThanOrEqual(32 * 1024);
       expect(actions.heapUsed - shell.heapUsed).toBeLessThanOrEqual(20 * 1024 * 1024);
-      // Measured ~2.85MiB lazy shared MCP import, with explicit headroom.
-      expect(mcpSample.heapUsed - actions.heapUsed).toBeLessThanOrEqual(4 * 1024 * 1024);
-      expect(result.mcpMs).toBeLessThanOrEqual(500);
+      // REST first separates first HTTP service construction from first MCP session construction.
+      // Conservatively include the first MCP type's entire execution in the shared MCP ceiling too.
+      const firstMcp = result.events.find(({ type }) => type === 'buildkite');
+      expect(firstMcp).toBeDefined();
+      expect(
+        mcpSample.heapUsed - actions.heapUsed + (firstMcp?.heapIncrement ?? Infinity)
+      ).toBeLessThanOrEqual(4 * 1024 * 1024);
+      expect(result.mcpMs + (firstMcp?.ms ?? Infinity)).toBeLessThanOrEqual(500);
       expect(result.events.map(({ type }) => type)).toEqual([
         'google_threat_intelligence',
         'ansible_controller',
@@ -88,13 +93,23 @@ it('bounds first business execution of each simple-auth spec and the shared MCP 
         'datadog',
         'censys',
         'pagerduty_mcp',
+        'tavily_mcp',
+        'sharepoint-server',
+        'greynoise',
+        'jina',
+        'shodan',
+        'urlvoid',
+        'brave-search',
+        'aws_lambda',
+        'amazon_s3',
+        'azure-blob',
       ]);
       for (const event of result.events) {
         expect(event.heapIncrement).toBeLessThanOrEqual(2 * 1024 * 1024);
         expect(event.requests).toBeGreaterThan(0);
       }
-      expect(result.prepares).toBe(24);
-      expect(result.finalizes).toEqual([24]);
+      expect(result.prepares).toBe(34);
+      expect(result.finalizes).toEqual([34]);
       process.stdout.write(`${JSON.stringify({ connectorTypeCurve: result })}\n`);
     }
   } finally {

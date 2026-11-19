@@ -94,6 +94,12 @@ const main = async (): Promise<void> => {
     'api.datadoghq.com',
     'api.newrelic.com',
     'api.platform.censys.io',
+    'lambda.us-east-1.amazonaws.com',
+    's3.us-east-1.amazonaws.com',
+    'api.greynoise.io',
+    'api.shodan.io',
+    'api.urlvoid.com',
+    'api.search.brave.com',
     'urlscan.io',
     'api.firecrawl.dev',
     'api.abuseipdb.com',
@@ -130,11 +136,22 @@ const main = async (): Promise<void> => {
     for await (const c of req) text += c;
     requests++;
     seen.push({ host: req.headers.host, path: req.url });
+    if (req.headers.host === 's3.us-east-1.amazonaws.com' || req.url?.startsWith('/azure')) {
+      res.writeHead(200, { 'content-type': 'application/xml' });
+      res.end(
+        req.url?.startsWith('/azure')
+          ? '<EnumerationResults><Containers><Container><Name>local-business</Name></Container></Containers></EnumerationResults>'
+          : '<ListAllMyBucketsResult><Buckets><Bucket><Name>local-business</Name></Bucket></Buckets></ListAllMyBucketsResult>'
+      );
+      return;
+    }
     let body: object = { marker: 'local-business', data: [], results: [], total: 'local-business' };
     if (req.headers.host === 'www.virustotal.com')
       body = { data: { id: 'local-business', attributes: { country: 'GB' } } };
     if (req.url?.includes('/organizations/fake/issues/'))
       body = [{ id: 'fake', marker: 'local-business' }];
+    if (req.headers.host === 'lambda.us-east-1.amazonaws.com')
+      body = { Functions: [{ FunctionName: 'local-business' }] };
     if (req.headers.host === 'api.rootly.com')
       body = { data: [{ id: 'local-business', attributes: { marker: 'local-business' } }] };
     if (req.headers.host === 'api.newrelic.com')
@@ -409,6 +426,122 @@ const main = async (): Promise<void> => {
       op: 'listTools',
       config: { serverUrl: url + '/mcp' },
       secrets: { authType: 'api_key_header', Authorization: 'Token token=fake-key' },
+    },
+
+    {
+      type: 'tavily_mcp',
+      op: 'listTools',
+      config: {
+        serverUrl: url + '/mcp',
+      },
+      secrets: {
+        authType: 'bearer',
+        token: 'fake-token',
+      },
+    },
+    {
+      type: 'sharepoint-server',
+      op: 'getWeb',
+      config: {
+        siteUrl: url,
+      },
+      secrets: {
+        authType: 'basic',
+        username: 'fake',
+        password: 'fake',
+      },
+    },
+    {
+      type: 'greynoise',
+      op: 'quickLookup',
+      config: {},
+      secrets: {
+        authType: 'api_key_header',
+        key: 'fake-key',
+      },
+      params: {
+        ip: '1.1.1.1',
+      },
+    },
+    {
+      type: 'jina',
+      op: 'browse',
+      config: {
+        overrideBrowseUrl: url,
+      },
+      secrets: {
+        authType: 'bearer',
+        token: 'fake-token',
+      },
+      params: {
+        url: 'https://fake.example',
+      },
+    },
+    {
+      type: 'shodan',
+      op: 'getServices',
+      config: {},
+      secrets: {
+        authType: 'api_key_header',
+        'X-Api-Key': 'fake-key',
+      },
+    },
+    {
+      type: 'urlvoid',
+      op: 'scanDomainStats',
+      config: {},
+      secrets: {
+        authType: 'api_key_header',
+        'X-Api-Key': 'fake-key',
+      },
+    },
+    {
+      type: 'brave-search',
+      op: 'webSearch',
+      config: {},
+      secrets: {
+        authType: 'api_key_header',
+        'X-Subscription-Token': 'fake-key',
+      },
+      params: {
+        q: 'local-business',
+      },
+    },
+    {
+      type: 'aws_lambda',
+      op: 'listFunctions',
+      config: {
+        region: 'us-east-1',
+      },
+      secrets: {
+        authType: 'aws_credentials',
+        accessKeyId: 'fake-access',
+        secretAccessKey: 'fake-secret',
+      },
+    },
+    {
+      type: 'amazon_s3',
+      op: 'listBuckets',
+      config: {
+        region: 'us-east-1',
+      },
+      secrets: {
+        authType: 'aws_credentials',
+        accessKeyId: 'fake-access',
+        secretAccessKey: 'fake-secret',
+      },
+    },
+    {
+      type: 'azure-blob',
+      op: 'listContainers',
+      config: {
+        accountUrl: url + '/azure',
+      },
+      secrets: {
+        authType: 'azure_shared_key',
+        accountName: 'fake',
+        accountKey: 'ZmFrZS1rZXk=',
+      },
     },
   ];
   let current = cases[0];
