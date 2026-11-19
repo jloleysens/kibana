@@ -63,7 +63,6 @@ import type { DeprecationRegistryProvider } from '@kbn/core-deprecations-server'
 import type { NodeInfo } from '@kbn/core-node-server';
 import { MAIN_SAVED_OBJECT_INDEX } from '@kbn/core-saved-objects-server';
 import type { SavedObjectsAccessControlTransforms } from '@kbn/core-saved-objects-server/src/contracts';
-import { registerRoutes } from './routes';
 import { calculateStatus$ } from './status';
 import { registerCoreObjectTypes } from './object_types';
 import { getSavedObjectsDeprecationsProvider } from './deprecations';
@@ -120,7 +119,7 @@ export class SavedObjectsService
   private logger: Logger;
   private readonly kibanaVersion: string;
 
-  private setupDeps?: SavedObjectsSetupDeps;
+  private setupDeps?: Pick<SavedObjectsSetupDeps, 'elasticsearch'>;
   private config?: SavedObjectConfig;
   private clientFactoryProvider?: SavedObjectsClientFactoryProvider;
   private encryptionExtensionFactory?: SavedObjectsEncryptionExtensionFactory;
@@ -142,6 +141,20 @@ export class SavedObjectsService
   }
 
   public async setup(setupDeps: SavedObjectsSetupDeps): Promise<InternalSavedObjectsServiceSetup> {
+    return this.setupInternal(setupDeps);
+  }
+
+  /** Sets up saved objects without HTTP routes, retaining the normal extension and migration hooks. */
+  public async setupTask(
+    setupDeps: Pick<SavedObjectsSetupDeps, 'elasticsearch'>
+  ): Promise<InternalSavedObjectsServiceSetup> {
+    return this.setupInternal(setupDeps);
+  }
+
+  private async setupInternal(
+    setupDeps: Pick<SavedObjectsSetupDeps, 'elasticsearch'> &
+      Partial<Omit<SavedObjectsSetupDeps, 'elasticsearch'>>
+  ): Promise<InternalSavedObjectsServiceSetup> {
     this.logger.debug('Setting up SavedObjects service');
 
     this.setupDeps = setupDeps;
@@ -157,7 +170,7 @@ export class SavedObjectsService
     const accessControlEnabled = this.config.enableAccessControl;
     this.typeRegistry.setAccessControlEnabled(accessControlEnabled);
 
-    deprecations.getRegistry('savedObjects').registerDeprecations(
+    deprecations?.getRegistry('savedObjects').registerDeprecations(
       getSavedObjectsDeprecationsProvider({
         savedObjectsConfig: this.config,
         kibanaVersion: this.kibanaVersion,
@@ -165,18 +178,21 @@ export class SavedObjectsService
       })
     );
 
-    coreUsageData.registerType(this.typeRegistry);
+    coreUsageData?.registerType(this.typeRegistry);
 
-    registerRoutes({
-      http,
-      coreUsageData,
-      logger: this.logger,
-      config: this.config,
-      migratorPromise: firstValueFrom(this.migrator$),
-      kibanaVersion: this.kibanaVersion,
-      isServerless: this.coreContext.env.packageInfo.buildFlavor === 'serverless',
-      docLinks,
-    });
+    if (http && coreUsageData && docLinks) {
+      const { registerRoutes } = await import('./routes');
+      registerRoutes({
+        http,
+        coreUsageData,
+        logger: this.logger,
+        config: this.config,
+        migratorPromise: firstValueFrom(this.migrator$),
+        kibanaVersion: this.kibanaVersion,
+        isServerless: this.coreContext.env.packageInfo.buildFlavor === 'serverless',
+        docLinks,
+      });
+    }
 
     registerCoreObjectTypes(this.typeRegistry);
 

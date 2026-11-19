@@ -95,6 +95,7 @@ const createInternalSetupContractMock = () => {
 const createSavedObjectsServiceMock = () => {
   const mocked: jest.Mocked<SavedObjectsServiceContract> = lazyObject({
     setup: jest.fn().mockResolvedValue(createInternalSetupContractMock()),
+    setupTask: jest.fn().mockResolvedValue(createInternalSetupContractMock()),
     start: jest.fn().mockResolvedValue(createInternalStartContractMock()),
     stop: jest.fn().mockResolvedValue(void 0),
   });

@@ -34,7 +34,6 @@ import type {
 } from './types';
 import type { InternalUiSettingsRequestHandlerContext } from './internal_types';
 import { uiSettingsType, uiSettingsGlobalType } from './saved_objects';
-import { registerRoutes, registerInternalRoutes } from './routes';
 import { getCoreSettings, getGlobalCoreSettings } from './settings';
 import { UiSettingsDefaultsClient } from './clients/ui_settings_defaults_client';
 import { NamespacedCache } from './namespaced_cache';
@@ -63,6 +62,7 @@ export class UiSettingsService
   private overrides: Record<string, any> = {};
   private globalOverrides: Record<string, any> = {};
   private allowlist: Set<string> | null = null;
+  private useSharedUserProvidedCache = true;
   private readonly sharedUserProvidedCache = new NamespacedCache<Record<string, any>>();
 
   constructor(private readonly coreContext: CoreContext) {
@@ -99,7 +99,24 @@ export class UiSettingsService
     };
   }
 
-  public async setup({ http, savedObjects }: SetupDeps): Promise<InternalUiSettingsServiceSetup> {
+  public async setup(deps: SetupDeps): Promise<InternalUiSettingsServiceSetup> {
+    return this.setupInternal(deps);
+  }
+
+  /** Sets up request-scoped worker clients without HTTP routes or cross-run settings caches. */
+  public async setupTask(
+    deps: Pick<SetupDeps, 'savedObjects'>
+  ): Promise<InternalUiSettingsServiceSetup> {
+    // Retained workers must observe settings written by Kibana before their next execution.
+    this.useSharedUserProvidedCache = false;
+    return this.setupInternal(deps);
+  }
+
+  private async setupInternal({
+    http,
+    savedObjects,
+  }: Pick<SetupDeps, 'savedObjects'> &
+    Partial<Pick<SetupDeps, 'http'>>): Promise<InternalUiSettingsServiceSetup> {
     this.log.debug('Setting up ui settings service');
 
     const config = await firstValueFrom(this.config$);
@@ -108,12 +125,15 @@ export class UiSettingsService
     savedObjects.registerType(uiSettingsType);
     savedObjects.registerType(uiSettingsGlobalType);
 
-    const router = http.createRouter<InternalUiSettingsRequestHandlerContext>('');
-    registerInternalRoutes(router);
+    if (http) {
+      const { registerRoutes, registerInternalRoutes } = await import('./routes');
+      const router = http.createRouter<InternalUiSettingsRequestHandlerContext>('');
+      registerInternalRoutes(router);
 
-    // Register public routes by default unless the publicApiEnabled config setting is set to false
-    if (!Object.hasOwn(config, 'publicApiEnabled') || config.publicApiEnabled === true) {
-      registerRoutes(router);
+      // Register public routes by default unless the publicApiEnabled config setting is set to false
+      if (!Object.hasOwn(config, 'publicApiEnabled') || config.publicApiEnabled === true) {
+        registerRoutes(router);
+      }
     }
 
     return {
@@ -165,7 +185,9 @@ export class UiSettingsService
           : mapToObject(this.uiSettingsGlobalDefaults),
         overrides: isNamespaceScope ? this.overrides : this.globalOverrides,
         log: this.log,
-        sharedUserProvidedCache: this.sharedUserProvidedCache,
+        sharedUserProvidedCache: this.useSharedUserProvidedCache
+          ? this.sharedUserProvidedCache
+          : undefined,
         namespace,
       };
       return UiSettingsClientFactory.create(options) as ClientType<T>;

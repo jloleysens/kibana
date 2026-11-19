@@ -131,6 +131,53 @@ describe('SavedObjectsService', () => {
     jest.clearAllMocks();
   });
 
+  describe('#setupTask()', () => {
+    it('registers Core types without HTTP routes, usage collection or deprecation services', async () => {
+      const service = new SavedObjectsService(createCoreContext());
+      const { elasticsearch } = createSetupDeps();
+
+      await service.setupTask({ elasticsearch });
+
+      expect(registerCoreObjectTypes).toHaveBeenCalledTimes(1);
+      expect(registerRoutesMock).not.toHaveBeenCalled();
+      expect(deprecationsSetup.getRegistry).not.toHaveBeenCalled();
+    });
+
+    it('preserves security and spaces extensions when constructing the scoped client provider', async () => {
+      const service = new SavedObjectsService(createCoreContext());
+      const { elasticsearch } = createSetupDeps();
+      const setup = await service.setupTask({ elasticsearch });
+      const securityExtension: jest.Mocked<SavedObjectsSecurityExtensionFactory> = jest.fn();
+      const spacesExtension: jest.Mocked<SavedObjectsSpacesExtensionFactory> = jest.fn();
+      setup.setSecurityExtension(securityExtension);
+      setup.setSpacesExtension(spacesExtension);
+
+      const start = await service.start(createStartDeps());
+      const request = httpServerMock.createKibanaRequest();
+      start.getScopedClient(request);
+
+      expect(SavedObjectsClientProvider).toHaveBeenCalledWith(
+        expect.objectContaining({
+          securityExtensionFactory: securityExtension,
+          spacesExtensionFactory: spacesExtension,
+        })
+      );
+      expect(clientProviderInstanceMock.getClient).toHaveBeenCalledWith(request);
+      expect(migratorInstanceMock.prepareMigrations).toHaveBeenCalledTimes(1);
+    });
+
+    it('still runs migrations when enabled', async () => {
+      const service = new SavedObjectsService(createCoreContext({ skipMigration: false }));
+      const { elasticsearch } = createSetupDeps();
+      await service.setupTask({ elasticsearch });
+
+      await service.start(createStartDeps());
+
+      expect(migratorInstanceMock.prepareMigrations).toHaveBeenCalledTimes(1);
+      expect(migratorInstanceMock.runMigrations).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('#setup()', () => {
     it('calls registerCoreObjectTypes', async () => {
       const coreContext = createCoreContext();

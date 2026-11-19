@@ -87,6 +87,45 @@ describe('uiSettings', () => {
     });
   });
 
+  describe('#setupTask', () => {
+    it('registers the same saved object types without creating HTTP routes', async () => {
+      await service.setupTask({ savedObjects: setupDeps.savedObjects });
+
+      expect(setupDeps.savedObjects.registerType).toHaveBeenCalledTimes(2);
+      expect(setupDeps.savedObjects.registerType).toHaveBeenCalledWith(uiSettingsType);
+      expect(setupDeps.savedObjects.registerType).toHaveBeenCalledWith(uiSettingsGlobalType);
+      expect(setupDeps.http.createRouter).not.toHaveBeenCalled();
+    });
+
+    it('does not share user-provided settings caches across worker clients', async () => {
+      const setup = await service.setupTask({ savedObjects: setupDeps.savedObjects });
+      setup.register(defaults);
+      const start = await service.start();
+
+      start.asScopedToClient(savedObjectsClient);
+      start.asScopedToClient(savedObjectsClient);
+      start.globalAsScopedToClient(savedObjectsClient);
+
+      expect(MockUiSettingsClientConstructor).toHaveBeenCalledTimes(2);
+      for (const [options] of MockUiSettingsClientConstructor.mock.calls) {
+        expect(options.sharedUserProvidedCache).toBeUndefined();
+        expect(options.savedObjectsClient).toBe(savedObjectsClient);
+        expect(options.defaults).toEqual(defaults);
+        expect(options.overrides).toBe(overrides);
+      }
+      expect(MockUiSettingsGlobalClientConstructor).toHaveBeenCalledWith(
+        expect.objectContaining({ sharedUserProvidedCache: undefined, overrides: globalOverrides })
+      );
+    });
+
+    it('retains override validation in worker mode', async () => {
+      const setup = await service.setupTask({ savedObjects: setupDeps.savedObjects });
+      setup.register({ overrideBaz: { ...defaults.foo, schema: schema.number() } });
+
+      await expect(service.start()).rejects.toThrow('expected value of type [number]');
+    });
+  });
+
   describe('#setup', () => {
     beforeEach(async () => {
       await service.preboot();
