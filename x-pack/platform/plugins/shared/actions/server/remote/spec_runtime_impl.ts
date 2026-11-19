@@ -133,6 +133,7 @@ export class SpecRuntime implements SpecRuntimeApi {
         logger,
       };
       const executor = createSpecExecutor({
+        kibanaVersion: prepared.kibanaVersion,
         connectorTypeId: spec.metadata.id,
         onHandler: (subAction) => {
           handlerStarted = true;

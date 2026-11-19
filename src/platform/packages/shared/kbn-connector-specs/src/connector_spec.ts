@@ -296,6 +296,7 @@ export interface RelayActionClient {
 }
 
 export interface ActionContext {
+  readonly kibanaVersion?: string;
   client: AxiosInstance;
   /**
    * Leases a pooled, ready-to-use client by id. The connection is built on the

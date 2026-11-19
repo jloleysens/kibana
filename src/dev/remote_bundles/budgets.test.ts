@@ -157,6 +157,8 @@ it('reports bundle bytes and bounds the idle host without loading steps or autho
 }, 60_000);
 
 it.each([
+  '@kbn/repo-info/index.js',
+  '@kbn/repo-packages/index.js',
   '@elastic/eui/index.js',
   '@elastic/charts/index.js',
   '@emotion/react/index.js',

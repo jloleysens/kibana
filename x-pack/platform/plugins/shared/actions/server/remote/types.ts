@@ -11,6 +11,7 @@ import type { ActionRuntimeResult } from '../lib/execute_action';
 import type { ActionTypeExecutorResult } from '../types';
 
 export interface PreparedConnector {
+  readonly kibanaVersion: string;
   readonly actionId: string;
   readonly actionTypeId: string;
   readonly name: string;

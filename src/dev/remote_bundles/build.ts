@@ -162,6 +162,7 @@ export const buildRemoteBundle = async ({
   const forbidden = Object.keys(result.metafile.inputs).filter(
     (path) =>
       coordinatorFiles.has(canonical(path)) ||
+      /(?:kbn-repo-(?:info|packages)|@kbn\/repo-(?:info|packages))\//.test(path) ||
       /node_modules\/(?:@elastic\/(?:eui|charts)|@emotion\/|react(?:-dom)?\/|lodash(?:-es)?\/(?:lodash|fp)\.js|lodash\/fp\/index\.js)/.test(
         path
       )

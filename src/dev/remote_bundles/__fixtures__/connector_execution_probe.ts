@@ -91,6 +91,7 @@ const main = async (): Promise<void> => {
       prepares.push(invocationId);
       return {
         prepared: {
+          kibanaVersion: '9.7.0',
           actionId: 'fake',
           actionTypeId: '.jenkins',
           name: 'Jenkins',

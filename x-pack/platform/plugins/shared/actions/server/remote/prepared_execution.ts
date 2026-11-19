@@ -5,6 +5,7 @@
  * 2.0.
  */
 
+import { kibanaPackageJson } from '@kbn/repo-info';
 import type { IEvent } from '@kbn/event-log-plugin/server';
 import type { ActionsClient } from '../actions_client';
 import type { ActionRuntimeResult } from '../lib/execute_action';
@@ -68,6 +69,7 @@ export class PreparedExecution {
           if (!options.runtimeConfig) throw new Error('Missing connector network policy');
           ready({
             prepared: {
+              kibanaVersion: kibanaPackageJson.version,
               actionId: options.actionId,
               actionTypeId: options.actionType.id,
               name: options.name,

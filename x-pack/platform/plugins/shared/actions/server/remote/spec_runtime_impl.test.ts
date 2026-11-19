@@ -12,6 +12,7 @@ import { configSchema } from '../config';
 import { serializeActionsConfiguration } from '../actions_config';
 
 const prepared: PreparedConnector = {
+  kibanaVersion: '9.7.0',
   actionId: 'connector',
   actionTypeId: '.jenkins',
   name: 'Jenkins',

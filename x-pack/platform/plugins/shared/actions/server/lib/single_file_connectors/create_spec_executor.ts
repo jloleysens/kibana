@@ -173,7 +173,9 @@ export const createSpecExecutor = ({
   errors: { createTaskRunError, TaskErrorSource, getErrorSource, isUserError },
   getJwtSigner,
   onHandler,
+  kibanaVersion,
 }: {
+  kibanaVersion?: string;
   connectorTypeId?: string;
   onHandler?: (subAction: string) => void;
   actions: ConnectorSpec['actions'];
@@ -345,6 +347,7 @@ export const createSpecExecutor = ({
     };
 
     const actionContext = {
+      kibanaVersion,
       log: logger,
       client: axiosInstance,
       secrets,
