@@ -59,7 +59,10 @@ it('preserves original Cases authorization errors and refuses foreign or closed 
   const { api, client, controller, getClient } = setup();
   const denied = new Error('Original Cases authorization denied');
   client.cases.get.mockRejectedValueOnce(denied);
-  await expect(api.caseGet('run', [{ id: 'case' }])).rejects.toBe(denied);
+  await expect(api.caseGet('run', [{ id: 'case' }])).rejects.toMatchObject({
+    name: denied.name,
+    message: denied.message,
+  });
   await expect(api.caseGet('foreign', [{ id: 'case' }])).rejects.toThrow('Foreign scope');
   controller.abort();
   await expect(api.caseGet('run', [{ id: 'case' }])).rejects.toThrow();
@@ -124,6 +127,32 @@ it.each(['CaseError', 'TypeError'])('preserves %s through actual serialized RPC'
       expect(ExecutionError.fromError(error).toSerializableObject()).toMatchObject({ type: name });
       if (name === 'TypeError') expect(error).toBeInstanceOf(TypeError);
     }
+  } finally {
+    port1.close();
+    port2.close();
+  }
+});
+
+it('does not export private service metadata or authorization headers on errors', async () => {
+  const { api, client } = setup();
+  const original = Object.assign(new TypeError('Original validation failure'), {
+    meta: { request: { headers: { authorization: 'fake-private-authorization' } } },
+  });
+  client.cases.get.mockRejectedValue(original);
+  const { port1, port2 } = new MessageChannel();
+  try {
+    const remote = openPortSession<CasesClientOperationsApi>(port1);
+    openPortSession(port2, expose(api));
+    const facade = createWorkflowCasesClient(remote, 'run');
+    try {
+      await facade.cases.get({ id: 'case' });
+      throw new Error('Expected original failure');
+    } catch (error) {
+      expect(error).toBeInstanceOf(TypeError);
+      expect(error).toMatchObject({ name: 'TypeError', message: 'Original validation failure' });
+      expect(JSON.stringify(error)).not.toMatch(/authorization|fake-private|headers|request/);
+    }
+    expect(original.meta.request.headers.authorization).toBe('fake-private-authorization');
   } finally {
     port1.close();
     port2.close();
