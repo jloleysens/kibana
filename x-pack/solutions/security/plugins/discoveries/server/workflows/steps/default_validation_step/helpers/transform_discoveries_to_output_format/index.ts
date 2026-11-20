@@ -18,7 +18,7 @@ interface RawDiscovery {
   title: string;
 }
 
-interface TransformedDiscovery {
+export interface TransformedDiscovery {
   alert_ids: string[];
   connector_id: string;
   connector_name: string;

@@ -3509,6 +3509,9 @@ importers:
       '@kbn/securitysolution-es-utils':
         specifier: workspace:*
         version: link:src/platform/packages/shared/kbn-securitysolution-es-utils
+      '@kbn/securitysolution-esql-runtime':
+        specifier: workspace:*
+        version: link:x-pack/solutions/security/packages/kbn-securitysolution-esql-runtime
       '@kbn/securitysolution-exception-list-components':
         specifier: workspace:*
         version: link:x-pack/solutions/security/packages/kbn-securitysolution-exception-list-components
@@ -9900,6 +9903,8 @@ importers:
   x-pack/solutions/security/packages/kbn-securitysolution-autocomplete: {}
 
   x-pack/solutions/security/packages/kbn-securitysolution-endpoint-exceptions-common: {}
+
+  x-pack/solutions/security/packages/kbn-securitysolution-esql-runtime: {}
 
   x-pack/solutions/security/packages/kbn-securitysolution-exception-list-components: {}
 

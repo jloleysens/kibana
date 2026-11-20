@@ -1194,6 +1194,7 @@
     "@kbn/securitysolution-ecs": "workspace:*",
     "@kbn/securitysolution-endpoint-exceptions-common": "workspace:*",
     "@kbn/securitysolution-es-utils": "workspace:*",
+    "@kbn/securitysolution-esql-runtime": "workspace:*",
     "@kbn/securitysolution-exception-list-components": "workspace:*",
     "@kbn/securitysolution-exceptions-common": "workspace:*",
     "@kbn/securitysolution-hook-utils": "workspace:*",

@@ -58,6 +58,9 @@ import {
   type StepRegistrationResult,
 } from './workflows/register_workflow_steps';
 
+import { AttackDiscoveryOperations } from './remote/operations';
+import { AttackDiscoveryOperationsToken } from './remote/tokens';
+
 interface DiscoveriesConfig {
   connectorTimeout?: number;
   enabled: boolean;
@@ -203,6 +206,11 @@ export class DiscoveriesPlugin
       const [coreStart, pluginsStart] = await core.getStartServices();
       return { coreStart, pluginsStart };
     };
+
+    core.remote.bind(
+      AttackDiscoveryOperationsToken,
+      (scopes) => new AttackDiscoveryOperations(scopes, { getStartServices, logger: this.logger })
+    );
 
     // Get eventLog pattern
     const eventLogIndex = plugins.eventLog.getIndexPattern();
