@@ -3752,6 +3752,9 @@ importers:
       '@kbn/significant-events-plugin':
         specifier: workspace:*
         version: link:x-pack/solutions/observability/plugins/significant_events
+      '@kbn/significant-events-runtime':
+        specifier: workspace:*
+        version: link:x-pack/platform/packages/shared/kbn-significant-events-runtime
       '@kbn/significant-events-schema':
         specifier: workspace:*
         version: link:x-pack/platform/packages/shared/kbn-significant-events-schema
@@ -9225,6 +9228,8 @@ importers:
   x-pack/platform/packages/shared/kbn-search-index-documents: {}
 
   x-pack/platform/packages/shared/kbn-shared-components: {}
+
+  x-pack/platform/packages/shared/kbn-significant-events-runtime: {}
 
   x-pack/platform/packages/shared/kbn-significant-events-schema: {}
 

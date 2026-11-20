@@ -2673,6 +2673,8 @@
       "@kbn/significant-events-app-plugin/*": ["./x-pack/solutions/observability/plugins/significant_events_app/*"],
       "@kbn/significant-events-plugin": ["./x-pack/solutions/observability/plugins/significant_events"],
       "@kbn/significant-events-plugin/*": ["./x-pack/solutions/observability/plugins/significant_events/*"],
+      "@kbn/significant-events-runtime": ["./x-pack/platform/packages/shared/kbn-significant-events-runtime"],
+      "@kbn/significant-events-runtime/*": ["./x-pack/platform/packages/shared/kbn-significant-events-runtime/*"],
       "@kbn/significant-events-schema": ["./x-pack/platform/packages/shared/kbn-significant-events-schema"],
       "@kbn/significant-events-schema/*": ["./x-pack/platform/packages/shared/kbn-significant-events-schema/*"],
       "@kbn/slo-constants": ["./x-pack/platform/packages/shared/kbn-slo-constants"],

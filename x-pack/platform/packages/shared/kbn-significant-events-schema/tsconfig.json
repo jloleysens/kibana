@@ -8,6 +8,7 @@
   "kbn_references": [
     "@kbn/alerting-v2-schemas",
     "@kbn/zod",
+    "@kbn/significant-events-runtime",
     "@kbn/zod-helpers",
     "@kbn/streamlang-conditions",
     "@kbn/inference-common",

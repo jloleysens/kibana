@@ -1275,6 +1275,7 @@
     "@kbn/siem-readiness": "workspace:*",
     "@kbn/significant-events-app-plugin": "workspace:*",
     "@kbn/significant-events-plugin": "workspace:*",
+    "@kbn/significant-events-runtime": "workspace:*",
     "@kbn/significant-events-schema": "workspace:*",
     "@kbn/slo-constants": "workspace:*",
     "@kbn/slo-plugin": "workspace:*",
