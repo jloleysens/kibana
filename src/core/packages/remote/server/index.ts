@@ -22,5 +22,6 @@ export {
   registerRemoteLeaseParents,
   withRemoteLeaseParent,
   getRemoteLeaseParent,
+  associateRemoteLeaseChild,
 } from './src/lease_parent_context';
 export type { RemoteLeaseParent } from './src/lease_parent_context';

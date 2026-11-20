@@ -33,6 +33,7 @@ import type {
   ScopeLookup,
   RemoteRunState,
   RemoteRunDefinitionFacts,
+  RemoteLeaseParent,
 } from '@kbn/core-remote-server';
 import { createManagedWorker } from '@kbn/core-threads-server-internal';
 import { RemoteLeasePool, type LeaseHost } from './remote_lease_pool';
@@ -63,7 +64,10 @@ export class RemoteService implements RemoteSetup {
   private readonly definitionFacts = new Map<string, RemoteRunDefinitionFacts>();
   private readonly stepTypes = new Map<string, ReadonlyMap<string, string>>();
   private readonly stepOutputLimits = new Map<string, ReadonlyMap<string, number>>();
-  private readonly leaseParentTokens = new Map<string, object>();
+  private readonly leaseParentTokens = new Map<
+    string,
+    { token: object; associateChild: (childExecutionId: string, parent: RemoteLeaseParent) => void }
+  >();
   private readonly scopeControllers = new Map<string, AbortController>();
   private readonly sessions = new Map<string, Promise<RemoteSession<unknown>>>();
   private readonly resolvers = new Map<string, (session: RemoteSession<unknown>) => void>();
@@ -118,7 +122,9 @@ export class RemoteService implements RemoteSetup {
     registerRemoteLeaseParents(this.lookup, (scopeId) => {
       const token = this.leaseParentTokens.get(scopeId);
       const controller = this.scopeControllers.get(scopeId);
-      return token && controller ? { token, signal: controller.signal } : undefined;
+      return token && controller
+        ? { token: token.token, signal: controller.signal, associateChild: token.associateChild }
+        : undefined;
     });
   }
 
@@ -220,7 +226,11 @@ export class RemoteService implements RemoteSetup {
           definitionFacts
         );
         scopeIds.add(scopeId);
-        this.leaseParentTokens.set(scopeId, acquired.parentToken);
+        this.leaseParentTokens.set(scopeId, {
+          token: acquired.parentToken,
+          associateChild: (childExecutionId, parent) =>
+            pool.associateScheduledChild(childExecutionId, parent),
+        });
         return scopeId;
       },
       closeScope: (scopeId) => {

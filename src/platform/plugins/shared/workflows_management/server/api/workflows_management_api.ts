@@ -18,6 +18,7 @@ import type {
 } from '@kbn/agent-builder-sml-plugin/server';
 import type { AlertingApiRequestHandlerContext } from '@kbn/alerting-plugin/server';
 import type { CustomRequestHandlerContext, KibanaRequest, Logger } from '@kbn/core/server';
+import { associateRemoteLeaseChild } from '@kbn/core-remote-server';
 import type { AccessControlInput } from '@kbn/entity-access-control';
 import { i18n } from '@kbn/i18n';
 import {
@@ -961,6 +962,7 @@ export class WorkflowsManagementApi {
       context,
       request
     );
+    associateRemoteLeaseChild(scheduleResponse.workflowExecutionId);
     return scheduleResponse.workflowExecutionId;
   }
 

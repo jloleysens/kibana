@@ -23,10 +23,12 @@ export interface RemoteLeaseParent {
   readonly token: object;
   readonly runId: string;
   readonly isActive: () => boolean;
+  readonly associateChild?: (childExecutionId: string) => void;
 }
 interface ScopedLeaseParent {
   readonly token: object;
   readonly signal: AbortSignal;
+  readonly associateChild?: (childExecutionId: string, parent: RemoteLeaseParent) => void;
 }
 const parents = new WeakMap<ScopeLookup, (scopeId: string) => ScopedLeaseParent | undefined>();
 const context = new AsyncLocalStorage<RemoteLeaseParent>();
@@ -50,20 +52,28 @@ export const withRemoteLeaseParent = async <T>(
   parent.signal.throwIfAborted();
   const { workflowRunId } = scopes.getRunState(scopeId);
   let active = true;
-  return context.run(
-    { token: parent.token, runId: workflowRunId, isActive: () => active && !parent.signal.aborted },
-    async () => {
-      try {
-        return await work();
-      } finally {
-        active = false;
-      }
+  const leaseParent: RemoteLeaseParent = {
+    token: parent.token,
+    runId: workflowRunId,
+    isActive: () => active && !parent.signal.aborted,
+    associateChild: (childExecutionId) => parent.associateChild?.(childExecutionId, leaseParent),
+  };
+  return context.run(leaseParent, async () => {
+    try {
+      return await work();
+    } finally {
+      active = false;
     }
-  );
+  });
 };
 
 /** Reads capacity-only ancestry inside the coordinator; tokens are never transported. */
 export const getRemoteLeaseParent = (): RemoteLeaseParent | undefined => {
   const parent = context.getStore();
   return parent?.isActive() ? parent : undefined;
+};
+
+/** Associates only a coordinator-created scheduled execution with its active capacity parent. */
+export const associateRemoteLeaseChild = (childExecutionId: string): void => {
+  getRemoteLeaseParent()?.associateChild?.(childExecutionId);
 };

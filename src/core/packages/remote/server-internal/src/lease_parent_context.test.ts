@@ -34,6 +34,7 @@ it('invalidates capacity ancestry for background work that outlives its coordina
   const controller = new AbortController();
   const scopes: ScopeLookup = {
     get: jest.fn(),
+    getRunDefinitionFacts: jest.fn(),
     getRunState: jest.fn().mockReturnValue({ workflowRunId: 'parent' }),
     getAbortSignal: () => controller.signal,
     resolveStepType: jest.fn(),
