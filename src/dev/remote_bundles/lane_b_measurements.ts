@@ -211,6 +211,23 @@ export const memorySnapshot = async (
   };
 };
 
+const readExecutionLogs = async (
+  executionId: string
+): Promise<{ logs: object[]; total: number }> => {
+  const result = await api<{ logs: object[]; total: number }>(
+    `/api/workflows/executions/${executionId}/logs?size=100&page=1&sortOrder=asc`
+  );
+  const logs = [...result.logs];
+  for (let page = 2; logs.length < result.total; page++) {
+    const next = await api<{ logs: object[] }>(
+      `/api/workflows/executions/${executionId}/logs?size=100&page=${page}&sortOrder=asc`
+    );
+    assert(next.logs.length > 0, 'Execution log pagination ended before total');
+    logs.push(...next.logs);
+  }
+  return { logs, total: result.total };
+};
+
 const execute = async (
   family: LaneBFamily,
   id: string,
@@ -241,9 +258,7 @@ const execute = async (
   });
   save(join(directory, `${workflowExecutionId}-steps.json`), result);
   await delay(1500);
-  const logs = await api(
-    `/api/workflows/executions/${workflowExecutionId}/logs?size=1000&sortOrder=asc`
-  );
+  const logs = await readExecutionLogs(workflowExecutionId);
   save(join(directory, workflowExecutionId + '-logs.json'), logs);
 
   const step = (name: string): Output => {
@@ -365,9 +380,7 @@ const execute = async (
       assert.equal(ownAttempts.length, 2);
       assert(ownAttempts.every(({ status }) => status === 'sent'));
       await delay(1500);
-      const childLogs = await api(
-        `/api/workflows/executions/${childId}/logs?size=1000&sortOrder=asc`
-      );
+      const childLogs = await readExecutionLogs(childId);
       save(join(directory, workflowExecutionId + '-child-logs.json'), childLogs);
       save(join(directory, workflowExecutionId + '-notification-proof.json'), {
         childId,
