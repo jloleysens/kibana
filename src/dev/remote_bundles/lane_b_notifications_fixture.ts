@@ -43,6 +43,7 @@ export const startLaneBNotificationsFixture = async (logPath: string) => {
   );
   const certificate = readFileSync(join(directory, 'cert.pem'), 'utf8');
   let posts = 0;
+  let confirmAttempts = 0;
   const tls = createTlsServer(
     { key: readFileSync(join(directory, 'key.pem')), cert: certificate },
     async (request, response) => {
@@ -51,8 +52,19 @@ export const startLaneBNotificationsFixture = async (logPath: string) => {
       let text = '';
       for await (const chunk of request) text += chunk;
       const body = JSON.parse(text);
-      appendFileSync(logPath, JSON.stringify({ path: request.url, body }) + '\n');
+      // The kitchen-sink confirm step uses this marker so the first attempt fails and the retry succeeds.
+      // Other Slack posts, including Nightshift, stay successful.
+      const fail =
+        typeof body.text === 'string' &&
+        body.text.includes('confirm-delivery') &&
+        confirmAttempts++ % 2 === 0;
+      appendFileSync(logPath, JSON.stringify({ path: request.url, body, fail }) + '\n');
       assert(['/api/chat.postMessage', '/api/chat.update'].includes(request.url ?? ''));
+      if (fail) {
+        response.writeHead(503, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ ok: false, error: 'once' }));
+        return;
+      }
       response.setHeader('content-type', 'application/json');
       response.end(
         JSON.stringify({
