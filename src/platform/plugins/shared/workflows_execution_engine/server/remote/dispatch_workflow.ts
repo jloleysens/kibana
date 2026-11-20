@@ -11,9 +11,11 @@ import type { CoreStart, KibanaRequest, Logger } from '@kbn/core/server';
 import { recordRemoteHeap, recordRemoteTiming, recordSeam } from '@kbn/core-remote-common';
 import type { RemoteSetup } from '@kbn/core-remote-server';
 import { UIAM_INTERNAL_CALLER_ATTESTATION_HEADER } from '@kbn/core-security-server';
-import { visitNestedSteps } from '@kbn/workflows';
+import type { BaseStep, WorkflowYaml } from '@kbn/workflows';
+import { WorkflowGraph } from '@kbn/workflows/graph';
 import type { WorkflowDispatchFacts, WorkflowExecutorApi, WorkflowRunOutcome } from './tokens';
 import { workflowDispatchCredentials } from './workflow_dispatch_credentials';
+import { defaultWorkflowSettings } from '../default_workflow_settings';
 import { getInternalUiamCallerAttestationHeaders } from '../lib/get_internal_uiam_caller_attestation_headers';
 import type { StepExecutionRepository } from '../repositories/step_execution_repository';
 import type { WorkflowExecutionRepository } from '../repositories/workflow_execution_repository';
@@ -92,23 +94,30 @@ export const dispatchWorkflow = async ({
     }
     const stepTypes = new Map<string, string>();
     const stepOutputLimits = new Map<string, number>();
-    visitNestedSteps(
-      [
-        ...execution.workflowDefinition.steps,
-        ...(execution.workflowDefinition.settings?.['on-failure']?.fallback ?? []),
-      ],
-      ({ step }) => {
-        stepTypes.set(step.name, step.type);
+    const graph = WorkflowGraph.fromWorkflowDefinition(
+      execution.workflowDefinition as WorkflowYaml,
+      defaultWorkflowSettings
+    );
+    for (const node of graph.getAllNodes()) {
+      if (
+        'configuration' in node &&
+        node.configuration &&
+        typeof node.configuration === 'object' &&
+        'name' in node.configuration &&
+        'type' in node.configuration
+      ) {
+        const configuration = node.configuration as BaseStep;
+        stepTypes.set(node.stepId, node.stepType);
         stepOutputLimits.set(
-          step.name,
+          node.stepId,
           resolveStepOutputLimit(
-            () => step['max-step-size'],
+            () => configuration['max-step-size'],
             () => execution.workflowDefinition.settings?.['max-step-size'],
             () => facts.maxResponseSizeBytes
           )
         );
       }
-    );
+    }
     scopeId = lease.openScope(
       request,
       {

@@ -147,3 +147,105 @@ it('restores genuine persisted child admissions on a fresh resume scope, never f
   await dispatchWorkflow({ ...params, phase: 'resume' });
   expect(lease.openScope.mock.calls[0][1]?.admittedChildren).toEqual(new Set(['genuine']));
 });
+
+it('authors policies from original compiled IDs for global/step fallback, retries, branches, loops and nested workflows', async () => {
+  const { WorkflowGraph } = await import('@kbn/workflows/graph');
+  const { resolveStepOutputLimit } = await import('../step/resolve_step_output_limit');
+  const { defaultWorkflowSettings } = await import('../default_workflow_settings');
+  const { lease, params } = setup();
+  const authored = {
+    version: '1' as const,
+    name: 'Compiled policies',
+    enabled: true,
+    triggers: [{ type: 'manual' as const }],
+    settings: {
+      'max-step-size': '2kb',
+      'on-failure': {
+        fallback: [
+          {
+            name: 'handle_investigation_failure',
+            type: 'nightshift.handleInvestigationFailure',
+            'max-step-size': '4kb',
+            with: { investigation_id: 'run', reason: 'failed' },
+          },
+        ],
+      },
+    },
+    steps: [
+      { name: 'investigate', type: 'ai.agent', with: { message: 'original' } },
+      {
+        name: 'retried',
+        type: 'ai.agent',
+        'max-step-size': '8kb',
+        with: { message: 'retry' },
+        'on-failure': {
+          retry: { 'max-attempts': 2 },
+          fallback: [{ name: 'step_fallback', type: 'ai.agent', with: { message: 'recover' } }],
+        },
+      },
+      {
+        name: 'loop',
+        type: 'foreach',
+        foreach: '${{ inputs.items }}',
+        steps: [
+          {
+            name: 'condition',
+            type: 'if',
+            condition: true,
+            steps: [{ name: 'nested', type: 'workflow.execute', with: { 'workflow-id': 'child' } }],
+            else: [
+              {
+                name: 'other',
+                type: 'ai.agent',
+                'max-step-size': '16kb',
+                with: { message: 'other' },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const definition: import('@kbn/workflows').WorkflowYaml = authored;
+  params.repositories.workflowExecutionRepository.getWorkflowExecutionById.mockResolvedValue({
+    id: 'run-1',
+    spaceId: 'default',
+    workflowId: 'workflow-1',
+    workflowDefinition: definition,
+    stepExecutionIds: [],
+  });
+  await dispatchWorkflow(params);
+  const [, , limits, types] = lease.openScope.mock.calls[0];
+  const graph = WorkflowGraph.fromWorkflowDefinition(definition, defaultWorkflowSettings);
+  for (const node of graph.getAllNodes()) {
+    if (
+      'configuration' in node &&
+      node.configuration &&
+      typeof node.configuration === 'object' &&
+      'name' in node.configuration &&
+      'type' in node.configuration
+    ) {
+      const configuration = node.configuration as import('@kbn/workflows').BaseStep;
+      expect(types?.get(node.stepId)).toBe(node.stepType);
+      expect(limits?.get(node.stepId)).toBe(
+        resolveStepOutputLimit(
+          () => configuration['max-step-size'],
+          () => definition.settings?.['max-step-size'],
+          () => params.facts.maxResponseSizeBytes
+        )
+      );
+    }
+  }
+  expect(types?.get('workflow-level-on-failure_investigate_handle_investigation_failure')).toBe(
+    'nightshift.handleInvestigationFailure'
+  );
+  expect(limits?.get('workflow-level-on-failure_investigate_handle_investigation_failure')).toBe(
+    4096
+  );
+  expect(types?.get('step_fallback')).toBe('ai.agent');
+  expect(limits?.get('retried')).toBe(8192);
+  expect(types?.get('nested')).toBe('workflow.execute');
+  expect(limits?.get('other')).toBe(16384);
+  expect(types?.has('forged_step')).toBe(false);
+  expect(limits?.has('forged_step')).toBe(false);
+});
