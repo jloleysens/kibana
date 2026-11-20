@@ -99,7 +99,10 @@ export class NativeActions implements NativeActionsApi {
       if (state.invocations.has(invocationId))
         throw new Error('Duplicate native connector invocation');
       state.invocations.add(invocationId);
-      const actionId = await (await state.resolver).resolveConnectorId(request.connectorNameOrId);
+      const actionId =
+        request.connectorType === undefined
+          ? request.connectorNameOrId
+          : await (await state.resolver).resolveConnectorId(request.connectorNameOrId);
       signal.throwIfAborted();
       const preparedState = state;
       const getInferenceFacts = this.getInferenceFacts;
@@ -110,7 +113,9 @@ export class NativeActions implements NativeActionsApi {
         request.input,
         signal,
         state.actionInfo,
-        request.connectorType.replace(/^\./, '') === 'inference' && getInferenceFacts
+        (request.connectorType === undefined ||
+          request.connectorType.replace(/^\./, '') === 'inference') &&
+        getInferenceFacts
           ? () => {
               if (!preparedState.inferenceFacts)
                 preparedState.inferenceFacts = getInferenceFacts(

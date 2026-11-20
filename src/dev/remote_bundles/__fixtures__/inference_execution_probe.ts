@@ -55,6 +55,10 @@ const main = async (): Promise<void> => {
       );
       return;
     }
+    if (request.url?.includes('ai-index-idx-nightshift-')) {
+      response.end(JSON.stringify({ hits: { hits: [], total: { value: 0 } } }));
+      return;
+    }
     requests++;
     const body = JSON.parse(text);
     const tool = body.tools?.[0]?.function;
@@ -69,7 +73,11 @@ const main = async (): Promise<void> => {
               function: {
                 name: tool.name,
                 arguments: JSON.stringify(
-                  tool.name === 'classify'
+                  tool.parameters?.properties?.edits
+                    ? { edits: [] }
+                    : tool.parameters?.properties?.extractions
+                    ? { extractions: [] }
+                    : tool.name === 'classify'
                     ? { category: 'Security' }
                     : { response: { verified: true } }
                 ),
@@ -218,6 +226,48 @@ const main = async (): Promise<void> => {
         { input: 'A security incident', categories: ['Security', 'Other'] },
         { category: 'Security' },
       ],
+      ...(process.argv.includes('--optimizers')
+        ? ([
+            [
+              'nightshift.cortexOptimize',
+              {
+                agent_id: 'nightshift.investigation',
+                connector_id: 'endpoint',
+                prompt: 'Investigate local record',
+                response: 'Observed saturation',
+                tool_calls: [0, 1, 2].map((index) => ({
+                  tool_id: 'nightshift_sandbox_bash',
+                  tool_call_id: 'read-' + index,
+                  params: { command: 'cat /tmp/evidence' },
+                })),
+                tool_results: [0, 1, 2].map((index) => ({
+                  tool_call_id: 'read-' + index,
+                  results: [{ type: 'other', data: { stdout: 'Nonempty verified evidence' } }],
+                })),
+              },
+              { status: 'ok' },
+            ],
+            [
+              'nightshift.memoryOptimize',
+              {
+                agent_id: 'nightshift.investigation',
+                connector_id: 'endpoint',
+                prompt: 'Investigate local record',
+                response: 'Observed saturation',
+                tool_calls: [0, 1, 2].map((index) => ({
+                  tool_id: 'nightshift_sandbox_bash',
+                  tool_call_id: 'read-' + index,
+                  params: { command: 'cat /tmp/evidence' },
+                })),
+                tool_results: [0, 1, 2].map((index) => ({
+                  tool_call_id: 'read-' + index,
+                  results: [{ type: 'other', data: { stdout: 'Nonempty verified evidence' } }],
+                })),
+              },
+              { status: 'ok' },
+            ],
+          ] as const)
+        : []),
     ] as const) {
       const start = sample();
       const count = requests;
@@ -226,16 +276,44 @@ const main = async (): Promise<void> => {
       assert(contribution);
       const loaded = await graph.implementations[contribution.modulePath]();
       const Ctor = loaded[contribution.exportName] as new (...args: object[]) => RemoteWorkflowStep;
-      const step = new Ctor(
-        policyApi,
-        {
-          list: async () => [],
-          getForFeature: async () => {
-            throw new Error('Unexpected feature read');
-          },
-        },
-        data
-      );
+      const step = type.startsWith('nightshift.')
+        ? new Ctor(
+            {
+              enabled: async () => true,
+              log: async () => {},
+              prepareModel: async () => 'endpoint',
+              reportCortex: async () => {},
+              reportMemory: async () => {},
+
+              open: async () => ({
+                lease: 'completion',
+                metadata: { pluginId: 'nightshift.investigation_memory', interactionId: 'run' },
+              }),
+              report: async () => {},
+              settle: async () => {},
+            },
+
+            {},
+            policyApi,
+            {
+              list: async () => [],
+              getForFeature: async () => {
+                throw new Error('Unexpected endpoint resolution');
+              },
+            },
+            data,
+            {}
+          )
+        : new Ctor(
+            policyApi,
+            {
+              list: async () => [],
+              getForFeature: async () => {
+                throw new Error('Unexpected feature read');
+              },
+            },
+            data
+          );
       const context: StepHandlerContext = {
         input,
         rawInput: input,

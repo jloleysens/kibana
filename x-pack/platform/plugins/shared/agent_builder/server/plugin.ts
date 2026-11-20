@@ -44,6 +44,8 @@ import { registerAfterExecutionWorkflowsHook } from './hooks/agent_workflows/reg
 import { registerSkillToolsLoaderHook } from './hooks/skills/register_skill_tools_loader_hook';
 import { registerTaskDefinitions } from './services/execution';
 import { createModelProviderFactory } from './services/execution/runner/model_provider';
+import { resolveModelTelemetryMetadata } from './services/execution/runner/model_provider_telemetry';
+import { recordModelCompletion } from './services/execution/runner/model_completion';
 import { createSmlTools } from './services/tools/builtin/sml';
 import { createConnectorTools } from './services/tools/builtin/connectors';
 import { createAdminPrivilegeSwitcher } from './capabilities/admin_privilege_switcher';
@@ -499,6 +501,36 @@ export class AgentBuilderPlugin
       },
       runtime: {
         createModelProvider: modelProviderFactory,
+        issueModelObservation: async ({ request, connectorId, metadata }) => {
+          const resolved = await resolveModelTelemetryMetadata({
+            request,
+            spaces,
+            security,
+            elasticsearch,
+            telemetryMetadata: metadata,
+          });
+          const connector = await inference.getConnectorById(connectorId, request);
+          return {
+            metadata: {
+              pluginId: resolved.pluginId,
+              aggregateBy: resolved.aggregateBy,
+              productSolution: resolved.productSolution,
+              productFeature: resolved.productFeature,
+              interactionId: resolved.interactionId,
+              traceId: resolved.traceId,
+              spaceId: resolved.spaceId,
+              userId: resolved.userId,
+            },
+            complete: (event) =>
+              recordModelCompletion({
+                connectorId,
+                connector,
+                event,
+                completedCalls: [],
+                trackingService: this.trackingService,
+              }),
+          };
+        },
       },
       conversations: {
         getScopedClient: async ({ request }) => {

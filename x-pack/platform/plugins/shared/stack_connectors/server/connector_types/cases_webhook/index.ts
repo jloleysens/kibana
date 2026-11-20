@@ -6,10 +6,10 @@
  */
 
 import type {
-  ClassicActionType as ConnectorType,
-  ActionTypeExecutorOptions as ConnectorTypeExecutorOptions,
-  ActionTypeExecutorResult as ConnectorTypeExecutorResult,
-} from '@kbn/actions-plugin/server/types';
+  ClassicConnectorType as ConnectorType,
+  ClassicExecutorOptions as ConnectorTypeExecutorOptions,
+} from '@kbn/actions-plugin/server/remote/classic_connector_types';
+import type { ActionTypeExecutorResult as ConnectorTypeExecutorResult } from '@kbn/actions-plugin/server/types';
 import { CasesConnectorFeatureId } from '@kbn/actions-plugin/common';
 import type {
   CasesWebhookActionParamsType,

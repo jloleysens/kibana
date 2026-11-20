@@ -47,6 +47,9 @@ export class SpecRuntime implements SpecRuntimeApi {
   readonly runLocal: Implementation['runLocal'] = async (...args) =>
     (await this.getImplementation()).runLocal(...args);
 
+  readonly runAction: Implementation['runAction'] = async (...args) =>
+    (await this.getImplementation()).runAction(...args);
+
   readonly runClassic: Implementation['runClassic'] = async (...args) =>
     (await this.getImplementation()).runClassic(...args);
 

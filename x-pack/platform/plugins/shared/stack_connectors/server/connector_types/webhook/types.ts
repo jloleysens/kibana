@@ -6,9 +6,9 @@
  */
 
 import type {
-  ClassicActionType as ConnectorType,
-  ActionTypeExecutorOptions as ConnectorTypeExecutorOptions,
-} from '@kbn/actions-plugin/server/types';
+  ClassicConnectorType as ConnectorType,
+  ClassicExecutorOptions as ConnectorTypeExecutorOptions,
+} from '@kbn/actions-plugin/server/remote/classic_connector_types';
 import type {
   ConnectorTypeConfigType,
   ConnectorTypeSecretsType,

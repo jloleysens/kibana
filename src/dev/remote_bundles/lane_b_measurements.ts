@@ -26,6 +26,7 @@ import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { build } from 'esbuild';
 import { parse, stringify } from 'yaml';
+import { startLaneBNotificationsFixture } from './lane_b_notifications_fixture';
 import { buildRemoteBundle } from './build';
 import { discoverRemoteManifests } from './discover';
 import { nearestRank } from './load_statistics';
@@ -56,6 +57,7 @@ interface Case {
   comments?: Array<{ id: string; comment?: string }>;
 }
 interface Output {
+  status?: string;
   message?: string;
   text?: string;
   blocks?: Array<{ type: string; elements?: Array<{ url?: string }> }>;
@@ -238,6 +240,14 @@ const execute = async (
     query: { term: { workflowRunId: workflowExecutionId } },
   });
   save(join(directory, `${workflowExecutionId}-steps.json`), result);
+  await api(es + '/.workflows-execution-data-stream-logs/_refresh', undefined, 'POST');
+  const logs = await api<Search<object>>(es + '/.workflows-execution-data-stream-logs/_search', {
+    size: 1000,
+    query: { term: { 'workflow.execution_id': workflowExecutionId } },
+    sort: [{ '@timestamp': 'asc' }],
+  });
+  save(join(directory, workflowExecutionId + '-logs.json'), logs);
+
   const step = (name: string): Output => {
     const found = result.hits.hits.find(({ _source }) => _source.stepId === name);
     assert(found, `Missing ${name} output`);
@@ -280,15 +290,99 @@ const execute = async (
     };
   }>(`${es}/lane-b-quiet-outcomes/_doc/${step('persist')._id}`);
   save(join(directory, `${workflowExecutionId}-business.json`), persisted);
-  if (family === 'nightshift_trigger') {
+  if (family === 'nightshift_cortex_optimize' || family === 'nightshift_memory_optimize') {
+    assert.equal(step('optimize').status, 'ok');
+    const cortex = family === 'nightshift_cortex_optimize';
+    const index = cortex ? 'cortex' : 'semantic-memory';
+    const pageId = cortex ? 'cortex_service_optimized-' + id : 'memory_optimized-' + id;
+    const page = await api<{
+      _source: { type: string; title: string; content: string; attributes: { space_id: string } };
+    }>(es + '/ai-index-idx-nightshift-' + index + '/_doc/default:' + pageId);
+    assert.equal(page._source.attributes.space_id, 'default');
+    assert.equal(page._source.type, cortex ? 'service' : 'memory');
+    assert.equal(page._source.title, 'Optimized ' + id);
+    assert.equal(page._source.content, 'Verified optimizer observation ' + id);
+    save(join(directory, workflowExecutionId + '-optimized-page.json'), page);
+  } else if (
+    family === 'nightshift_trigger' ||
+    family === 'nightshift_notifications' ||
+    family === 'nightshift_failure'
+  ) {
     const conversationId = persisted._source.conversationId;
     assert(conversationId);
-    const accepted = await api<{ _source: { agent_id: string; space: string } }>(
-      `${es}/.chat-conversations/_doc/${conversationId}`
-    );
+    const accepted = await api<{
+      _source: { agent_id: string; space: string; metadata: { workflow_execution_ids: string[] } };
+    }>(`${es}/.chat-conversations/_doc/${conversationId}`);
     assert.equal(accepted._source.space, 'default');
     assert.equal(accepted._source.agent_id, 'nightshift.investigation');
     save(join(directory, `${workflowExecutionId}-accepted-investigation.json`), accepted);
+    if (family !== 'nightshift_trigger') {
+      const childId = accepted._source.metadata.workflow_execution_ids.at(-1);
+      assert(childId);
+      let investigationRun: { _source: { status: string; stepExecutionIds: string[] } } | undefined;
+      for (let attempt = 0; attempt < 1200; attempt++) {
+        investigationRun = await api(es + '/.workflows-executions/_doc/' + childId);
+        if (investigationRun && ['completed', 'failed'].includes(investigationRun._source.status))
+          break;
+        await delay(100);
+      }
+      assert(investigationRun);
+      assert.equal(
+        investigationRun._source.status,
+        family === 'nightshift_failure' ? 'failed' : 'completed'
+      );
+      const childSteps = await api<{
+        docs: Array<{
+          _source: { stepId: string; stepType: string; status: string; output?: { sent?: number } };
+        }>;
+      }>(es + '/.workflows-step-executions/_mget', {
+        ids: investigationRun._source.stepExecutionIds,
+      });
+      const target = childSteps.docs.filter(
+        ({ _source }) =>
+          _source.stepType ===
+          (family === 'nightshift_failure'
+            ? 'nightshift.handleInvestigationFailure'
+            : 'nightshift.sendNotifications')
+      );
+      assert(target.length > 0, 'Missing original managed investigation notification step');
+      assert(
+        target.every(({ _source }) => _source.status === 'completed' && _source.output?.sent === 1)
+      );
+      const routing = await api<
+        Search<{
+          attempts: Array<{ status: string; phase: string; execution_id: string }>;
+          executions: Array<{ id: string; terminal_phase?: string }>;
+        }>
+      >(es + '/.kibana-nightshift-notification-routing*/_search', {
+        query: { term: { investigationId: conversationId } },
+      });
+      assert.equal(routing.hits.hits.length, 1);
+      const original = routing.hits.hits[0]._source;
+      assert.equal(
+        original.executions.find(({ id: executionId }) => executionId === childId)?.terminal_phase,
+        family === 'nightshift_failure' ? 'failed' : 'completed'
+      );
+      const ownAttempts = original.attempts.filter(({ execution_id }) => execution_id === childId);
+      assert.equal(ownAttempts.length, 2);
+      assert(ownAttempts.every(({ status }) => status === 'sent'));
+      await api(es + '/.workflows-execution-data-stream-logs/_refresh', undefined, 'POST');
+      const childLogs = await api<Search<object>>(
+        es + '/.workflows-execution-data-stream-logs/_search',
+        {
+          size: 1000,
+          query: { term: { 'workflow.execution_id': childId } },
+          sort: [{ '@timestamp': 'asc' }],
+        }
+      );
+      save(join(directory, workflowExecutionId + '-child-logs.json'), childLogs);
+      save(join(directory, workflowExecutionId + '-notification-proof.json'), {
+        childId,
+        investigationRun,
+        childSteps,
+        routing,
+      });
+    }
   } else if (family === 'nightshift_reinforce') {
     assert.equal(persisted._source.message, 'Lane B verified response');
     assert.equal(step('reinforce').message, 'Lane B verified response');
@@ -695,7 +789,9 @@ export const runLaneBMeasurements = async (): Promise<void> => {
     for await (const chunk of request) text += chunk;
     const body: {
       stream?: boolean;
-      tools?: Array<{ function: { name: string } }>;
+      tools?: Array<{
+        function: { name: string; parameters?: { properties?: Record<string, object> } };
+      }>;
       texts?: string[];
       query?: string;
     } = JSON.parse(text || '{}');
@@ -716,8 +812,49 @@ export const runLaneBMeasurements = async (): Promise<void> => {
       );
       return;
     }
+    if (JSON.stringify(body).includes('lane-b-quiet-agent-failure-')) {
+      response.writeHead(400, { 'content-type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          error: { message: 'Lane B deliberate provider failure', type: 'invalid_request_error' },
+        })
+      );
+      return;
+    }
     const isAgent = JSON.stringify(body).includes('lane-b-quiet-agent-');
     const tool = isAgent ? undefined : body.tools?.[0]?.function;
+    const optimizerId = JSON.stringify(body).match(/lane-b-optimize-([a-z0-9-]+)/)?.[1];
+    const properties = tool?.parameters?.properties;
+    const optimizerOutput = !optimizerId
+      ? undefined
+      : properties?.edits
+      ? {
+          edits: [
+            {
+              action: 'upsert',
+              entity_type: 'service',
+              slug: 'optimized-' + optimizerId,
+              title: 'Optimized ' + optimizerId,
+              description: 'Verified optimizer',
+              content: 'Verified optimizer observation ' + optimizerId,
+            },
+          ],
+        }
+      : properties?.extractions
+      ? {
+          extractions: [
+            {
+              title: 'Optimized ' + optimizerId,
+              keywords: ['verified-' + optimizerId],
+              replaces: [],
+            },
+          ],
+        }
+      : properties?.content
+      ? { content: 'Verified optimizer observation ' + optimizerId }
+      : properties?.useful
+      ? { useful: [], harmful: [] }
+      : undefined;
     const message = tool
       ? {
           role: 'assistant',
@@ -728,10 +865,12 @@ export const runLaneBMeasurements = async (): Promise<void> => {
               type: 'function',
               function: {
                 name: tool.name,
-                arguments: JSON.stringify({
-                  category: 'Security',
-                  rationale: 'Local fake response',
-                }),
+                arguments: JSON.stringify(
+                  optimizerOutput ?? {
+                    category: 'Security',
+                    rationale: 'Local fake response',
+                  }
+                ),
               },
             },
           ],
@@ -777,6 +916,9 @@ export const runLaneBMeasurements = async (): Promise<void> => {
   });
   const sandbox = args.includes('--sandbox-stat-fixture')
     ? await startLaneBSandboxFixture(join(output, 'sandbox-stat-requests.jsonl'))
+    : undefined;
+  const notifications = args.includes('--notification-fixture')
+    ? await startLaneBNotificationsFixture(join(output, 'slack-requests.jsonl'))
     : undefined;
   let child: ChildProcess | undefined;
   const nightshiftDefaultModel = defaultInferenceEndpoints.ANTHROPIC_CLAUDE_5_5_SONNET;
@@ -869,8 +1011,15 @@ export const runLaneBMeasurements = async (): Promise<void> => {
               'nightshift_cortex_hydrate',
               'nightshift_memory_hydrate',
               'nightshift_reinforce',
+              'nightshift_cortex_optimize',
+              'nightshift_memory_optimize',
               ...(args.includes('--nightshift-model-fixture')
-                ? ['nightshift_trigger' as const]
+                ? [
+                    'nightshift_trigger' as const,
+                    ...(notifications
+                      ? ['nightshift_notifications' as const, 'nightshift_failure' as const]
+                      : []),
+                  ]
                 : []),
             ]
           : ['extensions', 'cases'];
@@ -905,6 +1054,14 @@ export const runLaneBMeasurements = async (): Promise<void> => {
             configFile,
             stringify({
               ...base,
+              ...(notifications ? notifications.config : {}),
+              ...(notifications
+                ? {
+                    'xpack.actions.preconfigured': {
+                      'lane-b-notifications': notifications.connector,
+                    },
+                  }
+                : {}),
               ...(args.includes('--nightshift-model-fixture')
                 ? {
                     // Original .inference alias resolution maps the code-owned model id to our unique endpoint.
@@ -912,6 +1069,7 @@ export const runLaneBMeasurements = async (): Promise<void> => {
                       ...(typeof base['xpack.actions.preconfigured'] === 'object'
                         ? base['xpack.actions.preconfigured']
                         : {}),
+                      ...(notifications ? { 'lane-b-notifications': notifications.connector } : {}),
                       [`[${nightshiftDefaultModel}]`]: {
                         name: 'Lane B Nightshift default model alias',
                         exposeConfig: true,
@@ -1282,7 +1440,11 @@ export const runLaneBMeasurements = async (): Promise<void> => {
               if (cell.memory && cell.backend !== 'baseline')
                 assert(outerScopeId, 'Missing coordinator dispatch identity for target run');
               const expectedMarkers = {
+                nightshift_cortex_optimize: ['cortex_optimize'],
+                nightshift_memory_optimize: ['memory_optimize'],
                 nightshift_trigger: ['trigger_investigation'],
+                nightshift_notifications: ['trigger_investigation'],
+                nightshift_failure: ['trigger_investigation'],
                 nightshift_reinforce: ['ensure_investigation_agent', 'decision_tree_reinforce'],
                 nightshift_sandbox: ['obtain_sandbox'],
                 nightshift_tree_hydrate: ['obtain_sandbox', 'decision_tree_hydrate'],
@@ -1306,6 +1468,21 @@ export const runLaneBMeasurements = async (): Promise<void> => {
                   if (cell.backend === 'child_process') assert.notEqual(pid, child.pid);
                   else assert.equal(pid, child.pid);
                 }
+              }
+              if (
+                cell.memory &&
+                cell.backend !== 'baseline' &&
+                (family === 'nightshift_notifications' || family === 'nightshift_failure')
+              ) {
+                assert(
+                  nativeMarkers.some(
+                    ({ stepType }) =>
+                      stepType ===
+                      (family === 'nightshift_failure'
+                        ? 'handle_investigation_failure'
+                        : 'send_notifications')
+                  )
+                );
               }
               const row = {
                 ...result,
@@ -1379,6 +1556,7 @@ export const runLaneBMeasurements = async (): Promise<void> => {
       if (child) await stop(child);
     } finally {
       if (sandbox) await sandbox.close();
+      if (notifications) await notifications.close();
       fake.closeAllConnections();
       await new Promise<void>((done) => fake.close(() => done()));
       try {

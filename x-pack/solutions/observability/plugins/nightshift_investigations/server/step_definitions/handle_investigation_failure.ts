@@ -8,17 +8,18 @@
 import { lazySchema, z } from '@kbn/zod/v4';
 import { StepCategory } from '@kbn/workflows';
 import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
-import { MAX_TEXT_LENGTH } from '@kbn/significant-events-schema';
-import { MAX_KEYWORD_LENGTH } from '../../common';
-import { INVESTIGATION_FAILED_TRIGGER_ID } from '../../common/workflows/triggers';
+import { inputSchema } from '../remote/handle_investigation_failure_schema';
+import { createHandleInvestigationFailureHandler } from '../remote/handle_investigation_failure';
+import { emitInvestigationFailure } from '../lib/notifications/emit_investigation_failure';
 import type { GetTriggerEmitter } from '../types';
 import { sendInvestigationNotifications } from '../lib/notifications/send_investigation_notifications';
 import type { InvestigationNotificationDeps } from '../lib/notifications/send_investigation_notifications';
 
-const inputSchema = lazySchema(() =>
+export const outputSchema = lazySchema(() =>
   z.object({
-    investigation_id: z.string().min(1).max(MAX_KEYWORD_LENGTH),
-    reason: z.string().max(MAX_TEXT_LENGTH),
+    sent: z.number(),
+    failed: z.number(),
+    unconfirmed: z.number(),
   })
 );
 
@@ -32,45 +33,29 @@ export const handleInvestigationFailureStepDefinition = (
     description:
       'Records an investigation run and reports its failure through lifecycle notifications.',
     inputSchema,
-    outputSchema: z.object({ sent: z.number(), failed: z.number(), unconfirmed: z.number() }),
-    handler: async (context) => {
-      if (context.abortSignal.aborted) {
-        return { output: { sent: 0, failed: 0, unconfirmed: 0 } };
-      }
-      const { investigation_id: investigationId, reason } = inputSchema.parse(context.input);
-      const request = context.contextManager.getFakeRequest();
-      const {
-        execution: { id: executionId },
-        workflow: { spaceId },
-      } = context.contextManager.getContext();
-      const client = deps.getInvestigationsClient(request, spaceId);
-      await client.ensureForFailure(investigationId, executionId);
-      const output = await sendInvestigationNotifications(deps, context, {
-        investigationId,
-        phase: 'failed',
-        reason,
-        onTerminalPhaseSelected: async () => {
-          try {
-            const emitter = deps.getTriggerEmitter(request);
-            if (!emitter) {
-              return;
-            }
-            const lifecycleSubject = await client.getLifecycleSubject(investigationId);
-            if (lifecycleSubject) {
-              emitter(INVESTIGATION_FAILED_TRIGGER_ID, {
-                investigation_id: investigationId,
-                subject: lifecycleSubject.subject,
-                trigger_type: lifecycleSubject.triggerType,
-                started_at: lifecycleSubject.startedAt,
-                status: 'failed',
-                completed_at: new Date().toISOString(),
-              });
-            }
-          } catch (error) {
-            context.logger.warn(`Could not emit investigation failure: ${error.message}`);
-          }
-        },
-      });
-      return { output };
-    },
+    outputSchema,
+    handler: createHandleInvestigationFailureHandler({
+      send: (context, options) => sendInvestigationNotifications(deps, context, options),
+      ensureForFailure: async (context, investigationId) => {
+        await deps
+          .getInvestigationsClient(
+            context.contextManager.getFakeRequest(),
+            context.contextManager.getContext().workflow.spaceId
+          )
+          .ensureForFailure(investigationId, context.contextManager.getContext().execution.id);
+      },
+      emitFailure: async (context, investigationId) => {
+        const request = context.contextManager.getFakeRequest();
+        const client = deps.getInvestigationsClient(
+          request,
+          context.contextManager.getContext().workflow.spaceId
+        );
+        await emitInvestigationFailure({
+          request,
+          client,
+          getTriggerEmitter: deps.getTriggerEmitter,
+          investigationId,
+        });
+      },
+    }),
   });

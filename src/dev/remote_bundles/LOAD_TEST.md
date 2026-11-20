@@ -119,3 +119,38 @@ is not admitted: no encryption keys cross. Ordinary regex masking temporarily
 calls the coordinator's original isolated Piscina helper. Scalar timing records
 include payload byte counts and process CPU during each wait (not exclusive CPU).
 Follow-up: bundle worker-thread/sidecar assets so the executor can own that pool.
+
+### Nightshift optimizer and notification profiles
+
+The lane-B functional harness accepts `nightshift_cortex_optimize` and
+`nightshift_memory_optimize`: original model-provider/inference transport and
+optimizer stores write nonempty pages, independently read from Elasticsearch.
+Model observations are single-completion leases; only the coordinator issues
+connector authority, request telemetry and tracking provenance. Core shares its
+`ScopeLookup` object across hosts: registrations must remain host-private, not
+cached by that object.
+
+`nightshift_notifications` and `nightshift_failure` require
+`--notification-fixture --nightshift-model-fixture --sandbox-stat-fixture` and a
+configuration enabling the original Nightshift/agentic-investigations/proposals
+plugins. They run the **original managed investigation** via triggerInvestigation,
+not a forged execution binding. The failure fixture returns a deliberate provider
+400; the original failure handler must persist a confirmed Slack receipt. Slack
+uses real HTTPS via an ephemeral loopback proxy with certificate verification.
+Existing ordinary, child-process and in-process profiles retain independent
+outcomes, routing documents, step/log documents and PID/generic-invocation markers.
+These are functional proofs, not stable latency measurements.
+
+Direct Actions preparation may omit `connectorType` only for an ID-based call:
+the original executeWithRuntime path resolves/authorizes the actual type without
+adding connector-read privileges. Explicit-type callers retain mismatch rejection.
+The native worker catalogue handles the prepared type exactly once.
+
+**Qualified parity gap:** direct notification IDs for workflow-ineligible
+`.webhook`/`.cases-webhook` have no native catalogue entry. They currently produce
+an unsupported-connector delivery result rather than the original result. No
+coordinator handler fallback was added. Direct-only adapters were rejected after
+an unchanged 2 MiB first-use heap gate failed (3,791,808 bytes); their source and
+failed measurements remain in lane-B scratch artifacts, not the production graph.
+The ingress-only `.inboundWebhook` original preflight-refusal branch is not a
+claimed live proof. The frozen inventory/N/A census is unchanged.

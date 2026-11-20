@@ -25,6 +25,7 @@ import type { WorkflowsExtensionsServerPluginStart } from '@kbn/workflows-extens
 import { NIGHTSHIFT_ONBOARDING_SUGGESTIONS_WORKFLOW_ID } from '@kbn/workflows/managed';
 import { GLOBAL_WORKFLOW_SPACE_ID } from '@kbn/workflows/server';
 import type { InvestigationAttachmentDocService } from '@kbn/agentic-investigations-plugin/server';
+import { createModelObservations } from '@kbn/agent-builder-plugin/server/remote/model_observations';
 import type { NightshiftInvestigationsConfig } from './config';
 import {
   InvestigationLocatorDefinition,
@@ -62,6 +63,10 @@ import { triggerInvestigationStepDefinition } from './step_definitions/trigger_i
 import { followUpRecoveredAlertStepDefinition } from './step_definitions/follow_up_recovered_alert';
 import { obtainSandboxStepDefinition } from './step_definitions/obtain_sandbox';
 import { composeHydrateNotificationsStepDefinition } from './step_definitions/compose_hydrate_notifications';
+import { OptimizerPolicyToken } from './remote/optimizer_policy_tokens';
+import { OptimizerPolicy } from './remote/optimizer_policy';
+import { NotificationAuthorityToken } from './remote/notification_authority_tokens';
+import { NotificationAuthority } from './remote/notification_authority';
 import { InvestigationDispatchToken } from './remote/investigation_dispatch_tokens';
 import { InvestigationDispatch } from './remote/investigation_dispatch';
 import { createInvestigationDispatchOperations } from './remote/investigation_dispatch_operations';
@@ -268,7 +273,24 @@ export class NightshiftInvestigationsPlugin
       analytics: core.analytics,
       logger: this.logger.get('telemetry'),
     });
-
+    core.remote.bind(
+      OptimizerPolicyToken,
+      (scopes) =>
+        new OptimizerPolicy(
+          scopes,
+          () => ({
+            agentBuilder: this.agentBuilder,
+            inference: this.inference,
+            savedObjects: this.savedObjects,
+            uiSettings: this.uiSettings,
+          }),
+          createModelObservations(scopes, this.logger),
+          () => ({ cortex: this.cortexEnabled, memory: this.memoryEnabled }),
+          core.analytics,
+          telemetry,
+          { cortex: this.logger.get('cortex'), memory: this.logger.get('memory') }
+        )
+    );
     core.remote.bind(
       SandboxWorkspacesToken,
       (scopes) =>
@@ -349,6 +371,17 @@ export class NightshiftInvestigationsPlugin
         request,
         logger: this.logger,
       });
+    core.remote.bind(
+      NotificationAuthorityToken,
+      (scopes) =>
+        new NotificationAuthority(scopes, {
+          investigationLocator,
+          getInvestigationsClient: this.getInvestigationsClient,
+          getActions: () => this.actionsStart,
+          getRoutingClient: this.getNotificationRoutingClient,
+          getTriggerEmitter,
+        })
+    );
 
     plugins.workflowsExtensions?.registerManagedWorkflowOwner(
       NIGHTSHIFT_INVESTIGATIONS_MANAGED_WORKFLOW_OWNER

@@ -5,12 +5,18 @@
  * 2.0.
  */
 
+import { WorkflowStepCatalogToken } from '@kbn/workflows-extensions/server/remote/tokens';
 import { createToken } from '@kbn/core-di';
 import type { RemoteModule } from '@kbn/core-remote-common';
 import {
   ConversationRegistryToken,
   ConversationDataPlaneToken,
 } from '@kbn/agent-builder-plugin/server/remote/conversation_tokens';
+import { InferencePolicyToken } from '@kbn/inference-plugin/server/remote/tokens';
+import { InferenceFeaturesToken } from '@kbn/search-inference-endpoints/server/remote/tokens';
+import { SpecRuntimeToken } from '@kbn/actions-plugin/server/remote/tokens';
+import { NotificationAuthorityToken } from './notification_authority_tokens';
+import { OptimizerPolicyToken } from './optimizer_policy_tokens';
 import { InvestigationDispatchToken } from './investigation_dispatch_tokens';
 import { ReinforcementToken } from './reinforcement_tokens';
 import { SandboxWorkspacesToken } from './sandbox_workspaces_tokens';
@@ -21,6 +27,19 @@ import { ModelSelectionToken } from './model_selection_tokens';
 
 export const remoteModule: RemoteModule = {
   providers: [
+    {
+      token: NotificationAuthorityToken,
+      placement: 'coordinator',
+      modulePath: require.resolve('./notification_authority'),
+      exportName: 'NotificationAuthority',
+    },
+    {
+      token: OptimizerPolicyToken,
+      placement: 'coordinator',
+      modulePath: require.resolve('./optimizer_policy'),
+      exportName: 'OptimizerPolicy',
+    },
+
     {
       token: InvestigationDispatchToken,
       placement: 'coordinator',
@@ -65,6 +84,48 @@ export const remoteModule: RemoteModule = {
     },
   ],
   contributions: [
+    {
+      kind: createToken('workflows.step'),
+      stepType: 'nightshift.sendNotifications',
+      needs: [NotificationAuthorityToken, SpecRuntimeToken, WorkflowStepCatalogToken],
+      modulePath: require.resolve('./send_notifications_step'),
+      exportName: 'SendNotificationsStep',
+    },
+    {
+      kind: createToken('workflows.step'),
+      stepType: 'nightshift.handleInvestigationFailure',
+      needs: [NotificationAuthorityToken, SpecRuntimeToken, WorkflowStepCatalogToken],
+      modulePath: require.resolve('./handle_investigation_failure_step'),
+      exportName: 'HandleInvestigationFailureStep',
+    },
+    {
+      kind: createToken('workflows.step'),
+      stepType: 'nightshift.cortexOptimize',
+      needs: [
+        OptimizerPolicyToken,
+        ConversationRegistryToken,
+        InferencePolicyToken,
+        InferenceFeaturesToken,
+        ConversationDataPlaneToken,
+        SpecRuntimeToken,
+      ],
+      modulePath: require.resolve('./cortex_optimize_step'),
+      exportName: 'CortexOptimizeStep',
+    },
+    {
+      kind: createToken('workflows.step'),
+      stepType: 'nightshift.memoryOptimize',
+      needs: [
+        OptimizerPolicyToken,
+        ConversationRegistryToken,
+        InferencePolicyToken,
+        InferenceFeaturesToken,
+        ConversationDataPlaneToken,
+        SpecRuntimeToken,
+      ],
+      modulePath: require.resolve('./memory_optimize_step'),
+      exportName: 'MemoryOptimizeStep',
+    },
     {
       kind: createToken('workflows.step'),
       stepType: 'nightshift.triggerInvestigation',

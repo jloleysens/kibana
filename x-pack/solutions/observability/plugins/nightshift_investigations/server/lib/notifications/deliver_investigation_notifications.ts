@@ -6,7 +6,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import { MAX_TEXT_LENGTH } from '@kbn/significant-events-schema';
+import { MAX_TEXT_LENGTH } from '@kbn/significant-events-runtime';
 import type { Logger } from '@kbn/core/server';
 import type { InvestigationNotificationDestination } from '../../../common';
 import { prepareNotificationDelivery } from './notification_delivery';
@@ -15,14 +15,14 @@ import type {
   NotifiableInvestigation,
   NotificationDelivery,
 } from './notification_delivery';
-import type { NotificationRoutingClient } from './notification_routing_client';
+import type { NotificationRoutingOperations } from './send_investigation_notifications';
 import type {
   NotificationPhase,
   NotificationOutcome,
   NotificationRouting,
   NotificationDestination,
 } from './notification_routing';
-import { repliesUnderCallerMessage } from './notification_routing';
+import { repliesUnderCallerMessage } from './replies_under_caller_message';
 
 export interface DeliverInvestigationNotificationsResult {
   sent: number;
@@ -39,7 +39,7 @@ interface DeliverInvestigationNotificationsParams {
   notificationDestinations: InvestigationNotificationDestination[];
   investigationUrl: string;
   getExecute: () => Promise<ExecuteConnector>;
-  routingClient: NotificationRoutingClient;
+  routingClient: NotificationRoutingOperations;
   signal: AbortSignal;
   logger: Pick<Logger, 'warn'>;
   onTerminalPhaseSelected?: () => Promise<void>;

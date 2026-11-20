@@ -66,7 +66,7 @@ export interface NativeActionsApi {
     scopeId: string,
     invocationId: string,
     request: {
-      readonly connectorType: string;
+      readonly connectorType?: string;
       readonly connectorNameOrId: string;
       readonly input: Record<string, unknown>;
     }

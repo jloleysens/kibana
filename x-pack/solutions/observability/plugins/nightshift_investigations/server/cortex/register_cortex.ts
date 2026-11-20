@@ -17,19 +17,17 @@ import type { InferenceServerStart } from '@kbn/inference-plugin/server';
 import type { ContextEnginePluginSetup } from '@kbn/context-engine-plugin/server';
 import { i18n } from '@kbn/i18n';
 import type { SandboxSession } from '@kbn/sandbox-plugin/server';
+import { runCortexOptimize as runCortexOptimizeNative } from './run_optimize';
 import {
   createInvestigationMemoryTelemetry,
   createOptimizeModel,
 } from '../lib/create_optimize_model';
 import { CORTEX_AI_INDEX_DEST, CORTEX_AI_INDEX_ID } from '../../common/cortex';
-import { SANDBOX_TOOL_IDS } from '../agents/investigation';
-import { usesKnowledge } from '../agents/agent_policy';
 import type { InvestigationToolCall } from '../decision_trees/accessed_trees';
 import { loadInvestigationRound } from '../investigation_round';
 import { createCortexTelemetry } from '../telemetry';
 import { hydrateCortexWorkspaceWithTelemetry } from './hydrate_workspace';
 export { hydrateCortexWorkspaceWithTelemetry } from './hydrate_workspace';
-import { createLlmProposeCortexEdits, optimizeCortex } from './optimize';
 import { createCortexPageStore, type CortexPageStore } from './page_store';
 
 export const createCortexStore = ({
@@ -64,13 +62,6 @@ export const registerCortexAiIndex = (
     traces: [],
   });
 };
-
-/** Rounds with fewer tool calls rarely establish anything durable, e.g. chat replies or smoke tests. */
-const MIN_OPTIMIZE_TOOL_CALLS = 3;
-
-// Only sandbox calls carry the queries and files the optimizer learns from; the rest (e.g.
-// recording hypotheses) would spend its transcript budget and count towards the minimum.
-const OPTIMIZER_TOOL_IDS: ReadonlySet<string> = new Set(SANDBOX_TOOL_IDS);
 
 export const hydrateCortexWorkspace = (options: {
   session: SandboxSession;
@@ -128,67 +119,35 @@ export const runCortexOptimize = async ({
   getSavedObjects: () => CoreStart['savedObjects'] | undefined;
   getUiSettings: () => CoreStart['uiSettings'] | undefined;
   logger: Logger;
-}): Promise<void> => {
-  // Only the Nightshift knowledge agents write to Cortex: their post-execution hook runs this
-  // workflow, and other agents' rounds must not edit the wiki. An unidentified caller is refused
-  // rather than trusted — the optimize workflow has a manual trigger, so it can be run without an
-  // agent id.
-  if (!usesKnowledge(agentId)) {
-    logger.info(
-      'Cortex optimizer skipped — round was not produced by a Nightshift knowledge agent'
-    );
-    return;
-  }
-
-  const loadedRound = await loadInvestigationRound({
-    agentBuilder: getAgentBuilder(),
+}): Promise<void> =>
+  runCortexOptimizeNative({
     request,
+    agentId,
+    userMessage,
+    assistantMessage,
+    toolCalls,
+    esClient,
+    spaceId,
+    interactionId,
+    signal,
     conversationId,
     roundId,
     roundIndex,
-    fallbackToolCalls: toolCalls,
-    logger,
-    signal,
-  });
-
-  const sandboxToolCalls = loadedRound.toolCalls.filter(
-    ({ tool_id: toolId }) => toolId !== undefined && OPTIMIZER_TOOL_IDS.has(toolId)
-  );
-  if (sandboxToolCalls.length < MIN_OPTIMIZE_TOOL_CALLS) {
-    logger.debug(
-      `Cortex optimizer skipped — round made ${sandboxToolCalls.length} sandbox tool calls, below ${MIN_OPTIMIZE_TOOL_CALLS}`
-    );
-    return;
-  }
-
-  const model = await createOptimizeModel({
-    request,
     requestedConnectorId,
     roundConnectorId,
-    agentBuilder: getAgentBuilder(),
-    inference: getInference(),
-    savedObjects: getSavedObjects(),
-    uiSettings: getUiSettings(),
-    telemetryMetadata: createInvestigationMemoryTelemetry(interactionId),
     logger,
+    createModel: () =>
+      createOptimizeModel({
+        request,
+        requestedConnectorId,
+        roundConnectorId,
+        agentBuilder: getAgentBuilder(),
+        inference: getInference(),
+        savedObjects: getSavedObjects(),
+        uiSettings: getUiSettings(),
+        telemetryMetadata: createInvestigationMemoryTelemetry(interactionId),
+        logger,
+      }),
+    loadRound: (options) => loadInvestigationRound({ ...options, agentBuilder: getAgentBuilder() }),
+    telemetry: createCortexTelemetry({ analytics, conversationId, roundId, logger }),
   });
-  if (!model) {
-    return;
-  }
-
-  const store = createCortexStore({ esClient, logger, spaceId, signal });
-  await optimizeCortex({
-    store,
-    proposeEdits: createLlmProposeCortexEdits({ inferenceClient: model.inferenceClient }),
-    userMessage,
-    assistantMessage,
-    toolCalls: sandboxToolCalls,
-    telemetry: createCortexTelemetry({
-      analytics,
-      conversationId,
-      roundId,
-      logger,
-    }),
-    logger,
-  });
-};

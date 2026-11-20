@@ -39,7 +39,7 @@ export class PreparedExecution {
   constructor(
     client: Pick<ActionsClient, 'executeWithRuntime'>,
     actionId: string,
-    connectorType: string,
+    connectorType: string | undefined,
     input: Record<string, unknown>,
     signal: AbortSignal,
     actionInfo?: NonNullable<ExecuteOptions['runtime']>['actionInfo'],
@@ -69,7 +69,10 @@ export class PreparedExecution {
         events: this.events,
         actionInfo,
         execute: async (options) => {
-          if (options.actionType.id.replace(/^\./, '') !== connectorType.replace(/^\./, ''))
+          if (
+            connectorType !== undefined &&
+            options.actionType.id.replace(/^\./, '') !== connectorType.replace(/^\./, '')
+          )
             throw new Error('Connector type mismatch');
           try {
             await options.authorize?.();
@@ -137,7 +140,10 @@ export class PreparedExecution {
             options.actionType.getDashboardAttributes,
             options.logger
           );
-          const inferenceStreamingFacts = getInferenceFacts ? await getInferenceFacts() : undefined;
+          const inferenceStreamingFacts =
+            getInferenceFacts && options.actionType.id.replace(/^\./, '') === 'inference'
+              ? await getInferenceFacts()
+              : undefined;
           signal.throwIfAborted();
           ready({
             prepared: {

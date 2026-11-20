@@ -25,6 +25,7 @@ export class ClientActions implements NativeActionsApi {
     _invocation: string,
     request: Parameters<NativeActionsApi['prepare']>[2]
   ) {
+    if (!request.connectorType) throw new Error('Fixture requires an explicit connector type');
     const prepared = this.prepared[request.connectorType];
     if (!prepared) throw new Error('Unknown fixture connector');
     return { prepared };

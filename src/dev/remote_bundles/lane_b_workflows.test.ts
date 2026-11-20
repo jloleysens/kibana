@@ -30,6 +30,10 @@ it.each([
   'nightshift_memory_hydrate',
   'nightshift_reinforce',
   'nightshift_trigger',
+  'nightshift_cortex_optimize',
+  'nightshift_memory_optimize',
+  'nightshift_notifications',
+  'nightshift_failure',
 ] as const)('%s retains a real persisted outcome', (family) => {
   const workflow = createLaneBWorkflow(family, 'proof', 'endpoint');
   expect(workflow.steps.at(-1)).toMatchObject({

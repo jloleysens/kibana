@@ -137,3 +137,100 @@ it('binds original token operations to the prepared invocation rather than suppl
   });
   await runtime.close('scope');
 });
+
+it('dispatches direct Actions by the authorized type and consumes preparation exactly once', async () => {
+  const { actions, runtime, create, executor } = setup();
+  await expect(
+    runtime.runAction('scope', { actionId: 'saved', params: { text: 'marker' } }, (type, input) =>
+      runtime.runClassic(type, create, 'scope', input)
+    )
+  ).resolves.toEqual({ status: 'ok', actionId: 'saved', data: {} });
+  expect(actions.prepare).toHaveBeenCalledTimes(1);
+  expect(actions.prepare).toHaveBeenCalledWith('scope', expect.any(String), {
+    connectorNameOrId: 'saved',
+    input: { text: 'marker' },
+  });
+  expect(executor).toHaveBeenCalledTimes(1);
+  await runtime.close('scope');
+  expect(actions.finalize.mock.calls[0][1][0].invocationId).toBe(actions.prepare.mock.calls[0][1]);
+});
+
+it('keeps direct non-Slack parameter validation errors identical to ordinary native execution', async () => {
+  const normal = setup();
+  const direct = setup();
+  for (const { actions, prepared } of [normal, direct]) {
+    actions.prepare.mockResolvedValue({ prepared: { ...prepared, params: {} } });
+  }
+  expect(
+    await direct.runtime.runAction('scope', { actionId: 'saved', params: {} }, (type, input) =>
+      direct.runtime.runClassic(type, direct.create, 'scope', input)
+    )
+  ).toEqual(await normal.run());
+  expect(direct.executor).not.toHaveBeenCalled();
+  await direct.runtime.close('scope');
+  await normal.runtime.close('scope');
+  expect(direct.actions.finalize.mock.calls[0][1][0].runtime.handlerStarted).toBe(false);
+});
+
+it.each([
+  'missing connector',
+  'unregistered type',
+  'disabled type',
+  'licence failure',
+  'system action refusal',
+])('preserves original direct prepare failure: %s', async (message) => {
+  const { actions, runtime } = setup();
+  const original = new Error(message);
+  actions.prepare.mockRejectedValue(original);
+  const dispatch = jest.fn();
+  await expect(
+    runtime.runAction('scope', { actionId: 'saved', params: {} }, dispatch)
+  ).rejects.toBe(original);
+  expect(dispatch).not.toHaveBeenCalled();
+  await runtime.close('scope');
+  expect(actions.finalize).not.toHaveBeenCalled();
+});
+
+it('returns original direct preconfigured preflight refusals without dispatching or reparing', async () => {
+  const { actions, runtime } = setup();
+  const result = {
+    status: 'error' as const,
+    actionId: 'preconfigured',
+    message: 'original refusal',
+  };
+  actions.prepare.mockResolvedValue({ result });
+  const dispatch = jest.fn();
+  await expect(
+    runtime.runAction('scope', { actionId: 'preconfigured', params: {} }, dispatch)
+  ).resolves.toBe(result);
+  expect(actions.prepare).toHaveBeenCalledTimes(1);
+  expect(dispatch).not.toHaveBeenCalled();
+});
+
+it('rejects consuming a direct preparation from a different run before executor entry', async () => {
+  const { runtime, create, executor } = setup();
+  await expect(
+    runtime.runAction('owner', { actionId: 'saved', params: { text: 'marker' } }, (type, input) =>
+      runtime.runClassic(type, create, 'foreign', input)
+    )
+  ).rejects.toThrow('not owned by this run');
+  expect(executor).not.toHaveBeenCalled();
+  await runtime.close('owner');
+});
+
+it('safely finalizes an unconsumed direct dispatch error without copying private metadata', async () => {
+  const { actions, runtime } = setup();
+  const error = Object.assign(new TypeError('Unsupported native type'), {
+    headers: { authorization: 'fake-private' },
+    cause: { secret: 'fake-private' },
+  });
+  await expect(
+    runtime.runAction('scope', { actionId: 'saved', params: {} }, async () => {
+      throw error;
+    })
+  ).rejects.toBe(error);
+  await runtime.close('scope');
+  const saved = actions.finalize.mock.calls[0][1][0].runtime;
+  expect(saved.handlerStarted).toBe(false);
+  expect(JSON.stringify(saved)).not.toContain('fake-private');
+});

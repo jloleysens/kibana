@@ -54,6 +54,7 @@ import type { LocalConnectorExecution } from './local_execution';
 const requestSchema = lazySchema(() =>
   z.object({
     connectorType: z.string().max(256),
+    preparedInvocationId: z.string().max(1024).optional(),
     connectorNameOrId: z.string().max(1024),
     input: z.record(z.string(), z.unknown()),
     system: z.boolean(),
@@ -77,6 +78,67 @@ const createLogger = (): Logger => {
 
 /** Runs original spec validation, transport, authentication and handlers in the worker. */
 export class SpecRuntime implements SpecRuntimeApi {
+  private readonly directPreparations = new Map<
+    string,
+    { scopeId: string; prepared: PreparedConnector }
+  >();
+
+  /** Runs direct Actions calls through the same authorized prepare and original local connector. */
+  async runAction(
+    scopeId: string,
+    options: { actionId: string; params: Record<string, unknown>; signal?: AbortSignal },
+    dispatch: (type: string, input: object) => Promise<unknown>
+  ): Promise<unknown> {
+    options.signal?.throwIfAborted();
+    const invocationId = randomUUID();
+    const preparation = await this.actions.prepare(scopeId, invocationId, {
+      connectorNameOrId: options.actionId,
+      input: options.params,
+    });
+    if ('result' in preparation) return preparation.result;
+    const { prepared } = preparation;
+    this.directPreparations.set(invocationId, { scopeId, prepared });
+    try {
+      return await dispatch(prepared.actionTypeId.replace(/^\./, ''), {
+        connectorType: prepared.actionTypeId,
+        connectorNameOrId: prepared.actionId,
+        system: false,
+        input: options.params,
+        preparedInvocationId: invocationId,
+      });
+    } catch (error) {
+      if (this.directPreparations.has(invocationId)) {
+        const pending = this.pending.get(scopeId) ?? [];
+        const runtime = getActionRuntimeError(
+          {
+            error,
+            actionId: prepared.actionId,
+            actionTypeId: prepared.actionTypeId,
+            name: prepared.name,
+            config: prepared.config,
+            secrets: prepared.secrets,
+          },
+          { TaskErrorSource, getErrorSource, isConnectorAuthorizationError }
+        );
+        const { error: failure, ...result } = runtime.result;
+        pending.push({
+          invocationId,
+          runtime: {
+            ...runtime,
+            result: { ...result, ...(failure ? { error: sanitizeConnectorError(failure) } : {}) },
+            validatedParams: prepared.params,
+            handlerStarted: false,
+            executionStartedAt: Date.now(),
+            executionCompletedAt: Date.now(),
+          },
+        });
+        this.pending.set(scopeId, pending);
+      }
+      throw error;
+    } finally {
+      this.directPreparations.delete(invocationId);
+    }
+  }
   private readonly contexts = new Map<
     string,
     {
@@ -490,8 +552,23 @@ export class SpecRuntime implements SpecRuntimeApi {
     const request = requestSchema.parse(input);
     if (request.system || type.replace(/^\./, '') !== request.connectorType.replace(/^\./, ''))
       throw new Error('Native connector type mismatch');
-    const invocationId = randomUUID();
-    const preparation = await this.actions.prepare(scopeId, invocationId, request);
+    const invocationId = request.preparedInvocationId ?? randomUUID();
+    const direct = request.preparedInvocationId
+      ? this.directPreparations.get(invocationId)
+      : undefined;
+    if (
+      request.preparedInvocationId &&
+      (!direct ||
+        direct.scopeId !== scopeId ||
+        direct.prepared.actionId !== request.connectorNameOrId ||
+        direct.prepared.actionTypeId.replace(/^\./, '') !== type.replace(/^\./, ''))
+    ) {
+      throw new Error('Direct connector preparation is not owned by this run');
+    }
+    if (direct) this.directPreparations.delete(invocationId);
+    const preparation = direct
+      ? { prepared: direct.prepared }
+      : await this.actions.prepare(scopeId, invocationId, request);
     if ('result' in preparation) {
       local?.cleanup();
       return local ? { result: preparation.result, finalize: async () => {} } : preparation.result;
@@ -585,6 +662,9 @@ export class SpecRuntime implements SpecRuntimeApi {
   }
 
   async close(scopeId: string): Promise<void> {
+    for (const [id, entry] of this.directPreparations) {
+      if (entry.scopeId === scopeId) this.directPreparations.delete(id);
+    }
     try {
       do {
         await this.drain(scopeId);

@@ -26,11 +26,88 @@ export type LaneBFamily =
   | 'nightshift_cortex_hydrate'
   | 'nightshift_memory_hydrate'
   | 'nightshift_reinforce'
-  | 'nightshift_trigger';
+  | 'nightshift_notifications'
+  | 'nightshift_failure'
+  | 'nightshift_trigger'
+  | 'nightshift_cortex_optimize'
+  | 'nightshift_memory_optimize';
 
 /** Uses the same original business steps for ordinary Kibana and each worker backend. */
 export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: string) => {
   const steps = {
+    nightshift_cortex_optimize: [
+      {
+        name: 'optimize',
+        type: 'nightshift.cortexOptimize',
+        with: {
+          agent_id: 'nightshift.investigation',
+          connector_id: endpoint,
+          prompt: 'lane-b-optimize-' + id,
+          response: 'Verified optimizer observation ' + id,
+          tool_calls: [0, 1, 2].map((index) => ({
+            tool_id: 'nightshift_sandbox_bash',
+            tool_call_id: 'evidence-' + index,
+            params: { command: 'cat /tmp/verified-evidence' },
+          })),
+          tool_results: [0, 1, 2].map((index) => ({
+            tool_call_id: 'evidence-' + index,
+            results: [{ type: 'other', data: { stdout: 'Verified optimizer observation ' + id } }],
+          })),
+        },
+      },
+    ],
+    nightshift_memory_optimize: [
+      {
+        name: 'optimize',
+        type: 'nightshift.memoryOptimize',
+        with: {
+          agent_id: 'nightshift.investigation',
+          connector_id: endpoint,
+          prompt: 'lane-b-optimize-' + id,
+          response: 'Verified optimizer observation ' + id,
+          tool_calls: [0, 1, 2].map((index) => ({
+            tool_id: 'nightshift_sandbox_bash',
+            tool_call_id: 'evidence-' + index,
+            params: { command: 'cat /tmp/verified-evidence' },
+          })),
+          tool_results: [0, 1, 2].map((index) => ({
+            tool_call_id: 'evidence-' + index,
+            results: [{ type: 'other', data: { stdout: 'Verified optimizer observation ' + id } }],
+          })),
+        },
+      },
+    ],
+
+    nightshift_notifications: [
+      {
+        name: 'trigger',
+        type: 'nightshift.triggerInvestigation',
+        with: {
+          subject_type: 'manual',
+          subject_id: id,
+          message: 'lane-b-quiet-agent-' + id,
+          trigger_type: 'manual',
+          notificationDestinations: [
+            { type: 'slack', connector_id: 'lane-b-notifications', params: { channel: 'C123' } },
+          ],
+        },
+      },
+    ],
+    nightshift_failure: [
+      {
+        name: 'trigger',
+        type: 'nightshift.triggerInvestigation',
+        with: {
+          subject_type: 'manual',
+          subject_id: id,
+          message: 'lane-b-quiet-agent-failure-' + id,
+          trigger_type: 'manual',
+          notificationDestinations: [
+            { type: 'slack', connector_id: 'lane-b-notifications', params: { channel: 'C123' } },
+          ],
+        },
+      },
+    ],
     nightshift_trigger: [
       {
         name: 'trigger',
@@ -458,6 +535,10 @@ export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: s
     ],
   }[family];
   const document = {
+    nightshift_cortex_optimize: { status: '{{ steps.optimize.output.status }}' },
+    nightshift_memory_optimize: { status: '{{ steps.optimize.output.status }}' },
+    nightshift_notifications: { conversationId: '{{ steps.trigger.output.investigation_id }}' },
+    nightshift_failure: { conversationId: '{{ steps.trigger.output.investigation_id }}' },
     nightshift_trigger: { conversationId: '{{ steps.trigger.output.investigation_id }}' },
     nightshift_reinforce: { message: '{{ steps.reinforce.output.message }}' },
     nightshift_memory_hydrate: {

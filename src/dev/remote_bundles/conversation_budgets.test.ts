@@ -79,6 +79,8 @@ it('bounds original native conversation client first business execution and conv
         'nightshift.memoryMaterializeToSandbox',
         'nightshift.decisionTreeReinforce',
         'nightshift.triggerInvestigation',
+        'nightshift.sendNotifications',
+        'nightshift.handleInvestigationFailure',
         'nightshift.cortexHydrate',
         'nightshift.obtainSandbox',
         'nightshift.ensureInvestigationAgent',

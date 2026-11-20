@@ -482,6 +482,11 @@ const main = async (): Promise<void> => {
         'nightshift.triggerInvestigation',
         { subject_type: 'manual', message: 'Original investigation' },
       ],
+      ['nightshift.sendNotifications', { investigation_id: 'investigation', phase: 'started' }],
+      [
+        'nightshift.handleInvestigationFailure',
+        { investigation_id: 'investigation', reason: 'Original failure' },
+      ],
       ['nightshift.cortexHydrate', { sandbox_id: 'default__fixture-conversation' }],
       ['nightshift.obtainSandbox', { conversation_id: 'fixture-conversation' }],
       ['nightshift.ensureInvestigationAgent', {}],
@@ -573,12 +578,99 @@ const main = async (): Promise<void> => {
           })),
         reportCortexHydrated: async () => {},
       };
-      const operations = [
-        'nightshift.memoryMaterializeToSandbox',
-        'nightshift.obtainSandbox',
-        'nightshift.cortexHydrate',
-        'nightshift.decisionTreeHydrate',
-      ].includes(type)
+      const destinations = [
+        {
+          type: 'slack',
+          connector_id: 'connector',
+          params: { channel: 'C123' },
+          id: 'destination',
+          automations: [],
+        },
+      ];
+      const notificationRouting = {
+        id: 'routing',
+        spaceId: 'default',
+        conversationId: 'conversation',
+        investigationId: 'investigation',
+        destinations,
+        executions: [{ id: 'run', workflow_id: 'workflow', destination_ids: ['destination'] }],
+        attempts: [] as Array<{
+          execution_id: string;
+          destination_id: string;
+          phase: string;
+          attempt_id: string;
+          status: string;
+          creates_root: boolean;
+          attempted_at: string;
+        }>,
+      };
+      const notificationAuthority = {
+        open: async () => ({
+          reference: 'notification',
+          context: {
+            investigation: { investigation_id: 'investigation', title: 'Original investigation' },
+            conversationId: 'conversation',
+            workflowId: 'workflow',
+            notificationDestinations: destinations,
+          },
+          redirectUrl: '/app/investigations/investigation',
+        }),
+        ensureFailure: async () => {},
+        emitFailure: async () => {},
+        get: async () => notificationRouting,
+        isActive: async () => true,
+        initialize: async () => notificationRouting,
+        selectTerminalPhase: async (_scope: string, _reference: string, phase: string) => ({
+          ...notificationRouting,
+          executions: notificationRouting.executions.map((execution) => ({
+            ...execution,
+            terminal_phase: phase,
+          })),
+        }),
+        claim: async (
+          _scope: string,
+          _reference: string,
+          destinationId: string,
+          phase: string,
+          attemptId: string,
+          createsRoot: boolean
+        ) => {
+          const attempt = {
+            execution_id: 'run',
+            destination_id: destinationId,
+            phase,
+            attempt_id: attemptId,
+            status: 'unconfirmed',
+            creates_root: createsRoot,
+            attempted_at: new Date().toISOString(),
+          };
+          notificationRouting.attempts.push(attempt);
+          return attempt;
+        },
+        record: async (
+          _scope: string,
+          _reference: string,
+          attemptId: string,
+          outcome: { status: string }
+        ) => {
+          const attempt = notificationRouting.attempts.find(
+            ({ attempt_id }) => attempt_id === attemptId
+          );
+          assert(attempt);
+          attempt.status = outcome.status;
+        },
+        actionsAvailable: async () => {},
+      };
+      const notification =
+        type === 'nightshift.sendNotifications' || type === 'nightshift.handleInvestigationFailure';
+      const operations = notification
+        ? notificationAuthority
+        : [
+            'nightshift.memoryMaterializeToSandbox',
+            'nightshift.obtainSandbox',
+            'nightshift.cortexHydrate',
+            'nightshift.decisionTreeHydrate',
+          ].includes(type)
         ? sandboxWorkspaces
         : type === 'nightshift.triggerInvestigation'
         ? {
@@ -604,7 +696,9 @@ const main = async (): Promise<void> => {
         : registry;
       const result = (await new Ctor(
         operations,
-        type === 'nightshift.decisionTreeReinforce'
+        notification
+          ? { runAction: async () => ({ status: 'ok', data: { ts: '123.1', channel: 'C123' } }) }
+          : type === 'nightshift.decisionTreeReinforce'
           ? registry
           : type === 'nightshift.decisionTreeHydrate'
           ? { read: registry.readTreePolicy }
@@ -649,6 +743,7 @@ const main = async (): Promise<void> => {
         assert.deepEqual(result.output, { message: 'Reinforced' });
       if (type === 'nightshift.triggerInvestigation')
         assert.deepEqual(result.output, { investigation_id: 'original-dispatch' });
+      if (notification) assert.deepEqual(result.output, { sent: 1, failed: 0, unconfirmed: 0 });
       if (type === 'nightshift.obtainSandbox')
         assert.deepEqual(result.output, {
           sandbox_id: 'default__fixture-conversation',

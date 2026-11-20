@@ -379,3 +379,25 @@ it('starts late OAuth route retention only after the requesting scope closes', a
     timer.mockRestore();
   }
 });
+
+it('uses the direct Actions ID without requiring connector read/name-resolution privileges when type is omitted', async () => {
+  const { api, client, input } = setup();
+  mockPrepare.mockResolvedValue({ prepared: { actionTypeId: '.slack2' } });
+  await expect(
+    api.prepare('scope', 'direct', {
+      connectorNameOrId: input.connectorNameOrId,
+      input: input.input,
+    })
+  ).resolves.toEqual({ prepared: { actionTypeId: '.slack2' } });
+  expect(client.get).not.toHaveBeenCalled();
+  expect(client.getAll).not.toHaveBeenCalled();
+  expect(mockConstruct).toHaveBeenCalledWith(
+    client,
+    input.connectorNameOrId,
+    undefined,
+    input.input,
+    expect.any(AbortSignal),
+    expect.any(Map),
+    undefined
+  );
+});

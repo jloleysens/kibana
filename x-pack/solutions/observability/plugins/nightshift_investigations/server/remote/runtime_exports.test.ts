@@ -64,3 +64,24 @@ it('preserves original helper/schema/constants exports and registered prompt too
     recordRemediationTool: RECORD_REMEDIATION_TOOL_ID,
   });
 });
+
+it('keeps original notification routing/schema and sandbox tool identities at their old paths', async () => {
+  const [schemas, leanSchemas, routing, leanRouting, workflow, constants, agent, tools] =
+    await Promise.all([
+      import('../../common/schemas'),
+      import('../../common/notification_schemas'),
+      import('../lib/notifications/notification_routing'),
+      import('../lib/notifications/replies_under_caller_message'),
+      import('../lib/automations/generate_workflow_yaml'),
+      import('../../common/notification_constants'),
+      import('../agents/investigation'),
+      import('../agents/investigation/tool_ids'),
+    ]);
+  expect(schemas.investigationNotificationDestinationSchema).toBe(
+    leanSchemas.investigationNotificationDestinationSchema
+  );
+  expect(schemas.MAX_INVESTIGATION_NOTIFICATIONS).toBe(leanSchemas.MAX_INVESTIGATION_NOTIFICATIONS);
+  expect(routing.repliesUnderCallerMessage).toBe(leanRouting.repliesUnderCallerMessage);
+  expect(workflow.ELASTIC_APPS_SLACK_CONNECTOR_ID).toBe(constants.ELASTIC_APPS_SLACK_CONNECTOR_ID);
+  expect(agent.SANDBOX_TOOL_IDS).toBe(tools.SANDBOX_TOOL_IDS);
+});
