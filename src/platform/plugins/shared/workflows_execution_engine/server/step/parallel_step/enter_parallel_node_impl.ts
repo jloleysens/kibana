@@ -13,9 +13,9 @@ import {
   DEFAULT_PARALLEL_CONCURRENCY,
   DEFAULT_PARALLEL_MAX_CONCURRENCY,
   DEFAULT_PARALLEL_MAX_FAN_OUT,
-  ExecutionStatus,
 } from '@kbn/workflows';
 import type { EnterParallelNode } from '@kbn/workflows/graph';
+import { ExecutionStatus } from '@kbn/workflows-runtime';
 import type {
   ParallelBranchResult,
   ParallelBranchState,
@@ -508,7 +508,7 @@ export class EnterParallelNodeImpl implements NodeImplementation, CancellableNod
       stackFrames: branchStackFrames,
     });
 
-    const branchImpl = this.nodesFactory.create(branchRuntime);
+    const branchImpl = await this.nodesFactory.create(branchRuntime);
 
     const timedOut = await this.runWithDeadline(
       async () => {
@@ -703,7 +703,7 @@ export class EnterParallelNodeImpl implements NodeImplementation, CancellableNod
    */
   private async cancelBranchNode(branchRuntime: StepExecutionRuntime): Promise<void> {
     branchRuntime.abortController.abort();
-    const branchImpl = this.nodesFactory.create(branchRuntime);
+    const branchImpl = await this.nodesFactory.create(branchRuntime);
     await this.runBranchOnCancel(branchImpl);
   }
 

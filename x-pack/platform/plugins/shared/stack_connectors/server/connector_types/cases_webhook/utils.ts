@@ -6,7 +6,9 @@
  */
 
 import type { AxiosResponse, AxiosError } from 'axios';
-import { isEmpty, isObjectLike, get } from 'lodash';
+import isEmpty from 'lodash/isEmpty';
+import isObjectLike from 'lodash/isObjectLike';
+import get from 'lodash/get';
 import { getErrorMessage } from '@kbn/actions-plugin/server/lib/axios_utils';
 import { CONNECTOR_NAME } from '@kbn/connector-schemas/cases_webhook';
 

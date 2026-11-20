@@ -11,7 +11,7 @@ import type { JsonModelSchemaType } from '../spec/schema/common/json_model_schem
 
 export const DEFAULT_WAIT_FOR_APPROVAL_APPROVE_LABEL = 'Approve' as const;
 export const DEFAULT_WAIT_FOR_APPROVAL_REJECT_LABEL = 'Decline' as const;
-export const DEFAULT_WAIT_FOR_APPROVAL_TIMEOUT = '24h' as const;
+export { DEFAULT_WAIT_FOR_APPROVAL_TIMEOUT } from '@kbn/workflows-runtime';
 
 export const WAIT_FOR_APPROVAL_RESPONSE_SCHEMA = {
   type: 'object',

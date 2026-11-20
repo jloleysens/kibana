@@ -5,8 +5,8 @@
  * 2.0.
  */
 
-import type { ClassicActionType as ConnectorType } from '@kbn/actions-plugin/server/types';
-import type { ActionTypeExecutorOptions as ConnectorTypeExecutorOptions } from '@kbn/actions-plugin/server/types';
+import type { ClassicConnectorType as ConnectorType } from '@kbn/actions-plugin/server/remote/classic_connector_types';
+import type { ClassicExecutorOptions as ConnectorTypeExecutorOptions } from '@kbn/actions-plugin/server/remote/classic_connector_types';
 import type { ActionTypeExecutorResult as ConnectorTypeExecutorResult } from '@kbn/actions-plugin/server/types';
 import type {
   PostBlockkitSubActionParams,

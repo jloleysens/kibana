@@ -533,3 +533,57 @@ describe('createModelProviderFactory', () => {
     );
   });
 });
+
+it('uses the optional resolved telemetry dependency verbatim and memoizes it without changing default tracking', async () => {
+  const deps = setupDeps();
+  setupChatAndClient(deps.inference);
+  const metadata = {
+    pluginId: 'nightshift.investigation_memory',
+    aggregateBy: 'nightshift',
+    productSolution: 'observability',
+    productFeature: 'investigation',
+    interactionId: 'run',
+    traceId: 'trace',
+    spaceId: 'ops',
+    userId: 'profile',
+  };
+  const resolveTelemetryMetadata = jest.fn().mockResolvedValue(metadata);
+  const observeCompletion = jest.fn();
+  const provider = createModelProvider({ ...deps, resolveTelemetryMetadata, observeCompletion });
+  await provider.getDefaultModel();
+  await provider.getDefaultModel();
+  expect(resolveTelemetryMetadata).toHaveBeenCalledTimes(1);
+  expect(deps.inference.getChatModel.mock.calls[0][0].chatModelOptions?.telemetryMetadata).toEqual(
+    metadata
+  );
+  expect(deps.inference.getClient).toHaveBeenCalledWith(
+    expect.objectContaining({
+      bindTo: { connectorId: 'default-connector', metadata: { connectorTelemetry: metadata } },
+    })
+  );
+  const event = { model: 'response-model', tokens: { prompt: 2, completion: 3, total: 5 } };
+  getCompletionCallback(deps.inference)(event);
+  expect(observeCompletion).toHaveBeenCalledWith(event);
+  expect(deps.trackingService.trackLLMUsage).toHaveBeenCalledWith(
+    expect.any(String),
+    'response-model'
+  );
+  expect(provider.getUsageStats().calls).toEqual([{ connectorId: 'default-connector', ...event }]);
+});
+
+it('keeps tracking/stats non-blocking when an optional observer fails', async () => {
+  const deps = setupDeps();
+  setupChatAndClient(deps.inference);
+  const provider = createModelProvider({
+    ...deps,
+    observeCompletion: () => {
+      throw new Error('observation unavailable');
+    },
+  });
+  await provider.getDefaultModel();
+  expect(() => getCompletionCallback(deps.inference)({ model: 'original' })).not.toThrow();
+  expect(provider.getUsageStats().calls).toEqual([
+    { connectorId: 'default-connector', model: 'original', tokens: undefined },
+  ]);
+  expect(deps.trackingService.trackLLMUsage).toHaveBeenCalledWith(expect.any(String), 'original');
+});

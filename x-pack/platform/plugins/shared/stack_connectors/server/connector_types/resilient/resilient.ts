@@ -6,9 +6,16 @@
  */
 
 import type { AxiosError } from 'axios';
-import { omitBy, isNil, isObject } from 'lodash/fp';
-import type { ServiceParams } from '@kbn/actions-plugin/server';
-import { CaseConnector, getBasicAuthHeader } from '@kbn/actions-plugin/server';
+import omitBy from 'lodash/fp/omitBy';
+import isNil from 'lodash/fp/isNil';
+import isObject from 'lodash/fp/isObject';
+import type { Services } from '@kbn/actions-plugin/server/types';
+import type {
+  ServiceParams,
+  SubActionServices,
+} from '@kbn/actions-plugin/server/sub_action_framework/types';
+import { CaseConnector } from '@kbn/actions-plugin/server/sub_action_framework/case';
+import { getBasicAuthHeader } from '@kbn/actions-plugin/server/lib/get_basic_auth_header';
 import { z } from '@kbn/zod/v4';
 import { getErrorMessage } from '@kbn/actions-plugin/server/lib/axios_utils';
 import type { ConnectorUsageCollector } from '@kbn/actions-plugin/server/types';
@@ -40,11 +47,14 @@ import { formatUpdateRequest, prepareAdditionalFieldsForCreation } from './utils
 
 const VIEW_INCIDENT_URL = `#incidents`;
 
-export class ResilientConnector extends CaseConnector<
+export class ResilientConnector<
+  ExecutionServices extends SubActionServices = Services
+> extends CaseConnector<
   ResilientConfig,
   ResilientSecrets,
   Incident,
-  GetIncidentResponse
+  GetIncidentResponse,
+  ExecutionServices
 > {
   private urls: {
     incidentTypes: string;
@@ -54,7 +64,7 @@ export class ResilientConnector extends CaseConnector<
   };
 
   constructor(
-    params: ServiceParams<ResilientConfig, ResilientSecrets>,
+    params: ServiceParams<ResilientConfig, ResilientSecrets, ExecutionServices>,
     pushToServiceParamsExtendedSchema: Record<string, z.ZodType<unknown>>
   ) {
     super(params, pushToServiceParamsExtendedSchema);

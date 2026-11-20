@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { assertValidDuration } from '@kbn/workflows';
+import { assertValidDuration } from '@kbn/workflows-runtime';
 
 /**
  * Renders a duration that may be a Liquid template, then validates the result.

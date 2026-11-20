@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { get } from 'lodash';
+import get from 'lodash/get';
 
 export const MAX_AGGREGATE_ITEMS = 100_000;
 

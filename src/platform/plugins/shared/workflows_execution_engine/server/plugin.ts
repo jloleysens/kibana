@@ -19,7 +19,9 @@ import type {
   Plugin,
   PluginInitializerContext,
 } from '@kbn/core/server';
-import { recordRemoteHeap } from '@kbn/core-remote-common';
+import { recordRemoteTiming } from '@kbn/core-remote-common';
+import type { ScopeLookup } from '@kbn/core-remote-server';
+import { GEN_AI_SETTINGS_INFERENCE_STREAMING } from '@kbn/management-settings-ids';
 import {
   ExecutionStatus,
   isTerminalStatus,
@@ -49,6 +51,7 @@ import {
   resumeWorkflow,
   runWorkflow,
 } from './execution_functions';
+import { coordinatorRuntimeMetadata } from './execution_functions/coordinator_runtime_metadata';
 import { handlePostExecutionLoop } from './execution_functions/handle_post_execution_loop';
 import { buildWorkflowExecutionDocument } from './lib/build_workflow_execution_document';
 import { checkLicense } from './lib/check_license';
@@ -81,19 +84,35 @@ import {
   stampWorkflowTaskRunEventFields,
 } from './lib/workflow_task_run_event_fields';
 import { WorkflowsMeteringService } from './metering/metering_service';
+import { CoreDataPlane } from './remote/core_data_plane';
+import { dispatchWorkflow } from './remote/dispatch_workflow';
+import { NativeActions } from './remote/native_actions_api';
+import { NativeChildApi } from './remote/native_child_api';
 import {
-  type WorkflowExecutorApi,
+  NativeActionsToken,
+  WorkflowChildToken,
+  WorkflowConnectorKind,
+  WorkflowControlToken,
+  WorkflowCredentialsToken,
+  WorkflowDataPlaneToken,
   WorkflowExecutorToken,
   WorkflowLogToken,
   WorkflowStepCatalogToken,
   WorkflowStepKind,
+  WorkflowStepRunnerToken,
   WorkflowStorageToken,
 } from './remote/tokens';
+import { WorkflowControl } from './remote/workflow_control';
+import { WorkflowCredentials } from './remote/workflow_credentials';
 import { WorkflowLog } from './remote/workflow_log';
+import { WorkflowStepRunner } from './remote/workflow_step_runner';
 import { WorkflowStorage } from './remote/workflow_storage';
 import { createDataClientBundle, type DataClientBundle } from './repositories/data_access_layer';
 import { LogsRepository } from './repositories/logs_repository';
-import { initializeLogsRepositoryDataStream } from './repositories/logs_repository/data_stream';
+import {
+  initializeDataStreamClient,
+  initializeLogsRepositoryDataStream,
+} from './repositories/logs_repository/data_stream';
 import { StepExecutionRepository } from './repositories/step_execution_repository';
 import { WorkflowExecutionRepository } from './repositories/workflow_execution_repository';
 import {
@@ -120,7 +139,7 @@ import type {
   WorkflowsExecutionEnginePluginStart,
   WorkflowsExecutionEnginePluginStartDeps,
 } from './types';
-import { generateExecutionTaskScope } from './utils';
+import { generateExecutionTaskScope, getKibanaUrl } from './utils';
 import {
   buildWorkflowRenderContext,
   type WorkflowExecutionForInputRendering,
@@ -182,6 +201,8 @@ export class WorkflowsExecutionEnginePlugin
       WorkflowsExecutionEnginePluginStartDeps
     >
 {
+  private readonly remoteStepRunners: WorkflowStepRunner[] = [];
+
   private readonly logger: Logger;
   private readonly config: WorkflowsExecutionEngineConfig;
   private concurrencyManager!: ConcurrencyManager;
@@ -278,8 +299,9 @@ export class WorkflowsExecutionEnginePlugin
     if (config.remoteExecution.enabled) {
       core.remote.register({
         id: 'workflows',
+        reuse: this.config.remoteExecution.reuse,
         root: WorkflowExecutorToken,
-        contributions: [WorkflowStepKind],
+        contributions: [WorkflowStepKind, WorkflowConnectorKind],
         dependencies: [WorkflowStepCatalogToken],
       });
     }
@@ -374,6 +396,7 @@ export class WorkflowsExecutionEnginePlugin
               await checkLicense(pluginsStart.licensing);
 
               const dependencies: ContextDependencies = {
+                runtimeMetadata: coordinatorRuntimeMetadata,
                 ...setupDependencies,
                 coreStart,
                 actions: pluginsStart.actions,
@@ -421,34 +444,53 @@ export class WorkflowsExecutionEnginePlugin
                 return;
               }
 
+              recordRemoteTiming('workflow_task_ready', {
+                executionId: workflowRunId,
+                taskId: taskInstance.id,
+              });
+              recordRemoteTiming('claimed', {
+                executionId: workflowRunId,
+                taskId: taskInstance.id,
+                atEpochMs: taskInstance.startedAt?.getTime(),
+              });
               try {
-                let runResult: { shouldDeleteTask?: boolean } | undefined;
-                if (config.remoteExecution.enabled) {
-                  const session = await core.remote.whenReady<WorkflowExecutorApi>('workflows');
-                  const scopeId = session.openScope(fakeRequest);
-                  try {
-                    await session.stub.run({ scopeId, workflowRunId, spaceId });
-                  } finally {
-                    session.closeScope(scopeId);
-                    recordRemoteHeap('MAIN_HEAP', 'after-remote-run');
-                  }
-                } else {
-                  const result = await runWorkflow({
-                    workflowExecutionRepository,
-                    stepExecutionRepository,
-                    workflowRunId,
-                    spaceId,
-                    signal: taskAbortController.signal,
-                    config,
-                    logger,
-                    fakeRequest,
-                    dependencies,
-                    workflowsExecutionEngine,
-                    meteringService: this.meteringService,
-                    internalResumeWorkflowExecution: this.internalResumeWorkflowExecutionHandler,
-                  });
-                  runResult = result && typeof result === 'object' ? result : undefined;
-                }
+                const result = await runWorkflow({
+                  workflowExecutionRepository,
+                  stepExecutionRepository,
+                  workflowRunId,
+                  spaceId,
+                  signal: taskAbortController.signal,
+                  config,
+                  logger,
+                  fakeRequest,
+                  dependencies,
+                  workflowsExecutionEngine,
+                  meteringService: this.meteringService,
+                  internalResumeWorkflowExecution: this.internalResumeWorkflowExecutionHandler,
+                  executeRemote: config.remoteExecution.enabled
+                    ? (scopedRequest, workflowSignal, dependencyPlan) =>
+                        dispatchWorkflow({
+                          coreStart,
+                          repositories: { workflowExecutionRepository, stepExecutionRepository },
+                          remote: core.remote,
+                          request: scopedRequest,
+                          dependencyPlan,
+                          signal: workflowSignal,
+                          workflowRunId,
+                          spaceId,
+                          logger,
+                          phase: 'run',
+                          facts: {
+                            kibanaUrl: getKibanaUrl(coreStart, setupDependencies.cloudSetup),
+                            maxResponseSizeBytes: config.maxResponseSize.getValueInBytes(),
+                            evictionMinBytes: config.eviction.minPayloadSize.getValueInBytes(),
+                            hitlExternalResumeEnabled: config.hitlExternalResume.enabled,
+                            maxWorkflowDepth: config.maxWorkflowDepth,
+                          },
+                        })
+                    : undefined,
+                });
+                const runResult = result && typeof result === 'object' ? result : undefined;
 
                 // Prefer cancelled when TM aborted the claim so a later stamp does not
                 // overwrite cancel's semantic outcome (shared last-write-wins buffer).
@@ -609,6 +651,7 @@ export class WorkflowsExecutionEnginePlugin
               await checkLicense(pluginsStart.licensing);
 
               const dependencies: ContextDependencies = {
+                runtimeMetadata: coordinatorRuntimeMetadata,
                 ...setupDependencies,
                 coreStart,
                 actions: pluginsStart.actions,
@@ -721,33 +764,43 @@ export class WorkflowsExecutionEnginePlugin
               }
 
               try {
-                if (config.remoteExecution.enabled) {
-                  const session = await core.remote.whenReady<WorkflowExecutorApi>('workflows');
-                  const scopeId = session.openScope(fakeRequest);
-                  try {
-                    await session.stub.run({ scopeId, workflowRunId, spaceId });
-                  } finally {
-                    session.closeScope(scopeId);
-                    recordRemoteHeap('MAIN_HEAP', 'after-remote-resume');
-                  }
-                } else {
-                  const { retryAt } = await resumeWorkflow({
-                    workflowExecutionRepository,
-                    stepExecutionRepository,
-                    workflowRunId,
-                    spaceId,
-                    signal: taskAbortController.signal,
-                    config,
-                    logger,
-                    fakeRequest,
-                    dependencies,
-                    workflowsExecutionEngine,
-                    meteringService: this.meteringService,
-                    internalResumeWorkflowExecution: this.internalResumeWorkflowExecutionHandler,
-                  });
-
-                  if (retryAt) return { runAt: retryAt, state: {} };
-                }
+                const { retryAt } = await resumeWorkflow({
+                  workflowExecutionRepository,
+                  stepExecutionRepository,
+                  workflowRunId,
+                  spaceId,
+                  signal: taskAbortController.signal,
+                  config,
+                  logger,
+                  fakeRequest,
+                  dependencies,
+                  workflowsExecutionEngine,
+                  meteringService: this.meteringService,
+                  internalResumeWorkflowExecution: this.internalResumeWorkflowExecutionHandler,
+                  executeRemote: config.remoteExecution.enabled
+                    ? (scopedRequest, workflowSignal, dependencyPlan) =>
+                        dispatchWorkflow({
+                          coreStart,
+                          repositories: { workflowExecutionRepository, stepExecutionRepository },
+                          remote: core.remote,
+                          request: scopedRequest,
+                          dependencyPlan,
+                          signal: workflowSignal,
+                          workflowRunId,
+                          spaceId,
+                          logger,
+                          phase: 'resume',
+                          facts: {
+                            kibanaUrl: getKibanaUrl(coreStart, setupDependencies.cloudSetup),
+                            maxResponseSizeBytes: config.maxResponseSize.getValueInBytes(),
+                            evictionMinBytes: config.eviction.minPayloadSize.getValueInBytes(),
+                            hitlExternalResumeEnabled: config.hitlExternalResume.enabled,
+                            maxWorkflowDepth: config.maxWorkflowDepth,
+                          },
+                        })
+                    : undefined,
+                });
+                if (retryAt) return { runAt: retryAt, state: {} };
 
                 if (taskAbortController.signal.aborted) {
                   stampWorkflowTaskRunEventFields(setCustomTaskRunEventFields, {
@@ -917,6 +970,7 @@ export class WorkflowsExecutionEnginePlugin
               await checkLicense(pluginsStart.licensing);
 
               const dependencies: ContextDependencies = {
+                runtimeMetadata: coordinatorRuntimeMetadata,
                 ...setupDependencies,
                 coreStart,
                 actions: pluginsStart.actions,
@@ -1165,6 +1219,28 @@ export class WorkflowsExecutionEnginePlugin
                     internalResumeWorkflowExecution: this.internalResumeWorkflowExecutionHandler,
                     workflowExecutionRepository,
                     stepExecutionRepository,
+                    executeRemote: config.remoteExecution.enabled
+                      ? (scopedRequest, workflowSignal, dependencyPlan) =>
+                          dispatchWorkflow({
+                            coreStart,
+                            repositories: { workflowExecutionRepository, stepExecutionRepository },
+                            remote: core.remote,
+                            request: scopedRequest,
+                            dependencyPlan,
+                            signal: workflowSignal,
+                            workflowRunId: workflowExecution.id,
+                            spaceId: workflowExecution.spaceId,
+                            logger,
+                            phase: 'run',
+                            facts: {
+                              kibanaUrl: getKibanaUrl(coreStart, setupDependencies.cloudSetup),
+                              maxResponseSizeBytes: config.maxResponseSize.getValueInBytes(),
+                              evictionMinBytes: config.eviction.minPayloadSize.getValueInBytes(),
+                              hitlExternalResumeEnabled: config.hitlExternalResume.enabled,
+                              maxWorkflowDepth: config.maxWorkflowDepth,
+                            },
+                          })
+                      : undefined,
                   });
                 } catch (error) {
                   await markScheduledExecutionFailedAfterTaskError({
@@ -1283,19 +1359,40 @@ export class WorkflowsExecutionEnginePlugin
 
     if (this.config.remoteExecution.enabled && this.coreSetup) {
       const logsRepository = new LogsRepository(coreStart.dataStreams, this.logger);
-      this.coreSetup.remote.bind(WorkflowStorageToken, (scopes) => {
+      const storageFactory = (scopes: ScopeLookup) => {
         return new WorkflowStorage(
           workflowExecutionRepository,
           stepExecutionRepository,
           this.logger,
           {
-            scheduleResume: async (scopeId, workflowRunId, spaceId, resumeAt) => {
+            scheduleResume: async (scopeId, workflowRunId, spaceId, resumeAt, kind) => {
+              if (kind === 'wake') {
+                await workflowTaskManager.runExistingResumeTask(workflowRunId);
+                return { taskId: workflowRunId };
+              }
               const execution = await workflowExecutionRepository.getWorkflowExecutionById(
                 workflowRunId,
                 spaceId
               );
               if (!execution) {
                 throw new Error(`Workflow execution ${workflowRunId} was not found`);
+              }
+              const fakeRequest = scopes.get<KibanaRequest>(scopeId);
+              if (kind === 'ensure_wake') {
+                await workflowTaskManager.ensureWakeTask({
+                  executionId: workflowRunId,
+                  spaceId,
+                  fakeRequest,
+                  runAt: new Date(resumeAt),
+                });
+                return { taskId: workflowRunId };
+              }
+              if (kind === 'global_timeout') {
+                return workflowTaskManager.scheduleWorkflowGlobalTimeoutResumeTask({
+                  workflowExecution: execution,
+                  resumeAt: new Date(resumeAt),
+                  fakeRequest,
+                });
               }
               return workflowTaskManager.scheduleResumeTask({
                 workflowExecution: execution,
@@ -1307,21 +1404,49 @@ export class WorkflowsExecutionEnginePlugin
               const actionsClient = await plugins.actions.getActionsClientWithRequest(
                 scopes.get<KibanaRequest>(scopeId)
               );
-              return new ConnectorExecutor(actionsClient).execute({
-                ...params,
-                abortController: new AbortController(),
-              });
+              const executor = new ConnectorExecutor(actionsClient);
+              const abortController = new AbortController();
+              const signal = scopes.getAbortSignal(scopeId);
+              const onAbort = () => abortController.abort(signal.reason);
+              signal.addEventListener('abort', onAbort, { once: true });
+              if (signal.aborted) onAbort();
+              try {
+                return await (params.system
+                  ? executor.executeSystemConnector({ ...params, abortController })
+                  : executor.execute({ ...params, abortController }));
+              } finally {
+                signal.removeEventListener('abort', onAbort);
+              }
             },
-          }
+          },
+          scopes
         );
+      };
+      this.coreSetup.remote.bindInProcess(WorkflowStorageToken, storageFactory);
+      this.coreSetup.remote.bindInProcess(
+        WorkflowDataPlaneToken,
+        (scopes) => new CoreDataPlane(coreStart, scopes)
+      );
+      this.coreSetup.remote.bind(WorkflowControlToken, (scopes) => {
+        const storage = storageFactory(scopes);
+        return new WorkflowControl({
+          persistence: async () => (this.config.storage.source === 'data_stream' ? storage : null),
+          scheduleResume: (...args) => storage.scheduleResume(...args),
+          executeConnector: (...args) => storage.executeConnector(...args),
+          info: (message) => this.logger.info(message),
+          initializeLogs: async () => {
+            await initializeDataStreamClient(coreStart.dataStreams);
+          },
+        });
       });
-      this.coreSetup.remote.bind(
+      this.coreSetup.remote.bindInProcess(
         WorkflowLogToken,
         () => new WorkflowLog(this.logger, logsRepository)
       );
     }
 
     const dependencies: ContextDependencies = {
+      runtimeMetadata: coordinatorRuntimeMetadata,
       ...this.setupDependencies,
       coreStart,
       actions: plugins.actions,
@@ -1329,6 +1454,83 @@ export class WorkflowsExecutionEnginePlugin
       workflowsExtensions: plugins.workflowsExtensions,
       config: this.config,
     };
+
+    if (this.config.remoteExecution.enabled && this.coreSetup) {
+      this.coreSetup.remote.bind(
+        NativeActionsToken,
+        (scopes) =>
+          new NativeActions(
+            scopes,
+            (request) => plugins.actions.getActionsClientWithRequest(request),
+            async (request) => {
+              try {
+                const enabled = await coreStart.uiSettings
+                  .asScopedToClient(coreStart.savedObjects.getScopedClient(request))
+                  .get<boolean>(GEN_AI_SETTINGS_INFERENCE_STREAMING);
+                const services =
+                  enabled === false
+                    ? await coreStart.elasticsearch.client.asInternalUser.transport.request<
+                        Array<
+                          Pick<
+                            import('@kbn/inference-common').InferenceProvider,
+                            'service' | 'features'
+                          >
+                        >
+                      >({ method: 'GET', path: '/_inference/_services' })
+                    : undefined;
+                return { enabled, services };
+              } catch (error) {
+                this.logger.warn(
+                  `Could not resolve native inference streaming facts: ${error.message}`
+                );
+                return {};
+              }
+            },
+            this.logger
+          )
+      );
+      this.coreSetup.remote.bind(
+        WorkflowChildToken,
+        (scopes) =>
+          new NativeChildApi(
+            scopes,
+            new WorkflowRepository({
+              esClient: coreStart.elasticsearch.client.asInternalUser,
+              logger: this.logger,
+            }),
+            workflowExecutionRepository,
+            stepExecutionRepository,
+            () => {
+              if (!workflowsExecutionEngineForRemoteNodes)
+                throw new Error('Workflow engine is not ready');
+              return workflowsExecutionEngineForRemoteNodes;
+            },
+            this.config,
+            (workflow, request, spaceId) =>
+              hasWorkflowAccess(workflow, request, coreStart, { id: workflow.id, spaceId })
+          )
+      );
+      this.coreSetup.remote.bind(
+        WorkflowCredentialsToken,
+        (scopes) => new WorkflowCredentials(coreStart, scopes)
+      );
+      this.coreSetup.remote.bind(WorkflowStepRunnerToken, (scopes) => {
+        const runner = new WorkflowStepRunner(
+          {
+            ...dependencies,
+            get workflowsExecutionEngine() {
+              return workflowsExecutionEngineForRemoteNodes;
+            },
+          },
+          workflowExecutionRepository,
+          stepExecutionRepository,
+          scopes,
+          this.logger
+        );
+        this.remoteStepRunners.push(runner);
+        return runner;
+      });
+    }
 
     // Re-check that a workflow is still enabled right before persisting an
     // execution document.  The route-level check may have read a stale value
@@ -1518,6 +1720,7 @@ export class WorkflowsExecutionEnginePlugin
     };
 
     const executeWorkflow: ExecuteWorkflow = async (workflow, context, originalRequest) => {
+      const requestedAt = performance.timeOrigin + performance.now();
       const request = getWorkflowOriginalRequest(originalRequest);
       await checkLicense(plugins.licensing);
 
@@ -1554,6 +1757,11 @@ export class WorkflowsExecutionEnginePlugin
         originalRequest,
         { refresh: true }
       );
+      recordRemoteTiming('requested', {
+        executionId: workflowExecution.id,
+        atEpochMs: requestedAt,
+      });
+      recordRemoteTiming('execution_persisted', { executionId: workflowExecution.id });
 
       if (workflowExecution.status === ExecutionStatus.FAILED) {
         return {
@@ -1603,6 +1811,7 @@ export class WorkflowsExecutionEnginePlugin
         if (!this.coreSetup) {
           throw new Error('Core setup not available');
         }
+        const { remote } = this.coreSetup;
         const [, , workflowsExecutionEngine] = await this.coreSetup.getStartServices();
 
         await runWorkflow({
@@ -1618,11 +1827,40 @@ export class WorkflowsExecutionEnginePlugin
           workflowsExecutionEngine,
           meteringService: this.meteringService,
           internalResumeWorkflowExecution: this.internalResumeWorkflowExecutionHandler,
+          executeRemote: this.config.remoteExecution.enabled
+            ? (scopedRequest, workflowSignal, dependencyPlan) =>
+                dispatchWorkflow({
+                  coreStart,
+                  repositories: { workflowExecutionRepository, stepExecutionRepository },
+                  remote,
+                  request: scopedRequest,
+                  dependencyPlan,
+                  signal: workflowSignal,
+                  workflowRunId: workflowExecution.id,
+                  spaceId: workflowExecution.spaceId,
+                  logger: this.logger,
+                  phase: 'run',
+                  facts: {
+                    kibanaUrl: getKibanaUrl(coreStart, dependencies.cloudSetup),
+                    maxResponseSizeBytes: this.config.maxResponseSize.getValueInBytes(),
+                    evictionMinBytes: this.config.eviction.minPayloadSize.getValueInBytes(),
+                    hitlExternalResumeEnabled: this.config.hitlExternalResume.enabled,
+                    maxWorkflowDepth: this.config.maxWorkflowDepth,
+                  },
+                })
+            : undefined,
         });
       } else {
         // Schedule a task: either we're not in a task, or this is a child execution (must not run inline)
         const taskInstance = createTaskInstance(workflowExecution, ['workflows']);
-        await scheduleRunTaskOrMarkFailed(scheduleDeps, taskInstance, request as KibanaRequest);
+        await scheduleRunTaskOrMarkFailed(
+          scheduleDeps,
+          taskInstance,
+          request as KibanaRequest,
+          this.config.remoteExecution.enabled &&
+            this.config.remoteExecution.directDispatch !== false &&
+            !isChildExecution
+        );
         this.logger.debug(
           `Scheduling workflow task for workflow ${workflow.id}, execution ${workflowExecution.id}${
             isChildExecution ? ' (child execution)' : ''
@@ -2166,7 +2404,7 @@ export class WorkflowsExecutionEnginePlugin
       },
     };
 
-    return {
+    const workflowsExecutionEngineForRemoteNodes: WorkflowsExecutionEnginePluginStart = {
       workflowEventLoggerService,
       executeWorkflow,
       executeWorkflowStep,
@@ -2182,9 +2420,13 @@ export class WorkflowsExecutionEnginePlugin
         stepExecutionsDataClient: this.dataClientBundle.createStepDataClient(),
       },
     };
+    return workflowsExecutionEngineForRemoteNodes;
   }
 
   public stop() {
+    for (const runner of this.remoteStepRunners) runner.stop();
+    this.remoteStepRunners.length = 0;
+
     void this.dataClientBundle.stop();
   }
 

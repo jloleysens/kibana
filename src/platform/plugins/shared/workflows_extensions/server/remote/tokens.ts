@@ -8,8 +8,14 @@
  */
 
 import { createToken } from '@kbn/core-di';
+import type { StepHandlerContext } from '../step_registry/types';
 
 export interface RemoteStepContext {
+  /** Executor-local only; this context is never serialized across the RPC seam. */
+  readonly handlerContext?: StepHandlerContext;
+  /** Existing placement for backings not yet carved out; executor-local, never serialized. */
+  readonly runUncarvedHandler?: () => Promise<unknown>;
+  readonly signal?: AbortSignal;
   readonly attribution?: {
     readonly type: string;
     readonly id: string;
@@ -24,12 +30,20 @@ export interface RemoteWorkflowStep {
 
 /** Contribution kind owned by Workflows Extensions. Producers contribute step classes of this kind. */
 export const WorkflowStep = createToken<RemoteWorkflowStep>('workflows.step');
+export const WorkflowConnector = createToken<RemoteWorkflowStep>('workflows.connector');
 
 export const WorkflowStepCatalogToken =
   createToken<WorkflowStepCatalogApi>('workflows.stepCatalog');
 
 export interface WorkflowStepCatalogApi {
   supports(stepType: string): boolean;
+  supportsConnector(connectorType: string): boolean;
+  runConnector(
+    connectorType: string,
+    scopeId: string,
+    input: unknown,
+    context: RemoteStepContext
+  ): Promise<unknown>;
   run(
     stepType: string,
     scopeId: string,

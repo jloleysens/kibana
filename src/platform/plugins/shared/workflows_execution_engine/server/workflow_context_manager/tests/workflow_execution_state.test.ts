@@ -10,6 +10,7 @@
 import type { JsonValue } from '@kbn/utility-types';
 import type { EsWorkflowExecution, EsWorkflowStepExecution, StackFrame } from '@kbn/workflows';
 import { ExecutionStatus } from '@kbn/workflows';
+import { sourceStepDependencyAnalyzer } from '../../execution_functions/prepare_step_dependency_plan';
 import type { StepExecutionRepository } from '../../repositories/step_execution_repository';
 import type { WorkflowExecutionRepository } from '../../repositories/workflow_execution_repository';
 import { StepIoService } from '../step_io_service';
@@ -49,6 +50,7 @@ describe('WorkflowExecutionState', () => {
     evictionMinBytes = Infinity
   ): StepIoService {
     return new StepIoService({
+      dependencyAnalyzer: sourceStepDependencyAnalyzer,
       stepRepository: repo,
       state,
       evictionMinBytes,

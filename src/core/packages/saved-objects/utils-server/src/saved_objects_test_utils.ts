@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { isEqual } from 'lodash';
+import isEqual from 'lodash/isEqual';
 
 /**
  * Determines if a given Set is equal to another given Set. Set types must be the same, and comparable.

@@ -8,7 +8,8 @@
 import type { Model, Prompt, PromptVersion } from '@kbn/inference-common';
 import { MessageRole } from '@kbn/inference-common';
 import type { ChatCompleteOptions } from '@kbn/inference-common';
-import { omitBy, orderBy } from 'lodash';
+import omitBy from 'lodash/omitBy';
+import orderBy from 'lodash/orderBy';
 import Mustache from 'mustache';
 import { format } from 'util';
 

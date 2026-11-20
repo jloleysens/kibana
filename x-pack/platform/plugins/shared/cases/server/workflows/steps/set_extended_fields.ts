@@ -6,13 +6,13 @@
  */
 
 import type { KibanaRequest } from '@kbn/core/server';
-import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
+import { createServerStepDefinition } from '@kbn/workflows-extensions/server/step_registry/types';
 import {
   setExtendedFieldsStepCommonDefinition,
   type SetExtendedFieldsStepInput,
 } from '../../../common/workflows/steps/set_extended_fields';
 import { CASE_EXTENDED_FIELDS } from '../../../common/constants';
-import type { CasesClient } from '../../client';
+import type { WorkflowCasesClient as CasesClient } from '../types';
 import { SET_EXTENDED_FIELDS_FAILED_MESSAGE } from './translations';
 import { createCasesStepHandler, getErrorMessage, safeParseCaseForWorkflowOutput } from './utils';
 import { resolveCaseVersion } from './update_case_helpers';

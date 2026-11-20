@@ -12,21 +12,14 @@
 
 import type { ElasticsearchClient } from '@kbn/core/server';
 import { isMaximumResponseSizeExceededError } from '@kbn/es-errors';
-import { buildElasticsearchRequest, getElasticsearchConnectors } from '@kbn/workflows';
 import type { ElasticsearchGraphNode } from '@kbn/workflows/graph/types';
+import { buildElasticsearchRequestFromDefinition } from '@kbn/workflows-runtime';
 import { formatBytes, ResponseSizeLimitError } from './errors';
 import type { BaseStep, RunStepResult } from './node_implementation';
 import { BaseAtomicNodeImplementation } from './node_implementation';
 import type { StepExecutionRuntime } from '../workflow_context_manager/step_execution_runtime';
 import type { WorkflowExecutionRuntimeManager } from '../workflow_context_manager/workflow_execution_runtime_manager';
 import type { IWorkflowEventLogger } from '../workflow_event_logger';
-
-/**
- * Whether the connector for `stepType` defaults to HEAD, which the ES transport resolves to a
- * scalar boolean instead of the JSON object every other API returns.
- */
-const isHeadMethod = (stepType: string): boolean =>
-  getElasticsearchConnectors().find(({ type }) => type === stepType)?.methods[0] === 'HEAD';
 
 export class ElasticsearchActionStepImpl extends BaseAtomicNodeImplementation<BaseStep> {
   constructor(
@@ -42,6 +35,12 @@ export class ElasticsearchActionStepImpl extends BaseAtomicNodeImplementation<Ba
       'max-step-size': node.configuration['max-step-size'],
     };
     super(step, contextManager, undefined, workflowRuntime);
+  }
+
+  private definition(type: string) {
+    return this.stepExecutionRuntime.contextManager
+      .getDependencies()
+      .runtimeMetadata.elasticsearchDefinition(type);
   }
 
   public getInput() {
@@ -84,7 +83,8 @@ export class ElasticsearchActionStepImpl extends BaseAtomicNodeImplementation<Ba
       // Keep the output object-shaped so it matches the storage mapping and workflows can branch
       // on `output.result`. The scalar check also covers a user overriding the method to GET.
       const isScalar = result !== null && typeof result !== 'object';
-      const output = isScalar && isHeadMethod(stepType) ? { result } : result;
+      const output =
+        isScalar && this.definition(stepType)?.methods[0] === 'HEAD' ? { result } : result;
 
       return { input: stepWith, output, error: undefined };
     } catch (error) {
@@ -226,7 +226,7 @@ export class ElasticsearchActionStepImpl extends BaseAtomicNodeImplementation<Ba
         body: requestBody,
         query: queryParams,
         bulkBody,
-      } = buildElasticsearchRequest(stepType, params);
+      } = buildElasticsearchRequestFromDefinition(stepType, params, this.definition(stepType));
 
       // Build query string manually if needed
       let finalPath = path;

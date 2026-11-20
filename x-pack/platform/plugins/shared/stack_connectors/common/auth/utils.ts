@@ -4,7 +4,8 @@
  * 2.0; you may not use this file except in compliance with the Elastic License
  * 2.0.
  */
-import { isString, isEmpty } from 'lodash';
+import isString from 'lodash/isString';
+import isEmpty from 'lodash/isEmpty';
 
 import type { SSLSettings } from '@kbn/actions-utils';
 import type {

@@ -15,7 +15,9 @@ import {
   isTerminalStatus,
   WorkflowRepository,
 } from '@kbn/workflows';
+import { acquireWorkflowStartBarrier } from './acquire_workflow_start_barrier';
 import { completeIdentityFailureCleanup } from './complete_identity_failure_cleanup';
+import { executeWorkflowRemotely, type RemoteWorkflowExecution } from './execute_workflow_remotely';
 import { finalizeWorkflowIdentityFailure } from './finalize_workflow_identity_failure';
 import { handlePostExecutionLoop } from './handle_post_execution_loop';
 import { setupDependencies } from './setup_dependencies';
@@ -58,7 +60,9 @@ async function runWorkflowWithRequest({
   internalResumeWorkflowExecution,
   workflowExecutionRepository,
   stepExecutionRepository,
+  executeRemote,
 }: {
+  executeRemote?: RemoteWorkflowExecution;
   workflowRunId: string;
   spaceId: string;
   signal: AbortSignal;
@@ -103,20 +107,8 @@ async function runWorkflowWithRequest({
     setupSpan?.end();
   }
 
-  const {
-    workflowRuntime,
-    stepExecutionRuntimeFactory,
-    workflowExecutionState,
-    stepIoService,
-    workflowLogger,
-    eventQueue,
-    nodesFactory,
-    workflowExecutionGraph,
-    workflowTaskManager,
-    esClient,
-    telemetryClient,
-    workflowExecutionCursor,
-  } = setupResult;
+  const { dependencyPlan, workflowExecutionState, workflowTaskManager, telemetryClient } =
+    setupResult;
 
   const execution = workflowExecutionState.getWorkflowExecution();
   if (isTerminalStatus(execution.status)) {
@@ -215,10 +207,60 @@ async function runWorkflowWithRequest({
     return;
   }
 
+  const startBarrier = await acquireWorkflowStartBarrier({
+    workflowRunId,
+    spaceId,
+    workflowExecutionRepository,
+    stepExecutionRepository,
+  });
+  if (!startBarrier.acquired) {
+    const current = await workflowExecutionRepository.getWorkflowExecutionById(
+      workflowRunId,
+      spaceId
+    );
+    if (current && !isTerminalStatus(current.status)) {
+      // Do not acknowledge a still-pending task after an ambiguous/contended start write.
+      throw new Error('Workflow start barrier was already crossed; no engine loop will run');
+    }
+    return;
+  }
+
+  if (executeRemote) {
+    await executeWorkflowRemotely({
+      executeRemote,
+      dependencyPlan,
+      fakeRequest,
+      signal,
+      workflowsExecutionEngine,
+      workflowRunId,
+      spaceId,
+      logger,
+      workflowExecutionRepository,
+      stepExecutionRepository,
+      internalResumeWorkflowExecution,
+      workflowTaskManager,
+      meteringService,
+      cloudSetup: dependencies.cloudSetup,
+    });
+    return;
+  }
+
+  const {
+    workflowExecutionGraph,
+    workflowRuntime,
+    stepExecutionRuntimeFactory,
+    stepIoService,
+    workflowLogger,
+    eventQueue,
+    nodesFactory,
+    workflowExecutionCursor,
+    esClient,
+  } = setupResult;
+
   // Span for runtime initialization (graph building, topsort, etc.)
   const startSpan = apm.startSpan('workflow runtime start', 'workflow', 'initialization');
   try {
-    await workflowRuntime.start();
+    await workflowRuntime.start(startBarrier.startedAt);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : undefined;

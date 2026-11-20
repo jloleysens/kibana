@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { take } from 'lodash';
+import take from 'lodash/take';
 
 export function truncateList<T>(values: T[], limit: number): Array<T | string> {
   if (values.length <= limit) {

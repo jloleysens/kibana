@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { isEqual } from 'lodash';
+import isEqual from 'lodash/isEqual';
 import type { Conversation, ConversationEvent, ConversationRound } from '@kbn/agent-builder-common';
 import {
   CONVERSATION_EVENT_ID_DELIMITER,

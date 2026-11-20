@@ -26,6 +26,9 @@ import type { AnalyticsService } from '../../telemetry';
 
 export interface ConversationService {
   getScopedClient(options: { request: KibanaRequest }): Promise<ConversationClient>;
+  getScopedClientOptions(options: {
+    request: KibanaRequest;
+  }): Promise<Parameters<typeof createClient>[0]>;
   getScopedClientAsUser(options: {
     request: KibanaRequest;
     user: CurrentUser;
@@ -97,6 +100,19 @@ export class ConversationServiceImpl implements ConversationService {
     return this.createScopedClient({ request, user });
   }
 
+  async getScopedClientOptions({
+    request,
+  }: {
+    request: KibanaRequest;
+  }): Promise<Parameters<typeof createClient>[0]> {
+    const user = await getUserFromRequest({
+      request,
+      security: this.security,
+      esClient: this.getScopedEsClient(request).asCurrentUser,
+    });
+    return this.getClientOptions({ request, user });
+  }
+
   private async createScopedClient({
     request,
     user,
@@ -104,13 +120,23 @@ export class ConversationServiceImpl implements ConversationService {
     request: KibanaRequest;
     user: CurrentUser;
   }): Promise<ConversationClient> {
+    return createClient(await this.getClientOptions({ request, user }));
+  }
+
+  private async getClientOptions({
+    request,
+    user,
+  }: {
+    request: KibanaRequest;
+    user: CurrentUser;
+  }): Promise<Parameters<typeof createClient>[0]> {
     const esClient = this.getScopedEsClient(request).asInternalUser;
     const space = getCurrentSpaceId({ request, spaces: this.spaces });
     const agentRegistry = await this.agents.getRegistry({ request });
     const eventBus = this.eventBus;
     const analyticsService = this.analyticsService;
 
-    return createClient({
+    return {
       user,
       esClient,
       logger: this.logger,
@@ -123,7 +149,7 @@ export class ConversationServiceImpl implements ConversationService {
       reportFieldsChange: analyticsService
         ? (params) => analyticsService.reportConversationFieldsChanged(params)
         : undefined,
-    });
+    };
   }
 
   private getScopedEsClient(request: KibanaRequest) {

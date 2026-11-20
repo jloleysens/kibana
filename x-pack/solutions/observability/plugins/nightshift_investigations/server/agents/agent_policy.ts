@@ -5,7 +5,10 @@
  * 2.0.
  */
 
-import { NIGHTSHIFT_ASSISTANT_AGENT_ID, NIGHTSHIFT_INVESTIGATION_AGENT_ID } from '../../common';
+import {
+  NIGHTSHIFT_ASSISTANT_AGENT_ID,
+  NIGHTSHIFT_INVESTIGATION_AGENT_ID,
+} from '../../common/agent_ids';
 
 /**
  * Agents whose rounds read and write the shared Cortex wiki and Semantic Memory. The hooks run

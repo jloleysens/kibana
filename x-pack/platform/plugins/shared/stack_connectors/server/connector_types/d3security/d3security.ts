@@ -5,8 +5,12 @@
  * 2.0.
  */
 
-import type { ServiceParams } from '@kbn/actions-plugin/server';
-import { SubActionConnector } from '@kbn/actions-plugin/server';
+import type { Services } from '@kbn/actions-plugin/server/types';
+import type {
+  ServiceParams,
+  SubActionServices,
+} from '@kbn/actions-plugin/server/sub_action_framework/types';
+import { SubActionConnector } from '@kbn/actions-plugin/server/sub_action_framework/sub_action_connector';
 import type { AxiosError } from 'axios';
 import type { ConnectorUsageCollector } from '@kbn/actions-plugin/server/types';
 import {
@@ -23,11 +27,13 @@ import type {
 } from '@kbn/connector-schemas/d3security';
 import { addSeverityAndEventTypeInBody } from './helpers';
 
-export class D3SecurityConnector extends SubActionConnector<D3SecurityConfig, D3SecuritySecrets> {
+export class D3SecurityConnector<
+  ExecutionServices extends SubActionServices = Services
+> extends SubActionConnector<D3SecurityConfig, D3SecuritySecrets, ExecutionServices> {
   private url;
   private token;
 
-  constructor(params: ServiceParams<D3SecurityConfig, D3SecuritySecrets>) {
+  constructor(params: ServiceParams<D3SecurityConfig, D3SecuritySecrets, ExecutionServices>) {
     super(params);
 
     this.url = this.config.url;

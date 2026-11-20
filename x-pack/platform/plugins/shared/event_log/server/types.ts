@@ -106,6 +106,8 @@ export interface IEventLogClient {
 
 export interface IEventLogger {
   logEvent(properties: IEvent, id?: string): void;
+  /** Validates and persists a batch, rejecting validation, initialization and indexing failures. */
+  logEvents(events: IEvent[]): Promise<void>;
   startTiming(event: IEvent, startTime?: Date): void;
   stopTiming(event: IEvent): void;
   updateEvents(

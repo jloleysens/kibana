@@ -9,9 +9,8 @@
 
 import { createRequire } from 'node:module';
 import { Container } from 'inversify';
+import { recordRemoteTiming } from '@kbn/core-remote-common';
 import type { RemoteWorkerSpec } from '@kbn/core-remote-common';
-
-const loadModule = createRequire(__filename);
 
 interface StepInstance {
   run(scopeId: string, input: unknown, context: unknown): Promise<unknown>;
@@ -23,7 +22,7 @@ type Constructor<T> = new (...args: any[]) => T;
 export function loadExport(modulePath: string, exportName: string, loaded: string[]): unknown {
   loaded.push(modulePath);
   // Implementation modules are loaded from paths declared by trusted plugin remote indexes.
-  const loadedModule = loadModule(modulePath) as Record<string, unknown>;
+  const loadedModule = createRequire(__filename)(modulePath) as Record<string, unknown>;
   const value = loadedModule[exportName];
   if (!value) {
     throw new Error(`Remote module ${modulePath} does not export ${exportName}`);
@@ -61,11 +60,13 @@ function injectableCapability(value: unknown): unknown {
 }
 
 /** Builds the executor-side container. Coordinator values are already bound instances or stubs. */
-export function buildExecutor(
+export async function buildExecutor(
   spec: RemoteWorkerSpec,
   coordinator: ReadonlyMap<string, unknown>,
-  loaded: string[]
-): object {
+  loaded: string[],
+  load: typeof loadExport = loadExport,
+  inProcessOverrides: ReadonlyMap<string, object> = new Map()
+): Promise<object> {
   const container = new Container();
   for (const id of spec.coordinatorTokenIds) {
     const value = coordinator.get(id);
@@ -76,47 +77,64 @@ export function buildExecutor(
   }
 
   for (const provider of spec.executorProviders) {
-    const Ctor = loadExport(
+    const override = inProcessOverrides.get(provider.tokenId);
+    if (override) {
+      container.bind(Symbol.for(provider.tokenId)).toConstantValue(override);
+      continue;
+    }
+    const Ctor = (await load(
       provider.modulePath,
       provider.exportName,
       loaded
-    ) as Constructor<object>;
+    )) as Constructor<object>;
     container.bind(Symbol.for(provider.tokenId)).to(Ctor).inSingletonScope();
   }
 
   const factories = new Map<string, () => StepInstance>();
+  const kinds = new Map<string, string>();
   for (const contribution of spec.contributions) {
-    const Ctor = loadExport(
-      contribution.modulePath,
-      contribution.exportName,
-      loaded
-    ) as Constructor<StepInstance>;
-    container.bind(Ctor).toSelf().inTransientScope();
-    factories.set(contribution.stepType, () => {
-      const instance = container.get(Ctor);
-      if (!instance) {
-        throw new Error(`Unable to construct remote step "${contribution.stepType}"`);
-      }
-      return instance;
-    });
+    let constructor: Promise<Constructor<StepInstance>> | undefined;
+    if (contribution.kindId) kinds.set(contribution.stepType, contribution.kindId);
+    factories.set(contribution.stepType, () => ({
+      async run(scopeId, input, context) {
+        const cached = constructor !== undefined;
+        const started = performance.now();
+        constructor ??= Promise.resolve(
+          load(contribution.modulePath, contribution.exportName, loaded)
+        ).then((value) => {
+          const Ctor = value as Constructor<StepInstance>;
+          container.bind(Ctor).toSelf().inTransientScope();
+          return Ctor;
+        });
+        const Ctor = await constructor;
+        recordRemoteTiming('contribution_import', {
+          graphId: spec.id,
+          scopeId,
+          stepType: contribution.stepType,
+          cached,
+          durationMs: performance.now() - started,
+        });
+        return container.get(Ctor).run(scopeId, input, context);
+      },
+    }));
   }
 
   if (spec.catalog) {
-    const Catalog = loadExport(
+    const Catalog = (await load(
       spec.catalog.modulePath,
       spec.catalog.exportName,
       loaded
-    ) as Constructor<object>;
+    )) as Constructor<object>;
     container
       .bind(Symbol.for(spec.catalog.tokenId))
-      .toConstantValue(new Catalog(factories as never));
+      .toConstantValue(new Catalog(factories as never, kinds));
   }
 
-  const Root = loadExport(
+  const Root = (await load(
     spec.root.modulePath,
     spec.root.exportName,
     loaded
-  ) as Constructor<object>;
+  )) as Constructor<object>;
   const rootToken = Symbol.for(spec.root.tokenId);
   container.bind(rootToken).to(Root).inSingletonScope();
   return container.get(rootToken);

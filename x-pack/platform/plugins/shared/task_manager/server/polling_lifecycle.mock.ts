@@ -20,6 +20,8 @@ export const taskPollingLifecycleMock = {
       pollIntervalConfiguration$: opts.pollIntervalConfiguration$ ?? of(),
       capacityConfiguration$: opts.capacityConfiguration$ ?? of(),
       attemptToRun: jest.fn(),
+      canRunDirect: jest.fn().mockReturnValue(false),
+      runClaimedTask: jest.fn().mockResolvedValue(true),
       stop: jest.fn(),
       getCurrentTasksInPool: jest.fn(),
       get isStarted() {

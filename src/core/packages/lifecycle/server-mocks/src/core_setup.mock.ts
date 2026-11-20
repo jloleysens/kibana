@@ -37,7 +37,7 @@ import { injectionServiceMock } from '@kbn/core-di-mocks';
 import { dataStreamServiceMock } from '@kbn/core-data-streams-server-mocks';
 import { pubSubServiceMock } from '@kbn/core-pubsub-server-mocks';
 import { userStorageServiceMock } from '@kbn/core-user-storage-server-mocks';
-import type { RemoteSession } from '@kbn/core-remote-server';
+import type { RemoteLease, RemoteSession } from '@kbn/core-remote-server';
 import { lazyObject } from '@kbn/lazy-object';
 
 type CoreSetupMockType = MockedKeys<CoreSetup> & {
@@ -100,6 +100,19 @@ export function createCoreSetupMock({
     remote: lazyObject({
       register: jest.fn(),
       bind: jest.fn(),
+      bindInProcess: jest.fn(),
+      lease: jest.fn(
+        async <T>(
+          _id: string,
+          _options?: { settingsKey?: string; signal?: AbortSignal }
+        ): Promise<RemoteLease<T>> => ({
+          stub: {} as T,
+          openScope: jest.fn(() => 'scope'),
+          closeScope: jest.fn(),
+          getScope: jest.fn(),
+          release: jest.fn(),
+        })
+      ),
       whenReady: jest.fn(
         async <T>(_id: string): Promise<RemoteSession<T>> => ({
           stub: {} as T,

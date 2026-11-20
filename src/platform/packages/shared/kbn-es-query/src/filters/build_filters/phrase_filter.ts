@@ -9,7 +9,9 @@
 
 import type { estypes } from '@elastic/elasticsearch';
 import type { SerializableRecord } from '@kbn/utility-types';
-import { get, has, isPlainObject } from 'lodash';
+import get from 'lodash/get';
+import has from 'lodash/has';
+import isPlainObject from 'lodash/isPlainObject';
 import type { Filter, FilterMeta } from './types';
 import type { DataViewFieldBase, DataViewBaseNoFields } from '../../es_query';
 import { getConvertedValueForField } from './get_converted_value_for_field';

@@ -18,6 +18,8 @@
     "target/**/*"
   ],
   "kbn_references": [
+    "@kbn/core-di",
+    "@kbn/connector-specs-runtime",
     "@kbn/zod",
     "@kbn/logging",
     "@kbn/licensing-types",

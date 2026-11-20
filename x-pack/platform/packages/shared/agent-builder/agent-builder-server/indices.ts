@@ -5,16 +5,4 @@
  * 2.0.
  */
 
-/**
- * Prefix of the chat system indices.
- *
- * The Kibana system user has the same permission on those indices than it has on Kibana system indices.
- */
-export const chatSystemIndexPrefix = '.chat-';
-
-/**
- * Helper function to define chat system indices.
- */
-export const chatSystemIndex = (suffix: string): string => {
-  return `${chatSystemIndexPrefix}${suffix}`;
-};
+export { chatSystemIndex, chatSystemIndexPrefix } from '@kbn/agent-builder-common';

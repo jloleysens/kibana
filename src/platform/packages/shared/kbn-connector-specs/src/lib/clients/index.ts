@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { createMcpClientType } from '../mcp/client/client_type';
+import { mcpClientType } from './mcp_client_type';
 import type { ClientTypeSpecs } from './client_registry';
 import { mongodbClientType } from './mongodb_client_type';
 import { mssqlClientType } from './mssql';
@@ -26,7 +26,7 @@ export type {
 export type { ClientRegistry, ClientTypeId, ClientTypeSpecs } from './client_registry';
 
 export const clientTypes: ClientTypeSpecs = {
-  mcp: createMcpClientType(),
+  mcp: mcpClientType,
   mongodb: mongodbClientType,
   mssql: mssqlClientType,
   mysql: mysqlClientType,

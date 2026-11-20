@@ -8,16 +8,10 @@
  */
 
 import apm from 'elastic-apm-node';
-import type { ByteSizeValue } from '@kbn/config-schema';
 import type { SerializedError } from '@kbn/workflows';
-import { ExecutionError } from '@kbn/workflows/server';
-import {
-  DEFAULT_MAX_STEP_SIZE,
-  parseByteSize,
-  ResponseSizeLimitError,
-  safeOutputSize,
-  toExecutionError,
-} from './errors';
+import { ExecutionError } from '@kbn/workflows-runtime';
+import { ResponseSizeLimitError, safeOutputSize, toExecutionError } from './errors';
+import { resolveStepOutputLimit } from './resolve_step_output_limit';
 import type { ConnectorExecutor } from '../connector_executor';
 import type { StepExecutionRuntime } from '../workflow_context_manager/step_execution_runtime';
 import type { WorkflowExecutionRuntimeManager } from '../workflow_context_manager/workflow_execution_runtime_manager';
@@ -269,35 +263,20 @@ export abstract class BaseAtomicNodeImplementation<TStep extends BaseStep>
    * Returns the default on invalid/unparseable values to avoid crashing the step.
    */
   protected getMaxResponseBytes(): number {
-    try {
-      // 1. Step-level override (from YAML — auto-populated in constructor)
-      const stepLimit = this.step['max-step-size'];
-      if (stepLimit) {
-        return parseByteSize(stepLimit);
+    return resolveStepOutputLimit(
+      () => this.step['max-step-size'],
+      () =>
+        this.stepExecutionRuntime.workflowExecution?.workflowDefinition?.settings?.[
+          'max-step-size'
+        ],
+      () => {
+        const { config: pluginConfig, dispatchFacts } =
+          this.stepExecutionRuntime.contextManager.getDependencies();
+        return dispatchFacts
+          ? dispatchFacts.maxResponseSizeBytes
+          : pluginConfig?.maxResponseSize || undefined;
       }
-
-      // 2. Workflow-level override (from YAML settings, via runtime — not user-facing context)
-      const workflowSettings =
-        this.stepExecutionRuntime.workflowExecution?.workflowDefinition?.settings;
-      const workflowLimit = workflowSettings?.['max-step-size'];
-      if (workflowLimit) {
-        return parseByteSize(workflowLimit);
-      }
-
-      // 3. Plugin config default (from kibana.yml)
-      const pluginConfig = this.stepExecutionRuntime.contextManager.getDependencies().config;
-      if (pluginConfig?.maxResponseSize) {
-        const configValue = pluginConfig.maxResponseSize;
-        return typeof configValue === 'number'
-          ? configValue
-          : (configValue as ByteSizeValue).getValueInBytes();
-      }
-
-      // 4. Hardcoded fallback
-      return parseByteSize(DEFAULT_MAX_STEP_SIZE);
-    } catch {
-      return parseByteSize(DEFAULT_MAX_STEP_SIZE);
-    }
+    );
   }
 
   // Helper for handling on-failure, retries, etc.

@@ -995,6 +995,9 @@ importers:
       '@kbn/connector-specs':
         specifier: workspace:*
         version: link:src/platform/packages/shared/kbn-connector-specs
+      '@kbn/connector-specs-runtime':
+        specifier: workspace:*
+        version: link:src/platform/packages/shared/kbn-connector-specs-runtime
       '@kbn/console-plugin':
         specifier: workspace:*
         version: link:src/platform/plugins/shared/console
@@ -3506,6 +3509,9 @@ importers:
       '@kbn/securitysolution-es-utils':
         specifier: workspace:*
         version: link:src/platform/packages/shared/kbn-securitysolution-es-utils
+      '@kbn/securitysolution-esql-runtime':
+        specifier: workspace:*
+        version: link:x-pack/solutions/security/packages/kbn-securitysolution-esql-runtime
       '@kbn/securitysolution-exception-list-components':
         specifier: workspace:*
         version: link:x-pack/solutions/security/packages/kbn-securitysolution-exception-list-components
@@ -3749,6 +3755,9 @@ importers:
       '@kbn/significant-events-plugin':
         specifier: workspace:*
         version: link:x-pack/solutions/observability/plugins/significant_events
+      '@kbn/significant-events-runtime':
+        specifier: workspace:*
+        version: link:x-pack/platform/packages/shared/kbn-significant-events-runtime
       '@kbn/significant-events-schema':
         specifier: workspace:*
         version: link:x-pack/platform/packages/shared/kbn-significant-events-schema
@@ -3815,6 +3824,9 @@ importers:
       '@kbn/streamlang':
         specifier: workspace:*
         version: link:x-pack/platform/packages/shared/kbn-streamlang
+      '@kbn/streamlang-conditions':
+        specifier: workspace:*
+        version: link:x-pack/platform/packages/shared/kbn-streamlang-conditions
       '@kbn/streamlang-yaml-editor':
         specifier: workspace:*
         version: link:x-pack/platform/packages/shared/kbn-streamlang-yaml-editor
@@ -4154,6 +4166,9 @@ importers:
       '@kbn/workflows':
         specifier: workspace:*
         version: link:src/platform/packages/shared/kbn-workflows
+      '@kbn/workflows-action-schema':
+        specifier: workspace:*
+        version: link:src/platform/packages/shared/kbn-workflows-action-schema
       '@kbn/workflows-execution-engine':
         specifier: workspace:*
         version: link:src/platform/plugins/shared/workflows_execution_engine
@@ -4169,6 +4184,12 @@ importers:
       '@kbn/workflows-management-plugin':
         specifier: workspace:*
         version: link:src/platform/plugins/shared/workflows_management
+      '@kbn/workflows-runtime':
+        specifier: workspace:*
+        version: link:src/platform/packages/shared/kbn-workflows-runtime
+      '@kbn/workflows-template-runtime':
+        specifier: workspace:*
+        version: link:src/platform/packages/shared/kbn-workflows-template-runtime
       '@kbn/workflows-ui':
         specifier: workspace:*
         version: link:src/platform/packages/shared/kbn-workflows-ui
@@ -4272,6 +4293,9 @@ importers:
         specifier: 0.223.0
         version: 0.223.0
       '@opentelemetry/context-async-hooks':
+        specifier: 2.12.0
+        version: 2.12.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/core':
         specifier: 2.12.0
         version: 2.12.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/exporter-logs-otlp-grpc':
@@ -6561,6 +6585,9 @@ importers:
       enzyme-to-json:
         specifier: 3.6.2
         version: 3.6.2(enzyme@3.11.0)
+      esbuild:
+        specifier: 0.28.1
+        version: 0.28.1
       eslint:
         specifier: 8.57.0
         version: 8.57.0(supports-color@10.2.2)
@@ -8066,6 +8093,8 @@ importers:
         specifier: 3.0.2
         version: 3.0.2
 
+  src/platform/packages/shared/kbn-connector-specs-runtime: {}
+
   src/platform/packages/shared/kbn-content-management-utils: {}
 
   src/platform/packages/shared/kbn-core-server-benchmarks: {}
@@ -8458,7 +8487,13 @@ importers:
 
   src/platform/packages/shared/kbn-workflows: {}
 
+  src/platform/packages/shared/kbn-workflows-action-schema: {}
+
   src/platform/packages/shared/kbn-workflows-library: {}
+
+  src/platform/packages/shared/kbn-workflows-runtime: {}
+
+  src/platform/packages/shared/kbn-workflows-template-runtime: {}
 
   src/platform/packages/shared/kbn-workflows-ui: {}
 
@@ -9202,6 +9237,8 @@ importers:
 
   x-pack/platform/packages/shared/kbn-shared-components: {}
 
+  x-pack/platform/packages/shared/kbn-significant-events-runtime: {}
+
   x-pack/platform/packages/shared/kbn-significant-events-schema: {}
 
   x-pack/platform/packages/shared/kbn-slo-constants: {}
@@ -9209,6 +9246,8 @@ importers:
   x-pack/platform/packages/shared/kbn-slo-schema: {}
 
   x-pack/platform/packages/shared/kbn-streamlang: {}
+
+  x-pack/platform/packages/shared/kbn-streamlang-conditions: {}
 
   x-pack/platform/packages/shared/kbn-streamlang-tests: {}
 
@@ -9869,6 +9908,8 @@ importers:
   x-pack/solutions/security/packages/kbn-securitysolution-autocomplete: {}
 
   x-pack/solutions/security/packages/kbn-securitysolution-endpoint-exceptions-common: {}
+
+  x-pack/solutions/security/packages/kbn-securitysolution-esql-runtime: {}
 
   x-pack/solutions/security/packages/kbn-securitysolution-exception-list-components: {}
 
@@ -14437,6 +14478,9 @@ packages:
   '@smithy/core@3.36.2':
     resolution: {integrity: sha512-oRw0rB9QSUiCZfEs23G5F4Af+b2rQt1lItIICWu5IejFNd+uPM8SWqiKLMpQ6bX1Q7slsLbjuoE2niErFtkVPQ==}
     engines: {node: '>=18.0.0'}
+    deprecated: |-
+      Deprecated due to a bug in custom logger data redaction. Upgrade to the latest version. If you used a custom logger with this
+        version, review your logs and rotate any credentials or other secrets. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/credential-provider-imds@4.5.2':
     resolution: {integrity: sha512-A9uSdn72ozbRUSit0eib0TW7nXuNPlaeM0zcGkJ+nE6tFcSDbnmtwoxbTCFBukVQcszDAyvsd7+rTduPTXpygg==}
@@ -19545,6 +19589,7 @@ packages:
   http-call@5.3.0:
     resolution: {integrity: sha512-ahwimsC23ICE4kPl9xTBjKB4inbRaeLyZeRunC/1Jy/Z6X8tv22MEAjK+KBOMSVLaqXPTTmd8638waVIKLGx2w==}
     engines: {node: '>=8.0.0'}
+    deprecated: Renamed to @heroku/http-call — please install @heroku/http-call instead.
 
   http-errors@2.0.1:
     resolution: {integrity: sha512-4FbRdAX+bSdmo4AUFuS0WNiPz8NgFt+r8ThgNWmlrjQjt1Q7ZR9+zTlce2859x4KSXrwIsaeTqDoKQmtP8pLmQ==}
@@ -21652,6 +21697,7 @@ packages:
 
   node-abort-controller@3.1.1:
     resolution: {integrity: sha512-AGK2yQKIjRuqnc6VkX2Xj5d+QW8xZ87pa1UK6yA6ouUyuxfHuMP6umE5QK7UmTeOAymo+Zx1Fxiuw9rVx8taHQ==}
+    deprecated: This package is no longer needed on supported Node.js versions. Node.js 16+ includes AbortController and AbortSignal as built-in globals. All Node.js versions requiring this polyfill are end-of-life. Use the built-in globals instead.
 
   node-addon-api@6.1.0:
     resolution: {integrity: sha512-+eawOlIgy680F0kBzPUNFhMZGtJ1YmqM6l4+Crf4IkImjYrO/mqPwRMh352g23uIaQKFItcQ64I7KMaJxHgAVA==}

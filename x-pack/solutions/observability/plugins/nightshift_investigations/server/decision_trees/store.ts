@@ -211,7 +211,7 @@ export const createDecisionTreeStore = ({
   signal,
 }: {
   esClient: ElasticsearchClient;
-  logger: Logger;
+  logger: Pick<Logger, 'debug'>;
   spaceId: string;
   /** Aborts in-flight Elasticsearch requests when the calling step times out. */
   signal?: AbortSignal;

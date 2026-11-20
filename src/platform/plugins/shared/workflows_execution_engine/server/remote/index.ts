@@ -8,13 +8,73 @@
  */
 
 import type { RemoteModule } from '@kbn/core-remote-common';
-import { WorkflowExecutorToken, WorkflowLogToken, WorkflowStorageToken } from './tokens';
+import {
+  NativeActionsToken,
+  WorkflowChildToken,
+  WorkflowControlToken,
+  WorkflowCredentialsToken,
+  WorkflowDataPlaneToken,
+  WorkflowExecutorToken,
+  WorkflowHttpToken,
+  WorkflowLogToken,
+  WorkflowStepRunnerToken,
+  WorkflowStorageToken,
+} from './tokens';
 
-export { WorkflowExecutorToken, WorkflowLogToken, WorkflowStorageToken } from './tokens';
+export {
+  WorkflowExecutorToken,
+  WorkflowLogToken,
+  WorkflowStorageToken,
+  WorkflowStepRunnerToken,
+  WorkflowDataPlaneToken,
+  WorkflowControlToken,
+} from './tokens';
 export type { WorkflowExecutorApi, WorkflowLogApi, WorkflowStorageApi } from './tokens';
 
 export const remoteModule: RemoteModule = {
   providers: [
+    {
+      token: WorkflowCredentialsToken,
+      placement: 'coordinator',
+      modulePath: require.resolve('./workflow_credentials'),
+      exportName: 'WorkflowCredentials',
+    },
+    {
+      token: WorkflowHttpToken,
+      placement: 'executor',
+      modulePath: require.resolve('@kbn/core-http-server-internal/src/worker_http_provider'),
+      exportName: 'WorkerHttpProvider',
+    },
+    {
+      token: NativeActionsToken,
+      placement: 'coordinator',
+      modulePath: require.resolve('./native_actions_api'),
+      exportName: 'NativeActions',
+    },
+    {
+      token: WorkflowChildToken,
+      placement: 'coordinator',
+      modulePath: require.resolve('./native_child_api'),
+      exportName: 'NativeChildApi',
+    },
+    {
+      token: WorkflowStepRunnerToken,
+      placement: 'coordinator',
+      modulePath: require.resolve('./workflow_step_runner'),
+      exportName: 'WorkflowStepRunner',
+    },
+    {
+      token: WorkflowDataPlaneToken,
+      placement: 'executor',
+      modulePath: require.resolve('./executor_data_plane'),
+      exportName: 'ExecutorDataPlane',
+    },
+    {
+      token: WorkflowControlToken,
+      placement: 'coordinator',
+      modulePath: require.resolve('./workflow_control'),
+      exportName: 'WorkflowControl',
+    },
     {
       token: WorkflowExecutorToken,
       placement: 'executor',
@@ -24,15 +84,15 @@ export const remoteModule: RemoteModule = {
     },
     {
       token: WorkflowStorageToken,
-      placement: 'coordinator',
-      modulePath: require.resolve('./workflow_storage'),
-      exportName: 'WorkflowStorage',
+      placement: 'executor',
+      modulePath: require.resolve('./executor_storage'),
+      exportName: 'ExecutorStorage',
     },
     {
       token: WorkflowLogToken,
-      placement: 'coordinator',
-      modulePath: require.resolve('./workflow_log'),
-      exportName: 'WorkflowLog',
+      placement: 'executor',
+      modulePath: require.resolve('./executor_log'),
+      exportName: 'ExecutorLog',
     },
   ],
 };

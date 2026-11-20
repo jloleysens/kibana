@@ -5,21 +5,13 @@
  * 2.0.
  */
 
-import { z } from '@kbn/zod/v4';
 import { StepCategory } from '@kbn/workflows';
 import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
-import { MAX_TEXT_LENGTH } from '@kbn/significant-events-schema';
-import { MAX_KEYWORD_LENGTH } from '../../common';
 import type { InvestigationLocator } from '../../common/locators';
 import type { GetInvestigationsClient } from '../routes/types';
-import { notificationPhaseSchema } from '../lib/notifications/notification_routing';
-import { renderInvestigationSlackMessage } from '../lib/notifications/format_investigation_slack_message';
 
-const inputSchema = z.object({
-  investigation_id: z.string().min(1).max(MAX_KEYWORD_LENGTH),
-  phase: notificationPhaseSchema,
-  reason: z.string().max(MAX_TEXT_LENGTH).optional(),
-});
+import { inputSchema, outputSchema } from '../remote/render_slack_message_schema';
+import { createRenderSlackMessageHandler } from '../remote/render_slack_message';
 
 /**
  * Renders an investigation's lifecycle message for Slack the way Nightshift notifications do, for
@@ -39,30 +31,18 @@ export const renderSlackMessageStepDefinition = ({
     description:
       'Renders an investigation lifecycle message as Slack Block Kit blocks with fallback text.',
     inputSchema,
-    outputSchema: z.object({
-      text: z.string().describe('Fallback and notification text'),
-      blocks: z.array(z.looseObject({ type: z.string() })).describe('Slack Block Kit blocks'),
-    }),
-    handler: async (context) => {
+    outputSchema,
+    handler: createRenderSlackMessageHandler(async (context, investigationId) => {
       const {
-        kibanaUrl,
         workflow: { spaceId },
       } = context.contextManager.getContext();
-      const { investigation_id: investigationId, phase, reason } = inputSchema.parse(context.input);
       const investigation = await getInvestigationsClient(
         context.contextManager.getFakeRequest(),
         spaceId
       ).getNotifiableInvestigation(investigationId);
       return {
-        output: renderInvestigationSlackMessage({
-          investigation,
-          url: new URL(
-            investigationLocator.getRedirectUrl({ investigationId }, { spaceId }),
-            kibanaUrl
-          ).toString(),
-          phase,
-          reason,
-        }),
+        investigation,
+        redirectUrl: investigationLocator.getRedirectUrl({ investigationId }, { spaceId }),
       };
-    },
+    }),
   });

@@ -8,10 +8,12 @@
  */
 
 import type { ElasticsearchClient, KibanaRequest, Logger } from '@kbn/core/server';
+import { recordRemoteTiming } from '@kbn/core-remote-common';
 import type { EsWorkflowExecution } from '@kbn/workflows';
 import { ExecutionStatus, WorkflowRepository } from '@kbn/workflows';
 import { isGraphBuildError, WorkflowGraph } from '@kbn/workflows/graph';
 import { setWorkflowEventChainContext } from '@kbn/workflows-extensions/server';
+import { prepareStepDependencyPlan } from './prepare_step_dependency_plan';
 import { WorkflowGraphSetupError } from './workflow_graph_setup_error';
 import type { WorkflowsExecutionEngineConfig } from '../config';
 
@@ -28,6 +30,7 @@ import type { StepExecutionRepository } from '../repositories/step_execution_rep
 import type { WorkflowExecutionRepository } from '../repositories/workflow_execution_repository';
 import { NodesFactory } from '../step/nodes_factory';
 import type { WorkflowsExecutionEnginePluginStart } from '../types';
+import { createPlannedStepDependencyAnalyzer } from '../workflow_context_manager/step_dependency_plan';
 import { StepExecutionRuntimeFactory } from '../workflow_context_manager/step_execution_runtime_factory';
 import { StepIoService } from '../workflow_context_manager/step_io_service';
 import type { ContextDependencies } from '../workflow_context_manager/types';
@@ -106,11 +109,14 @@ export async function setupDependencies(
   // actionable message and rethrow a typed, non-retryable error — otherwise the raw
   // throw escapes the task runner and the run is force-recovered into an opaque
   // "Execution abandoned" TaskRecoveryError with no failure reason and no step records.
-  let compiledGraph: WorkflowGraph;
+  const dependencyStarted = performance.now();
+  let preparedDefinition: ReturnType<typeof prepareStepDependencyPlan>;
   try {
-    compiledGraph = WorkflowGraph.fromWorkflowDefinition(
-      workflowExecution.workflowDefinition,
-      defaultWorkflowSettings
+    preparedDefinition = prepareStepDependencyPlan(workflowExecution.workflowDefinition, () =>
+      WorkflowGraph.fromWorkflowDefinition(
+        workflowExecution.workflowDefinition,
+        defaultWorkflowSettings
+      )
     );
   } catch (error) {
     if (isGraphBuildError(error)) {
@@ -130,33 +136,21 @@ export async function setupDependencies(
     throw error;
   }
 
+  const { plan: dependencyPlan, cached: dependencyCached } = preparedDefinition;
+  let compiledGraph = preparedDefinition.graph;
+  recordRemoteTiming('definition_preparation', {
+    executionId: workflowExecution.id,
+    cached: dependencyCached,
+    durationMs: performance.now() - dependencyStarted,
+  });
+
   // If the execution is for a specific step, narrow the graph to that step
   if (workflowExecution.stepId) {
     compiledGraph = compiledGraph.getStepGraph(workflowExecution.stepId);
   }
 
-  const workflowExecutionGraph = new WorkflowRuntimeGraph(
-    compiledGraph,
-    workflowExecution.scopeStack ?? []
-  );
-
   const scopedActionsClient = await actions.getActionsClientWithRequest(fakeRequest);
   const connectorExecutor = new ConnectorExecutor(scopedActionsClient);
-
-  const logsRepository = new LogsRepository(dependencies.coreStart.dataStreams, logger);
-  const eventQueue = new WorkflowEventQueue(logsRepository, logger);
-  const workflowEventLoggerFactory = new WorkflowEventLoggerFactory(
-    logger,
-    eventQueue,
-    config.logging.console
-  );
-
-  const workflowLogger = workflowEventLoggerFactory.createLogger({
-    workflowId: workflowExecution.workflowId,
-    workflowName: workflowExecution.workflowDefinition.name,
-    executionId: workflowExecution.id,
-    spaceId: workflowExecution.spaceId,
-  });
 
   const workflowExecutionState = new WorkflowExecutionState(
     workflowExecution as EsWorkflowExecution,
@@ -164,84 +158,136 @@ export async function setupDependencies(
     logger
   );
 
-  const stepIoService = new StepIoService({
-    stepRepository: stepExecutionRepository,
-    state: workflowExecutionState,
-    evictionMinBytes: config.eviction.minPayloadSize.getValueInBytes(),
-    logger,
-  });
-
   // Create telemetry client
   const telemetryClient = new WorkflowExecutionTelemetryClient(coreStart.analytics, logger);
-
-  const workflowExecutionCursor = new WorkflowExecutionCursor({
-    workflowExecutionGraph,
-    nodeId: workflowExecution.currentNodeId,
-    stackFrames: workflowExecution.scopeStack,
-  });
-
-  // Create workflow runtime first (simpler, fewer dependencies)
-  const workflowRuntime = new WorkflowExecutionRuntimeManager({
-    workflowExecution: workflowExecution as EsWorkflowExecution,
-    workflowExecutionGraph,
-    workflowExecutionCursor,
-    workflowLogger,
-    workflowExecutionState,
-    stepIoService,
-    coreStart,
-    dependencies,
-    telemetryClient,
-  });
 
   const esClient: ElasticsearchClient =
     coreStart.elasticsearch.client.asScoped(fakeRequest).asCurrentUser;
 
   const workflowTaskManager = new WorkflowTaskManager(taskManager);
 
-  const enhancedDependencies: ContextDependencies = {
-    ...dependencies,
-    workflowRepository,
-    workflowExecutionRepository,
-    stepExecutionRepository,
-    workflowsExecutionEngine,
-    spaceId,
-    request: fakeRequest,
+  const createRuntime = () => {
+    const workflowExecutionGraph = new WorkflowRuntimeGraph(
+      compiledGraph,
+      workflowExecution.scopeStack ?? []
+    );
+
+    const logsRepository = new LogsRepository(dependencies.coreStart.dataStreams, logger);
+    const eventQueue = new WorkflowEventQueue(logsRepository, logger);
+    const workflowEventLoggerFactory = new WorkflowEventLoggerFactory(
+      logger,
+      eventQueue,
+      config.logging.console
+    );
+
+    const workflowLogger = workflowEventLoggerFactory.createLogger({
+      workflowId: workflowExecution.workflowId,
+      workflowName: workflowExecution.workflowDefinition.name,
+      executionId: workflowExecution.id,
+      spaceId: workflowExecution.spaceId,
+    });
+
+    const stepIoService = new StepIoService({
+      dependencyAnalyzer: createPlannedStepDependencyAnalyzer(dependencyPlan),
+      stepRepository: stepExecutionRepository,
+      state: workflowExecutionState,
+      evictionMinBytes: config.eviction.minPayloadSize.getValueInBytes(),
+      logger,
+    });
+
+    const workflowExecutionCursor = new WorkflowExecutionCursor({
+      workflowExecutionGraph,
+      nodeId: workflowExecution.currentNodeId,
+      stackFrames: workflowExecution.scopeStack,
+    });
+
+    // Create workflow runtime first (simpler, fewer dependencies)
+    const workflowRuntime = new WorkflowExecutionRuntimeManager({
+      workflowExecution: workflowExecution as EsWorkflowExecution,
+      workflowExecutionGraph,
+      workflowExecutionCursor,
+      workflowLogger,
+      workflowExecutionState,
+      stepIoService,
+      coreStart,
+      dependencies,
+      telemetryClient,
+    });
+
+    const enhancedDependencies: ContextDependencies = {
+      ...dependencies,
+      workflowRepository,
+      workflowExecutionRepository,
+      stepExecutionRepository,
+      workflowsExecutionEngine,
+      spaceId,
+      request: fakeRequest,
+    };
+
+    const stepExecutionRuntimeFactory = new StepExecutionRuntimeFactory({
+      workflowExecutionGraph,
+      workflowExecutionState,
+      stepIoService,
+      workflowLogger,
+      esClient,
+      fakeRequest,
+      coreStart,
+      dependencies: enhancedDependencies,
+    });
+
+    const nodesFactory = new NodesFactory(
+      connectorExecutor,
+      workflowRuntime,
+      workflowLogger,
+      workflowExecutionGraph,
+      stepExecutionRuntimeFactory,
+      enhancedDependencies,
+      stepIoService
+    );
+
+    return {
+      workflowExecutionGraph,
+      workflowRuntime,
+      stepExecutionRuntimeFactory,
+      stepIoService,
+      workflowLogger,
+      eventQueue,
+      nodesFactory,
+      workflowExecutionCursor,
+    };
   };
-
-  const stepExecutionRuntimeFactory = new StepExecutionRuntimeFactory({
-    workflowExecutionGraph,
-    workflowExecutionState,
-    stepIoService,
-    workflowLogger,
-    esClient,
-    fakeRequest,
-    coreStart,
-    dependencies: enhancedDependencies,
-  });
-
-  const nodesFactory = new NodesFactory(
-    connectorExecutor,
-    workflowRuntime,
-    workflowLogger,
-    workflowExecutionGraph,
-    stepExecutionRuntimeFactory,
-    enhancedDependencies,
-    stepIoService
-  );
-
+  let runtime: ReturnType<typeof createRuntime> | undefined;
+  const getRuntime = () => (runtime ??= createRuntime());
   return {
-    workflowExecutionGraph,
-    workflowRuntime,
-    stepExecutionRuntimeFactory,
+    dependencyPlan,
     workflowExecutionState,
-    stepIoService,
-    workflowLogger,
-    eventQueue,
     workflowTaskManager,
-    nodesFactory,
     workflowExecutionRepository,
     esClient,
     telemetryClient,
-    workflowExecutionCursor,
+    get workflowExecutionGraph() {
+      return getRuntime().workflowExecutionGraph;
+    },
+    get workflowRuntime() {
+      return getRuntime().workflowRuntime;
+    },
+    get stepExecutionRuntimeFactory() {
+      return getRuntime().stepExecutionRuntimeFactory;
+    },
+    get stepIoService() {
+      return getRuntime().stepIoService;
+    },
+    get workflowLogger() {
+      return getRuntime().workflowLogger;
+    },
+    get eventQueue() {
+      return getRuntime().eventQueue;
+    },
+    get nodesFactory() {
+      return getRuntime().nodesFactory;
+    },
+    get workflowExecutionCursor() {
+      return getRuntime().workflowExecutionCursor;
+    },
   };
 }

@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { cloneDeep } from 'lodash';
+import cloneDeep from 'lodash/cloneDeep';
 import type { SavedObjectsType } from '@kbn/core-saved-objects-server';
 import {
   type IndexMapping,

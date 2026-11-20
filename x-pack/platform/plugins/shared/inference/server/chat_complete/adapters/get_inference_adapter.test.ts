@@ -13,19 +13,19 @@ import { bedrockClaudeAdapter } from './bedrock';
 import { inferenceAdapter } from './inference';
 
 describe('getInferenceAdapter', () => {
-  it('returns the openAI adapter for OpenAI type', () => {
-    expect(getInferenceAdapter(InferenceConnectorType.OpenAI)).toBe(openAIAdapter);
+  it('returns the openAI adapter for OpenAI type', async () => {
+    expect(await getInferenceAdapter(InferenceConnectorType.OpenAI)).toBe(openAIAdapter);
   });
 
-  it('returns the gemini adapter for Gemini type', () => {
-    expect(getInferenceAdapter(InferenceConnectorType.Gemini)).toBe(geminiAdapter);
+  it('returns the gemini adapter for Gemini type', async () => {
+    expect(await getInferenceAdapter(InferenceConnectorType.Gemini)).toBe(geminiAdapter);
   });
 
-  it('returns the bedrock adapter for Bedrock type', () => {
-    expect(getInferenceAdapter(InferenceConnectorType.Bedrock)).toBe(bedrockClaudeAdapter);
+  it('returns the bedrock adapter for Bedrock type', async () => {
+    expect(await getInferenceAdapter(InferenceConnectorType.Bedrock)).toBe(bedrockClaudeAdapter);
   });
 
-  it('returns the inference adapter for Inference type', () => {
-    expect(getInferenceAdapter(InferenceConnectorType.Inference)).toBe(inferenceAdapter);
+  it('returns the inference adapter for Inference type', async () => {
+    expect(await getInferenceAdapter(InferenceConnectorType.Inference)).toBe(inferenceAdapter);
   });
 });

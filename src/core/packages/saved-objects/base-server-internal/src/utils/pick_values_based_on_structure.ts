@@ -7,7 +7,9 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { isPlainObject, get, has } from 'lodash';
+import isPlainObject from 'lodash/isPlainObject';
+import get from 'lodash/get';
+import has from 'lodash/has';
 import { set } from '@kbn/safer-lodash-set';
 
 export function getFlattenedKeys(obj: object): string[] {

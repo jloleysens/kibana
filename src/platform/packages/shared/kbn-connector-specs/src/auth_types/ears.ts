@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { AUTH_TYPE_METADATA, EARS_PROVIDERS } from '@kbn/connector-specs-runtime';
 import { z, lazySchema } from '@kbn/zod/v4';
 import type { AxiosInstance } from 'axios';
 import type { AuthContext, AuthTypeSpec } from '../connector_spec';
@@ -14,8 +15,8 @@ import { isConnectorAuthorizationError } from '../errors/connector_authorization
 import { normalizeAuthorizationHeaderValue } from './oauth_authz_code_and_ears_helpers';
 import * as i18n from './translations';
 
-export const EARS_AUTH_ID = 'ears';
-export const EARS_PROVIDERS = ['google', 'microsoft', 'slack'] as const;
+export { EARS_AUTH_ID } from '@kbn/connector-specs-runtime';
+export { EARS_PROVIDERS } from '@kbn/connector-specs-runtime';
 
 const authSchema = lazySchema(() =>
   z
@@ -46,9 +47,8 @@ type AuthSchemaType = z.infer<typeof authSchema>;
  * 6. Tokens are auto-refreshed when expired during connector execution
  */
 export const Ears: AuthTypeSpec<AuthSchemaType> = {
-  id: EARS_AUTH_ID,
+  ...AUTH_TYPE_METADATA.ears,
   schema: authSchema,
-  authMode: 'per-user',
   configure: async (
     ctx: AuthContext,
     axiosInstance: AxiosInstance,

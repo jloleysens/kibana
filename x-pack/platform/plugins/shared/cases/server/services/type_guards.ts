@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { isPlainObject } from 'lodash';
+import isPlainObject from 'lodash/isPlainObject';
 import type { ExternalReferenceSOAttachmentPayload } from '../../common/types/domain';
 import { AttachmentType, ExternalReferenceStorageType } from '../../common/types/domain';
 import type { AttachmentAttributesV2 } from '../../common/types/domain/attachment/v2';

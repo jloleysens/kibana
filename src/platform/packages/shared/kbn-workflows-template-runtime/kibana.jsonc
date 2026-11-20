@@ -1,0 +1,9 @@
+{
+  "type": "shared-common",
+  "id": "@kbn/workflows-template-runtime",
+  "owner": [
+    "@elastic/workflows-eng"
+  ],
+  "group": "platform",
+  "visibility": "shared"
+}

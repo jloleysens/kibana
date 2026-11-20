@@ -10,7 +10,7 @@ import { groupingFunctionDefinitions } from '@kbn/esql-language/src/commands/def
 import { aggFunctionDefinitions } from '@kbn/esql-language/src/commands/definitions/generated/aggregation_functions';
 import { timeSeriesAggFunctionDefinitions } from '@kbn/esql-language/src/commands/definitions/generated/time_series_agg_functions';
 import type { FunctionDefinition } from '@kbn/esql-language';
-import { memoize } from 'lodash';
+import memoize from 'lodash/memoize';
 
 const STRING_DELIMITER_TOKENS = ['`', "'", '"'];
 const ESCAPE_TOKEN = '\\\\';

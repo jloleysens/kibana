@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { cloneDeep } from 'lodash';
+import cloneDeep from 'lodash/cloneDeep';
 import * as Either from 'fp-ts/Either';
 import type { MigrationLog } from '../../../types';
 import { getAliases } from '../../../model/helpers';

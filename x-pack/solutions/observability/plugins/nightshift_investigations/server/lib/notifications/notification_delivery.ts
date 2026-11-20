@@ -7,7 +7,7 @@
 
 import type { JsonObject } from '@kbn/utility-types';
 import type { ActionTypeExecutorResult } from '@kbn/actions-plugin/common';
-import { investigationNotificationDestinationSchema } from '../../../common';
+import { investigationNotificationDestinationSchema } from '../../../common/notification_schemas';
 import type { InvestigationNotificationDestination, Severity } from '../../../common';
 import { InvalidNotificationDestinationError } from '../../client/errors';
 import type { NotificationPhase, NotificationOutcome } from './notification_routing';

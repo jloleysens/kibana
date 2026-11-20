@@ -6,14 +6,14 @@
  */
 
 import type { KibanaRequest } from '@kbn/core/server';
-import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
+import { createServerStepDefinition } from '@kbn/workflows-extensions/server/step_registry/types';
 import {
   addCommentStepCommonDefinition,
   type AddCommentStepInput,
 } from '../../../common/workflows/steps/add_comment';
 import { COMMENT_ATTACHMENT_TYPE } from '../../../common/constants/attachments';
 import { toLegacyCaseResponse } from '../../common/attachments';
-import type { CasesClient } from '../../client';
+import type { WorkflowCasesClient as CasesClient } from '../types';
 import { createCasesStepHandler, safeParseCaseForWorkflowOutput, withCaseOwner } from './utils';
 
 export const addCommentStepDefinition = (

@@ -42,7 +42,7 @@ export async function processNodeStackMonitoring(
       }
     );
 
-    const nodeImplementation = params.nodesFactory.create(scopeStepExecutionRuntime);
+    const nodeImplementation = await params.nodesFactory.create(scopeStepExecutionRuntime);
 
     if (typeof (nodeImplementation as unknown as MonitorableNode).monitor === 'function') {
       const monitored = nodeImplementation as unknown as MonitorableNode;

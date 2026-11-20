@@ -4,8 +4,12 @@
  * 2.0; you may not use this file except in compliance with the Elastic License
  * 2.0.
  */
+import type { Services } from '@kbn/actions-plugin/server/types';
 import { i18n } from '@kbn/i18n';
-import type { SubActionConnectorType } from '@kbn/actions-plugin/server/sub_action_framework/types';
+import type {
+  SubActionConnectorType,
+  SubActionServices,
+} from '@kbn/actions-plugin/server/sub_action_framework/types';
 import { ValidatorType } from '@kbn/actions-plugin/server/sub_action_framework/types';
 import {
   GenerativeAIForSecurityConnectorFeatureId,
@@ -24,6 +28,7 @@ import {
   SUB_ACTION,
 } from '@kbn/connector-schemas/inference';
 import type { Config, Secrets } from '@kbn/connector-schemas/inference';
+import { getDashboard } from '../lib/gen_ai/gen_ai_dashboard';
 import { InferenceConnector, type InferenceConnectorDependencies } from './inference';
 
 export type { InferenceConnectorDependencies };
@@ -51,12 +56,13 @@ const deleteInferenceEndpoint = async (
   }
 };
 
-export const getConnectorType = (
-  dependencies: InferenceConnectorDependencies = {}
-): SubActionConnectorType<Config, Secrets> => ({
+export const getConnectorType = <ExecutionServices extends SubActionServices = Services>(
+  dependencies: InferenceConnectorDependencies<ExecutionServices> = {}
+): SubActionConnectorType<Config, Secrets, ExecutionServices> => ({
+  getDashboardAttributes: (dashboardId) => getDashboard('Inference', dashboardId).attributes,
   id: CONNECTOR_ID,
   name: CONNECTOR_NAME,
-  getService: (params) => new InferenceConnector(params, dependencies),
+  getService: (params) => new InferenceConnector<ExecutionServices>(params, dependencies),
   schema: {
     config: ConfigSchema,
     secrets: SecretsSchema,

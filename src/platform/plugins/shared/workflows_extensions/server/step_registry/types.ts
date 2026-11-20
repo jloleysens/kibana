@@ -10,6 +10,7 @@
 import type { ElasticsearchClient, KibanaRequest } from '@kbn/core/server';
 import type { OrStringRecursive } from '@kbn/utility-types';
 import type { StepContext } from '@kbn/workflows';
+import { PollStepDefaults } from '@kbn/workflows-runtime';
 import type { z } from '@kbn/zod/v4';
 import type { CommonStepDefinition } from '../../common';
 
@@ -22,19 +23,7 @@ import type { CommonStepDefinition } from '../../common';
  * (or when individual ceiling properties are missing). Override in your step definition for
  * production integrations.
  */
-export const PollStepDefaults = {
-  ceilings: {
-    maxAttempts: 60,
-    maxWaitMs: 60 * 1_000, // 1 minute
-  },
-  policy: {
-    strategy: 'fixed',
-    intervalMs: 1000,
-  },
-} as const satisfies {
-  ceilings: PollCeilings;
-  policy: PollPolicy;
-};
+export { PollStepDefaults } from '@kbn/workflows-runtime';
 
 // -----------------------------------------------------------------------------
 // Result types

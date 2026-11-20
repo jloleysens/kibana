@@ -13,18 +13,35 @@ import type { CoreStart, KibanaRequest } from '@kbn/core/server';
 import type { TaskManagerStartContract } from '@kbn/task-manager-plugin/server';
 import type { WorkflowRepository } from '@kbn/workflows';
 import type { WorkflowsExtensionsServerPluginStart } from '@kbn/workflows-extensions/server';
+import type { ElasticsearchRequestDefinition } from '@kbn/workflows-runtime';
+import type { StepExecutionRuntime } from './step_execution_runtime';
 import type { WorkflowsExecutionEngineConfig } from '../config';
+import type { CallKibanaApiParams, CallKibanaApiResult } from '../lib/call_kibana_api';
+import type { WorkflowDispatchFacts } from '../remote/tokens';
 import type { WorkflowLogEvent } from '../repositories/logs_repository';
 import type { StepExecutionRepository } from '../repositories/step_execution_repository';
 import type { WorkflowExecutionRepository } from '../repositories/workflow_execution_repository';
+import type { RuntimeStepDefinition } from '../step/custom_step_impl/types';
+import type { NodeImplementation } from '../step/node_implementation';
 import type { WorkflowsExecutionEnginePluginStart } from '../types';
 
 export interface ContextDependencies {
+  runtimeMetadata: {
+    elasticsearchDefinition(type: string): ElasticsearchRequestDefinition | undefined;
+    isSpecConnector(type: string): boolean;
+  };
   cloudSetup: CloudSetup | undefined;
   coreStart: CoreStart;
   actions: ActionsPluginStartContract;
   taskManager: TaskManagerStartContract;
   workflowsExtensions: WorkflowsExtensionsServerPluginStart;
+  dispatchFacts?: WorkflowDispatchFacts;
+  callKibanaApi?: <T = unknown>(params: CallKibanaApiParams) => Promise<CallKibanaApiResult<T>>;
+  remoteNode?: (runtime: StepExecutionRuntime) => NodeImplementation | undefined;
+  remoteStepDefinition?: (
+    stepType: string,
+    runtime: StepExecutionRuntime
+  ) => RuntimeStepDefinition | undefined;
   config: WorkflowsExecutionEngineConfig;
   workflowRepository?: WorkflowRepository;
   workflowExecutionRepository?: WorkflowExecutionRepository;

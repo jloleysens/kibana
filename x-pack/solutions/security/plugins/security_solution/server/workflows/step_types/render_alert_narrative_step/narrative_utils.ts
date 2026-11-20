@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { get } from 'lodash/fp';
+import get from 'lodash/fp/get';
 
 /**
  * The raw `_source` of an alert document from Elasticsearch.

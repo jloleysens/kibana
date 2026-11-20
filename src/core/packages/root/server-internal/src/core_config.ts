@@ -26,13 +26,20 @@ const coreConfigSchema = schema.object({
   enableStripUnknownConfigWorkaround: schema.boolean({ defaultValue: false }),
   /**
    * Backend for `core.remote`. Workflows register a graph; they do not choose this value.
-   * `worker_thread` is the proof backend. `in_process` runs the same graph on the coordinator
-   * and does not isolate the event loop.
+   * `child_process` loads a static placement bundle over fork IPC. `in_process` runs the source
+   * graph over a loopback session without isolating the event loop. `worker_thread` is the original proof backend.
    */
   remote: schema.object({
-    backend: schema.oneOf([schema.literal('worker_thread'), schema.literal('in_process')], {
-      defaultValue: 'worker_thread',
-    }),
+    backend: schema.oneOf(
+      [
+        schema.literal('worker_thread'),
+        schema.literal('in_process'),
+        schema.literal('child_process'),
+      ],
+      {
+        defaultValue: 'worker_thread',
+      }
+    ),
   }),
 });
 

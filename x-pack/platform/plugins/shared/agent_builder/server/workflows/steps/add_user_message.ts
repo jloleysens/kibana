@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
+import { createServerStepDefinition } from '@kbn/workflows-extensions/server/step_registry/types';
 import type { StepHandlerContext } from '@kbn/workflows-extensions/server';
 import { AgentExecutionMode, ChatTriggerMode } from '@kbn/agent-builder-common';
 import {
@@ -13,9 +13,11 @@ import {
   type AddUserMessageInputSchema,
 } from '../../../common/workflows/steps/add_user_message';
 import { normalizeOptionalStringParam } from '../../../common/normalize_optional_string_param';
-import type { ConversationStepDeps } from '../registry';
+import type { ConversationMessageStepDeps } from '../registry';
 
-export const addUserMessageStepDefinition = ({ getExecutionService }: ConversationStepDeps) =>
+export const addUserMessageStepDefinition = ({
+  getExecutionService,
+}: ConversationMessageStepDeps) =>
   createServerStepDefinition({
     ...addUserMessageStepCommonDefinition,
     handler: async (context: StepHandlerContext<AddUserMessageInputSchema>) => {

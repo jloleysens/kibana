@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { mapValues } from 'lodash';
+import mapValues from 'lodash/mapValues';
 import type { ToolOptions, ToolSchemaType } from '@kbn/inference-common';
 import { inlineRootJsonSchemaRef, normalizeJsonSchemaTypeArrays } from '@kbn/zod/v4';
 

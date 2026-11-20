@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { uniq } from 'lodash/fp';
+import uniq from 'lodash/fp/uniq';
 import { ALERT_EVENTS_FIELDS } from './fields';
 
 export const buildAlertFieldsRequest = (fields: string[], excludeEcsData?: boolean) =>

@@ -7,9 +7,10 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { AUTH_TYPE_METADATA } from '@kbn/connector-specs-runtime';
 import { z, lazySchema } from '@kbn/zod/v4';
 import type { AxiosInstance } from 'axios';
-import { isString } from 'lodash';
+import isString from 'lodash/isString';
 import type { AuthContext, AuthTypeSpec } from '../connector_spec';
 import * as i18n from './translations';
 
@@ -38,7 +39,7 @@ type NormalizedAuthSchemaType = Record<string, string>;
  * Use for: API keys, custom headers (X-API-Key, etc.)
  */
 export const ApiKeyHeaderAuth: AuthTypeSpec<AuthSchemaType> = {
-  id: 'api_key_header',
+  ...AUTH_TYPE_METADATA.api_key_header,
   schema: authSchema,
   normalizeSchema: (defaults?: Record<string, unknown>) => {
     const existingMeta = authSchema.meta() ?? {};

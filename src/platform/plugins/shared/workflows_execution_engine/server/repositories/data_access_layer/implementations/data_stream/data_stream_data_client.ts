@@ -303,12 +303,16 @@ export class DataStreamDataClient<TExecution extends { id: string }>
   // The stream refresh must fail if the stream is missing. Legacy indexes are optional, so a
   // missing one is ignored; otherwise a purge retry would keep seeing a stale version.
   public async refresh(): Promise<void> {
-    await this.deps.esClient.indices.refresh({ index: this.deps.dataStreamName });
+    const response = await this.deps.esClient.indices.refresh({ index: this.deps.dataStreamName });
+    if (response?._shards?.failed)
+      throw new Error('Unable to establish execution search visibility');
     if (this.additionalIndexesToQuery.length > 0) {
-      await this.deps.esClient.indices.refresh({
+      const legacyResponse = await this.deps.esClient.indices.refresh({
         index: this.additionalIndexesToQuery,
         ignore_unavailable: true,
       });
+      if (legacyResponse?._shards?.failed)
+        throw new Error('Unable to establish execution search visibility');
     }
   }
 

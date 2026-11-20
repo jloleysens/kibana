@@ -12,12 +12,27 @@ export {
   SavedObjectsService,
   CoreSavedObjectsRouteHandlerContext,
   SAVED_OBJECT_TYPES_COUNT,
+  WorkerSavedObjects,
+  WorkerSavedObjectsAdmissionProducer,
+  resolveSavedObjectsType,
+  savedObjectsTypeParity,
+  verifyWorkerSavedObjectsTypeSources,
 } from './src';
 export type {
   InternalSavedObjectsServiceStart,
   InternalSavedObjectsServiceSetup,
   InternalSavedObjectsRequestHandlerContext,
   InternalSavedObjectRouter,
+  SavedObjectsSetupDeps,
+  SavedObjectsStartDeps,
+  SavedObjectsServiceDependencies,
+  WorkerSavedObjectsAdmission,
+  WorkerSavedObjectsAdmissionDependencies,
+  WorkerSavedObjectsLease,
+  WorkerSavedObjectsOptions,
+  WorkerSavedObjectsType,
+  SavedObjectsTypeParity,
+  WorkerSavedObjectsTypeContribution,
 } from './src';
 
 // only used by integration tests

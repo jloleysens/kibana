@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { AUTH_TYPE_METADATA } from '@kbn/connector-specs-runtime';
 import { z, lazySchema } from '@kbn/zod/v4';
 import type { AxiosInstance } from 'axios';
 import type { AuthContext, AuthTypeSpec } from '../connector_spec';
@@ -31,11 +32,8 @@ type AuthSchemaType = z.infer<typeof authSchema>;
  * instance that cannot authenticate is the right outcome if a request ever escapes.
  */
 export const RelayAuth: AuthTypeSpec<AuthSchemaType> = {
-  id: RELAY_AUTH_ID,
+  ...AUTH_TYPE_METADATA.relay,
   schema: authSchema,
-  authMode: 'shared',
-  usesRelayTransport: true,
-  isKibanaManaged: true,
   configure: async (_: AuthContext, axiosInstance: AxiosInstance): Promise<AxiosInstance> => {
     return axiosInstance;
   },

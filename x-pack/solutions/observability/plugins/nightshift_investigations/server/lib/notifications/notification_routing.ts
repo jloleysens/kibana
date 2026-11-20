@@ -12,7 +12,8 @@ import { defineInvestigationAttachment } from '@kbn/agentic-investigations-plugi
 import { investigationNotificationDestinationSchema } from '../../../common';
 
 export const NOTIFICATION_ROUTING_ATTACHMENT_TYPE = 'nightshift.notification_routing';
-export const notificationPhaseSchema = z.enum(['started', 'completed', 'failed']);
+export { notificationPhaseSchema } from './notification_phase';
+import { notificationPhaseSchema } from './notification_phase';
 const identifier = z.string().min(1).max(500);
 const messageId = z.string().min(1).max(100);
 const timestamp = z.string().min(1).max(64);
@@ -73,13 +74,7 @@ export type NotificationRouting = z.infer<typeof notificationRoutingSchema>;
 export type StoredNotificationRouting = Omit<NotificationRouting, 'id'>;
 export type NotificationDestination = NotificationRouting['destinations'][number];
 
-/**
- * Whether the destination replies under a message the caller named, such as the Slack message that
- * triggered an automation, rather than under a thread it starts itself. That thread belongs to the
- * run started for the message, and the run keeps a single message in it.
- */
-export const repliesUnderCallerMessage = ({ params }: Pick<NotificationDestination, 'params'>) =>
-  typeof params.thread_ts === 'string' && params.thread_ts.length > 0;
+export { repliesUnderCallerMessage } from './replies_under_caller_message';
 
 const notificationRoutingStorageSettings = {
   name: '.kibana-nightshift-notification-routing',

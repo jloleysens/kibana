@@ -6,9 +6,9 @@
  */
 
 import type { KibanaRequest } from '@kbn/core/server';
-import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
+import { createServerStepDefinition } from '@kbn/workflows-extensions/server/step_registry/types';
 import { getCasesByAlertIdStepCommonDefinition } from '../../../common/workflows/steps/get_cases_by_alert_id';
-import type { CasesClient } from '../../client';
+import type { WorkflowCasesClient as CasesClient } from '../types';
 import { getCasesClientFromStepsContext, safeParseCaseForWorkflowOutput } from './utils';
 
 export const getCasesByAlertIdStepDefinition = (

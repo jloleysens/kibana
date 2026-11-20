@@ -44,6 +44,7 @@ export const register = <Config extends ActionTypeConfig, Secrets extends Action
     isDeprecated: connector.isDeprecated,
     subFeature: connector.subFeature,
     getService: connector.getService,
+    getDashboardAttributes: connector.getDashboardAttributes,
     getKibanaPrivileges: connector.getKibanaPrivileges,
     preSaveHook: connector.preSaveHook,
     postSaveHook: connector.postSaveHook,

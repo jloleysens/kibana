@@ -5,17 +5,17 @@
  * 2.0.
  */
 
-import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
+import { createServerStepDefinition } from '@kbn/workflows-extensions/server/step_registry/types';
 import type { StepHandlerContext } from '@kbn/workflows-extensions/server';
 import {
   addConversationEventStepCommonDefinition,
   type AddConversationEventInputSchema,
 } from '../../../common/workflows/steps/add_conversation_event';
-import type { ConversationStepDeps } from '../registry';
+import type { ConversationClientStepDeps } from '../registry';
 
 export const addConversationEventStepDefinition = ({
   getConversationClient,
-}: ConversationStepDeps) =>
+}: ConversationClientStepDeps) =>
   createServerStepDefinition({
     ...addConversationEventStepCommonDefinition,
     handler: async (context: StepHandlerContext<AddConversationEventInputSchema>) => {

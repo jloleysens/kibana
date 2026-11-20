@@ -5,9 +5,9 @@
  * 2.0.
  */
 
-import { countBy } from 'lodash';
+import countBy from 'lodash/countBy';
 import pLimit from 'p-limit';
-import type { Logger } from '@kbn/core/server';
+import type { ElasticsearchClient, Logger } from '@kbn/core/server';
 import {
   MAX_ID_LENGTH,
   skipMarkerSchema,
@@ -16,8 +16,9 @@ import {
   type SkipMarker,
 } from '@kbn/significant-events-schema';
 import { StepCategory } from '@kbn/workflows';
-import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
+import { createServerStepDefinition } from '@kbn/workflows-extensions/server/step_registry/types';
 import { lazySchema, z } from '@kbn/zod/v4';
+import { createClassifyDetectionsHandler } from './classify_detections_handler';
 import {
   classifyDetection,
   toMemberState,
@@ -833,89 +834,112 @@ export const classifyDetectionsStepDefinition = ({ logger }: { logger: Logger })
       'Decides per detection whether the discovery agent needs to see it, by comparing fresh evidence from the rule’s stored query with the member state in its live series. Read-only.',
     inputSchema,
     outputSchema,
-    handler: async (context) => {
-      const {
-        rows = [],
-        columns,
-        space_id: spaceId,
-        probe_window_minutes: windowMinutes,
-        probe_timeout_ms: timeoutMs,
-        probe_concurrency: probeConcurrency,
-        budget_ms: budgetMs,
-        max_skip_age_hours: maxSkipAgeHours,
-        review_fresh_minutes: reviewFreshMinutes,
-        baseline_bucket_minutes: bucketMinutes,
-        baseline_window_minutes: baselineWindowMinutes,
-      } = context.input;
-      const shapeProblem = seriesShapeProblem({
+    handler: (context) =>
+      createClassifyDetectionsHandler((input, abortSignal) =>
+        classifyDetections({
+          input,
+          getEsClient: () => context.contextManager.getScopedEsClient(),
+          abortSignal,
+          logger,
+        })
+      )(context),
+  });
+
+export type ClassifyDetectionsInput = z.infer<typeof inputSchema>;
+
+/** Runs the original bounded classifier with explicitly scoped read dependencies. */
+export const classifyDetections = async ({
+  input,
+  getEsClient,
+  abortSignal,
+  logger,
+}: {
+  input: ClassifyDetectionsInput;
+  getEsClient: () => ElasticsearchClient | Promise<ElasticsearchClient>;
+  abortSignal: AbortSignal;
+  logger: Logger;
+}): Promise<{ output: ClassifyDetectionsOutput }> => {
+  const {
+    rows = [],
+    columns,
+    space_id: spaceId,
+    probe_window_minutes: windowMinutes,
+    probe_timeout_ms: timeoutMs,
+    probe_concurrency: probeConcurrency,
+    budget_ms: budgetMs,
+    max_skip_age_hours: maxSkipAgeHours,
+    review_fresh_minutes: reviewFreshMinutes,
+    baseline_bucket_minutes: bucketMinutes,
+    baseline_window_minutes: baselineWindowMinutes,
+  } = input;
+  const shapeProblem = seriesShapeProblem({
+    bucketMinutes,
+    windowMinutes: baselineWindowMinutes,
+    probeWindowMinutes: windowMinutes,
+  });
+  if (shapeProblem) {
+    logger.error(`classifyDetections sends the rows on: ${shapeProblem}`);
+    return { output: failOpen({ rows, columns }) };
+  }
+  const esClient = await getEsClient();
+  const ruleEventsClient = new RuleEventsClient({ esClient, space: spaceId });
+
+  const now = Date.now();
+  const window = {
+    from: new Date(now - windowMinutes * 60_000).toISOString(),
+    to: new Date(now).toISOString(),
+  };
+
+  const run: StoredQueryRunner = (params) =>
+    runStoredQuery({
+      ...params,
+      esClient,
+      timeoutMs,
+      deadlineAt: now + budgetMs,
+      abortSignal,
+    });
+
+  const output = await classifyBatch({
+    rows,
+    columns,
+    maxSkipAgeMs: maxSkipAgeHours * 3_600_000,
+    now,
+    probeWindowMinutes: windowMinutes,
+    probeSpanBuckets: probeSpanInBuckets({ probeWindowMinutes: windowMinutes, bucketMinutes }),
+    reviewFreshMs: reviewFreshMinutes * 60_000,
+    probeConcurrency,
+    // A live series with no write for longer than the skip age cannot rest a skip anyway.
+    findLiveMemberships: (ruleUuids) =>
+      ruleEventsClient.findLiveMemberships({
+        ruleUuids,
+        from: new Date(now - maxSkipAgeHours * 3_600_000).toISOString(),
+      }),
+    probe: (query) => runProbe({ query, window, run }),
+    // One series query per rule that is probed or has an agent review.
+    observe: (query) =>
+      observeMatchSeries({
+        query,
+        now,
+        run,
         bucketMinutes,
         windowMinutes: baselineWindowMinutes,
-        probeWindowMinutes: windowMinutes,
-      });
-      if (shapeProblem) {
-        logger.error(`classifyDetections sends the rows on: ${shapeProblem}`);
-        return { output: failOpen({ rows, columns }) };
-      }
-      const esClient = context.contextManager.getScopedEsClient();
-      const ruleEventsClient = new RuleEventsClient({ esClient, space: spaceId });
-
-      const now = Date.now();
-      const window = {
-        from: new Date(now - windowMinutes * 60_000).toISOString(),
-        to: new Date(now).toISOString(),
-      };
-
-      const run: StoredQueryRunner = (params) =>
-        runStoredQuery({
-          ...params,
-          esClient,
-          timeoutMs,
-          deadlineAt: now + budgetMs,
-          abortSignal: context.abortSignal,
-        });
-
-      const output = await classifyBatch({
-        rows,
-        columns,
-        maxSkipAgeMs: maxSkipAgeHours * 3_600_000,
-        now,
-        probeWindowMinutes: windowMinutes,
-        probeSpanBuckets: probeSpanInBuckets({ probeWindowMinutes: windowMinutes, bucketMinutes }),
-        reviewFreshMs: reviewFreshMinutes * 60_000,
-        probeConcurrency,
-        // A live series with no write for longer than the skip age cannot rest a skip anyway.
-        findLiveMemberships: (ruleUuids) =>
-          ruleEventsClient.findLiveMemberships({
-            ruleUuids,
-            from: new Date(now - maxSkipAgeHours * 3_600_000).toISOString(),
-          }),
-        probe: (query) => runProbe({ query, window, run }),
-        // One series query per rule that is probed or has an agent review.
-        observe: (query) =>
-          observeMatchSeries({
-            query,
-            now,
-            run,
-            bucketMinutes,
-            windowMinutes: baselineWindowMinutes,
-          }),
-      }).catch((error: unknown) => {
-        const reason = error instanceof Error ? error.message : String(error);
-        logger.error(`classifyDetections failed, sending the rows on unjudged: ${reason}`);
-        return failOpen({ rows, columns });
-      });
-
-      logger.info(
-        `classifyDetections ${JSON.stringify({
-          detections: output.skipped_count + output.needs_agent_count,
-          skipped: output.skipped_count,
-          held_back: output.held_back_count,
-          failed: output.failed,
-          needs_agent: output.needs_agent_count,
-          reasons: output.reason_counts,
-          probes: output.probe_status_counts,
-        })}`
-      );
-      return { output };
-    },
+      }),
+  }).catch((error: unknown) => {
+    const reason = error instanceof Error ? error.message : String(error);
+    logger.error(`classifyDetections failed, sending the rows on unjudged: ${reason}`);
+    return failOpen({ rows, columns });
   });
+
+  logger.info(
+    `classifyDetections ${JSON.stringify({
+      detections: output.skipped_count + output.needs_agent_count,
+      skipped: output.skipped_count,
+      held_back: output.held_back_count,
+      failed: output.failed,
+      needs_agent: output.needs_agent_count,
+      reasons: output.reason_counts,
+      probes: output.probe_status_counts,
+    })}`
+  );
+  return { output };
+};

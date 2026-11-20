@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { has } from 'lodash';
+import has from 'lodash/has';
 import type { DataViewFieldBase, DataViewBaseNoFields } from '../../es_query';
 import type { Filter, FilterMeta } from './types';
 

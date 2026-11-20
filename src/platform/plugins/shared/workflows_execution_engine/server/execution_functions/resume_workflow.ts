@@ -10,6 +10,7 @@
 import type { KibanaRequest, Logger } from '@kbn/core/server';
 import { ExecutionStatus, isTerminalStatus } from '@kbn/workflows';
 import { completeIdentityFailureCleanup } from './complete_identity_failure_cleanup';
+import { executeWorkflowRemotely, type RemoteWorkflowExecution } from './execute_workflow_remotely';
 import { finalizeWorkflowIdentityFailure } from './finalize_workflow_identity_failure';
 import { handlePostExecutionLoop } from './handle_post_execution_loop';
 import { setupDependencies } from './setup_dependencies';
@@ -49,7 +50,9 @@ async function resumeWorkflowWithRequest({
   internalResumeWorkflowExecution,
   workflowExecutionRepository,
   stepExecutionRepository,
+  executeRemote,
 }: {
+  executeRemote?: RemoteWorkflowExecution;
   workflowRunId: string;
   spaceId: string;
   signal: AbortSignal;
@@ -89,19 +92,7 @@ async function resumeWorkflowWithRequest({
     throw error;
   }
 
-  const {
-    workflowRuntime,
-    stepExecutionRuntimeFactory,
-    workflowExecutionState,
-    stepIoService,
-    workflowLogger,
-    eventQueue,
-    nodesFactory,
-    workflowExecutionGraph,
-    esClient,
-    workflowTaskManager,
-    workflowExecutionCursor,
-  } = setupResult;
+  const { dependencyPlan, workflowExecutionState, workflowTaskManager } = setupResult;
 
   const loadedExecution = workflowExecutionState.getWorkflowExecution();
   if (isTerminalStatus(loadedExecution.status)) {
@@ -113,13 +104,16 @@ async function resumeWorkflowWithRequest({
 
   const waitingForInput = loadedExecution.status === ExecutionStatus.WAITING_FOR_INPUT;
   const hasResumeInput = loadedExecution.context?.resumeInput != null;
-  const node = loadedExecution.currentNodeId ? workflowRuntime.getCurrentNode() : undefined;
+  const node = loadedExecution.currentNodeId
+    ? setupResult.workflowRuntime.getCurrentNode()
+    : undefined;
   if (
     !loadedExecution.cancelRequested &&
     (loadedExecution.status === ExecutionStatus.WAITING || (waitingForInput && !hasResumeInput)) &&
     node?.type !== 'enter-parallel' &&
     node?.stepId
   ) {
+    const { stepIoService, workflowExecutionGraph, workflowExecutionCursor } = setupResult;
     // Read persisted metadata before deciding whether this notification may advance the workflow.
     await stepIoService.load();
     const stepExecution = workflowExecutionState.getLatestStepExecution(node.stepId);
@@ -138,6 +132,38 @@ async function resumeWorkflowWithRequest({
       return { retryAt: new Date(nextRunAt) };
     }
   }
+
+  if (executeRemote) {
+    await executeWorkflowRemotely({
+      executeRemote,
+      dependencyPlan,
+      fakeRequest,
+      signal,
+      workflowsExecutionEngine,
+      workflowRunId,
+      spaceId,
+      logger,
+      workflowExecutionRepository,
+      stepExecutionRepository,
+      internalResumeWorkflowExecution,
+      workflowTaskManager,
+      meteringService,
+      cloudSetup: dependencies.cloudSetup,
+    });
+    return {};
+  }
+
+  const {
+    workflowExecutionGraph,
+    workflowRuntime,
+    stepExecutionRuntimeFactory,
+    stepIoService,
+    workflowLogger,
+    eventQueue,
+    nodesFactory,
+    workflowExecutionCursor,
+    esClient,
+  } = setupResult;
 
   await workflowRuntime.resume();
 

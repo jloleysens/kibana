@@ -184,7 +184,8 @@ import { setupAlertsCapabilitiesSwitcher } from './lib/capabilities/alerts_capab
 import { securityAlertsProfileInitializer } from './lib/anonymization';
 import { registerWorkflowSteps } from './workflows/step_types';
 import { AlertGraphEs } from './remote/alert_graph_es';
-import { AlertGraphEsToken } from './remote/tokens';
+import { AlertGraphEsToken, FingerprintPolicyToken } from './remote/tokens';
+import { FingerprintPolicy } from './remote/fingerprint_policy';
 import { setFingerprintCreateAllowed } from './workflows/step_types/match_attack_fingerprints/match_attack_fingerprints';
 import {
   registerSecurityManagedWorkflowOwner,
@@ -903,6 +904,7 @@ export class Plugin implements ISecuritySolutionPlugin {
       registerSecurityManagedWorkflowOwner(plugins.workflowsExtensions);
     }
 
+    core.remote.bind(FingerprintPolicyToken, (scopes) => new FingerprintPolicy(scopes));
     core.remote.bind(AlertGraphEsToken, (scopes) => {
       return new AlertGraphEs(scopes, async (request) => {
         const [coreStart] = await core.getStartServices();

@@ -12,12 +12,12 @@ import type {
   AnonymizationRule,
   RegexAnonymizationRule,
 } from '@kbn/ai-anonymization-common';
-import { partition } from 'lodash';
+import partition from 'lodash/partition';
 import type { AnonymizationState, DetectedMatch } from './types';
 import { executeRegexRules } from './execute_regex_rules';
 import { compileRulePattern, usesNativeFallback } from './execute_regex_rule_task';
 import { executeNerRule } from './execute_ner_rule';
-import type { RegexWorkerService } from './regex_worker_service';
+import type { RegexWorker } from './regex_worker_service';
 import { resolveOverlapsAndMask } from './resolve_overlaps_and_mask';
 
 const shouldIgnoreNerModelError = (error: unknown): boolean => {
@@ -132,7 +132,7 @@ export async function anonymizeRecords<T extends Record<string, string | undefin
 }: {
   input: T[];
   anonymizationRules: AnonymizationRule[];
-  regexWorker: RegexWorkerService;
+  regexWorker: RegexWorker;
   esClient: ElasticsearchClient;
   salt?: string;
   knownReplacements?: Array<{ anonymized: string; original: string }>;
@@ -152,7 +152,7 @@ export async function anonymizeRecords({
 }: {
   input: Array<Record<string, string>>;
   anonymizationRules: AnonymizationRule[];
-  regexWorker: RegexWorkerService;
+  regexWorker: RegexWorker;
   esClient: ElasticsearchClient;
   salt?: string;
   knownReplacements?: Array<{ anonymized: string; original: string }>;

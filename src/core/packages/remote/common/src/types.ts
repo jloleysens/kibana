@@ -20,10 +20,12 @@ export interface RemoteProviderDeclaration {
   readonly modulePath: string;
   readonly exportName: string;
   readonly role?: RemoteProviderRole;
+  readonly needs?: readonly ServiceToken<unknown>[];
 }
 
 export interface RemoteContributionDeclaration {
   readonly kind: ServiceToken<unknown>;
+  readonly needs?: readonly ServiceToken<unknown>[];
   readonly stepType: string;
   readonly modulePath: string;
   readonly exportName: string;
@@ -53,6 +55,7 @@ export interface RemoteWorkerSpec {
     readonly exportName: string;
   }>;
   readonly contributions: ReadonlyArray<{
+    readonly kindId?: string;
     readonly stepType: string;
     readonly modulePath: string;
     readonly exportName: string;

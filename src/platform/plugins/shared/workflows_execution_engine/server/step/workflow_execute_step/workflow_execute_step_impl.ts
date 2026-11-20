@@ -32,14 +32,17 @@ export interface WorkflowExecuteStepImplInit {
   node: WorkflowExecuteGraphNode | WorkflowExecuteAsyncGraphNode;
   stepExecutionRuntime: StepExecutionRuntime;
   workflowExecutionRuntime: WorkflowExecutionRuntimeManager;
-  workflowRepository: WorkflowRepository;
+  workflowRepository: Pick<WorkflowRepository, 'getWorkflow'>;
   spaceId: string;
   request: KibanaRequest;
-  workflowsExecutionEngine: WorkflowsExecutionEnginePluginStart;
-  workflowExecutionRepository: WorkflowExecutionRepository;
-  stepExecutionRepository: StepExecutionRepository;
+  workflowsExecutionEngine: Pick<
+    WorkflowsExecutionEnginePluginStart,
+    'executeWorkflow' | 'cancelWorkflowExecution'
+  >;
+  workflowExecutionRepository: Pick<WorkflowExecutionRepository, 'getWorkflowExecutionById'>;
+  stepExecutionRepository: Pick<StepExecutionRepository, 'getStepExecutionsByWorkflowExecution'>;
   workflowLogger: IWorkflowEventLogger;
-  config: WorkflowsExecutionEngineConfig;
+  config: Pick<WorkflowsExecutionEngineConfig, 'maxWorkflowDepth'>;
 }
 
 export class WorkflowExecuteStepImpl implements NodeImplementation, CancellableNode {
@@ -108,6 +111,8 @@ export class WorkflowExecuteStepImpl implements NodeImplementation, CancellableN
    */
   private handleResult(result: StrategyResult): void {
     const { stepExecutionRuntime, workflowExecutionRuntime } = this.init;
+    // Cancellation owns the terminal state even if child scheduling settles afterward.
+    if (stepExecutionRuntime.abortController.signal.aborted) return;
     if (result.status === 'completed') {
       stepExecutionRuntime.finishStep(result.output);
       workflowExecutionRuntime.navigateToNextNode();

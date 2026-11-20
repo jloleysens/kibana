@@ -1,0 +1,10 @@
+{
+  "type": "shared-common",
+  "id": "@kbn/securitysolution-esql-runtime",
+  "owner": [
+    "@elastic/security-detection-engineering"
+  ],
+  "group": "security",
+  "visibility": "private",
+  "description": "Runtime-only Security ES|QL metadata normalization"
+}

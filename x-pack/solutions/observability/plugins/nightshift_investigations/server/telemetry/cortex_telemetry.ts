@@ -23,7 +23,7 @@ export interface AppliedCortexEdit {
 }
 
 export interface CortexTelemetry {
-  reportHydrated: (pages: ReadonlyArray<{ entity_type: CortexEntityType }>) => void;
+  reportHydrated: (pages: ReadonlyArray<{ entity_type: CortexEntityType }>) => void | Promise<void>;
   reportEditsApplied: (edits: readonly AppliedCortexEdit[]) => void;
 }
 

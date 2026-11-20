@@ -12,7 +12,7 @@ import type { AnonymizationFailureMode, AnonymizationRule } from '@kbn/ai-anonym
 import { anonymizeRecords } from './anonymize_records';
 import { messageFromAnonymizationRecords } from './message_from_anonymization_records';
 import { messageToAnonymizationRecords } from './message_to_anonymization_records';
-import type { RegexWorkerService } from './regex_worker_service';
+import type { RegexWorker } from './regex_worker_service';
 
 export async function anonymizeMessages({
   system,
@@ -28,7 +28,7 @@ export async function anonymizeMessages({
   system?: string | undefined;
   messages: Message[];
   anonymizationRules: AnonymizationRule[];
-  regexWorker: RegexWorkerService;
+  regexWorker: RegexWorker;
   esClient: ElasticsearchClient;
   salt?: string;
   knownReplacements?: Array<{ anonymized: string; original: string }>;

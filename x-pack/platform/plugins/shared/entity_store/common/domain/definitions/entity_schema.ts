@@ -5,8 +5,8 @@
  * 2.0.
  */
 
-import type { Condition } from '@kbn/streamlang';
-import { conditionSchema as streamlangConditionSchema } from '@kbn/streamlang';
+import type { Condition } from '@kbn/streamlang-conditions';
+import { conditionSchema as streamlangConditionSchema } from '@kbn/streamlang-conditions';
 import { z, lazySchema } from '@kbn/zod/v4';
 import { assertDynamicDefinitionRules, dynamicBlockSchema } from './dynamic';
 

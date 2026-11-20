@@ -12,13 +12,14 @@ import { ToolResultType } from '@kbn/agent-builder-common/tools/tool_result';
 import type { BuiltinToolDefinition } from '@kbn/agent-builder-server';
 import type { Logger } from '@kbn/core/server';
 import type { SandboxPluginStart, SandboxSession } from '@kbn/sandbox-plugin/server';
+import { SANDBOX_BASH_TOOL_ID } from './tool_ids';
 import type { ResolveConnectorCredentials } from './connector_credentials';
 import { redactSecrets } from './connector_credentials';
 import { getConversationId, getSandboxCallContext } from './tool_utils';
 import { SANDBOX_VIEW_FILE_TOOL_ID } from './view_file_tool';
 import type { SandboxWorkspaceManager } from './sandbox_workspace_manager';
 
-export const SANDBOX_BASH_TOOL_ID = 'nightshift_sandbox_bash';
+export { SANDBOX_BASH_TOOL_ID } from './tool_ids';
 
 /**
  * Upper bound (and default) for a sandbox command's own timeout. The sandbox client adds a 10s

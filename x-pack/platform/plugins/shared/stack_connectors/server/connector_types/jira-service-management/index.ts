@@ -5,44 +5,15 @@
  * 2.0.
  */
 
-import {
-  AlertingConnectorFeatureId,
-  SecurityConnectorFeatureId,
-  UptimeConnectorFeatureId,
-  WorkflowsConnectorFeatureId,
-  AgentBuilderConnectorFeatureId,
-} from '@kbn/actions-plugin/common';
-import { urlAllowListValidator } from '@kbn/actions-plugin/server';
-import { ValidatorType } from '@kbn/actions-plugin/server/sub_action_framework/types';
 import type { SubActionConnectorType } from '@kbn/actions-plugin/server/sub_action_framework/types';
-import {
-  CONNECTOR_ID,
-  CONNECTOR_NAME,
-  ConfigSchema,
-  SecretsSchema,
-} from '@kbn/connector-schemas/jira-service-management';
 import type { Config, Secrets } from '@kbn/connector-schemas/jira-service-management';
-import { JiraServiceManagementConnector } from './connector';
+import { getJiraServiceManagementConnectorType as getExecutionConnectorType } from './get_connector_type';
 import { renderParameterTemplates } from './render_template_variables';
 
 export const getJiraServiceManagementConnectorType = (): SubActionConnectorType<
   Config,
   Secrets
-> => {
-  return {
-    getService: (params) => new JiraServiceManagementConnector(params),
-    minimumLicenseRequired: 'platinum',
-    name: CONNECTOR_NAME,
-    id: CONNECTOR_ID,
-    schema: { config: ConfigSchema, secrets: SecretsSchema },
-    validators: [{ type: ValidatorType.CONFIG, validator: urlAllowListValidator('apiUrl') }],
-    supportedFeatureIds: [
-      AlertingConnectorFeatureId,
-      UptimeConnectorFeatureId,
-      SecurityConnectorFeatureId,
-      WorkflowsConnectorFeatureId,
-      AgentBuilderConnectorFeatureId,
-    ],
-    renderParameterTemplates,
-  };
-};
+> => ({
+  ...getExecutionConnectorType(),
+  renderParameterTemplates,
+});

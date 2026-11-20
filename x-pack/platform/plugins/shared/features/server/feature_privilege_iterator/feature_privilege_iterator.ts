@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import _ from 'lodash';
+import cloneDeep from 'lodash/cloneDeep';
 
 import type { LicenseType } from '@kbn/licensing-types';
 import type { AlertingKibanaPrivilege } from '../../common/alerting_kibana_privilege';
@@ -75,7 +75,7 @@ function mergeWithSubFeatures(
   feature: KibanaFeature,
   licenseHasAtLeast: FeaturePrivilegeIteratorOptions['licenseHasAtLeast']
 ) {
-  const mergedConfig = _.cloneDeep(privilege);
+  const mergedConfig = cloneDeep(privilege);
   for (const subFeaturePrivilege of subFeaturePrivilegeIterator(feature, licenseHasAtLeast)) {
     if (subFeaturePrivilege.includeIn !== 'read' && subFeaturePrivilege.includeIn !== privilegeId) {
       continue;

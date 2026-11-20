@@ -88,6 +88,8 @@ export class PlainIndexDataClient<TExecution extends { id: string }>
   }
 
   public async refresh(): Promise<void> {
-    await this.deps.esClient.indices.refresh({ index: this.deps.indexName });
+    const response = await this.deps.esClient.indices.refresh({ index: this.deps.indexName });
+    if (response?._shards?.failed)
+      throw new Error('Unable to establish execution search visibility');
   }
 }

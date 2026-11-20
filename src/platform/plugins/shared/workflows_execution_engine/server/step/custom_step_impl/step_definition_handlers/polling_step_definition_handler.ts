@@ -8,15 +8,13 @@
  */
 
 import type { AtomicGraphNode } from '@kbn/workflows/graph';
-import { ExecutionError } from '@kbn/workflows/server';
-import { PollStepDefaults } from '@kbn/workflows-extensions/server';
 import type {
   DurablePhaseResult,
   PollCeilings,
   PollHandlerContext,
-  ServerPollStepDefinition,
   StepHandlerContext,
 } from '@kbn/workflows-extensions/server';
+import { ExecutionError, PollStepDefaults } from '@kbn/workflows-runtime';
 import { createBaseHandlerContext } from './create_base_handler_context';
 import { DURABLE_STEP_STATE_KEY, type DurableStepState } from './durable_step_state';
 import { applyBackoffJitter } from '../../../utils/backoff_jitter/backoff_jitter';
@@ -24,7 +22,7 @@ import type { StepExecutionRuntime } from '../../../workflow_context_manager/ste
 import type { IWorkflowEventLogger } from '../../../workflow_event_logger';
 import { toExecutionError } from '../../errors';
 import type { RunStepResult } from '../../node_implementation';
-import type { CustomStepDefinitionHandler } from '../types';
+import type { CustomStepDefinitionHandler, RuntimePollStepDefinition } from '../types';
 
 /**
  * After the first poll continuation, force Task Manager scheduling even when sleep is under
@@ -39,7 +37,7 @@ type PolicyCalculationResult =
 
 export class PollPolicyStepHandler implements CustomStepDefinitionHandler {
   constructor(
-    private readonly stepDefinition: ServerPollStepDefinition,
+    private readonly stepDefinition: RuntimePollStepDefinition,
     private readonly node: AtomicGraphNode,
     private readonly stepExecutionRuntime: StepExecutionRuntime,
     private readonly workflowLogger: IWorkflowEventLogger

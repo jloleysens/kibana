@@ -193,6 +193,9 @@ export type {
   HttpSelfResponse,
   HttpSelfScopedClient,
   HttpSelfService,
+  HttpSelfRunCredential,
+  HttpSelfClientDispatchConfig,
+  HttpSelfClientSslConfig,
   HttpProtocol,
 } from './src/http_contract';
 

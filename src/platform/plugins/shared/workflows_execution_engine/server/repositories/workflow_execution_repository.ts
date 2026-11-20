@@ -13,7 +13,7 @@ import {
   ConcurrencySlotOccupyingExecutionStatuses,
   ExecutionStatus,
   NonTerminalExecutionStatuses,
-} from '@kbn/workflows';
+} from '@kbn/workflows-runtime';
 import type { WorkflowExecutionsDataClient } from './data_access_layer';
 import { getBulkUpdaterWriteResult } from './data_access_layer/lib/bulk/bulk_updater_write_result';
 
@@ -98,11 +98,12 @@ export class WorkflowExecutionRepository {
 
   public async tryUpdateWorkflowExecutionWithVersion(
     update: Partial<EsWorkflowExecution> & { id: string },
-    revision: { seqNo: number; primaryTerm: number }
+    revision: { seqNo: number; primaryTerm: number },
+    options: { refresh?: boolean | 'wait_for' } = {}
   ): Promise<boolean> {
     const response = await this.workflowExecutionsDataClient.bulk({
       items: [{ operation: 'update', document: update, ...revision }],
-      refresh: 'wait_for',
+      refresh: options.refresh ?? 'wait_for',
     });
     const item = response.items[0];
     if (!item) throw new Error(`Missing update result for workflow execution ${update.id}.`);

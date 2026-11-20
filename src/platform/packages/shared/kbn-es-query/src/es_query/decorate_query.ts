@@ -9,7 +9,8 @@
 
 import type { estypes } from '@elastic/elasticsearch';
 import type { SerializableRecord } from '@kbn/utility-types';
-import { extend, defaults } from 'lodash';
+import extend from 'lodash/extend';
+import defaults from 'lodash/defaults';
 import { getTimeZoneFromSettings } from '../utils';
 import { isEsQueryString } from './es_query_dsl';
 

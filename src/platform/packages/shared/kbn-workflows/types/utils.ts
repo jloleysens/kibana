@@ -16,7 +16,7 @@ import type {
   StabilityLevel,
   WorkflowStepExecutionDto,
 } from './v1';
-import { ExecutionStatus, KNOWN_HTTP_METHODS, TerminalExecutionStatuses } from './v1';
+import { ExecutionStatus, KNOWN_HTTP_METHODS } from './v1';
 import { getBuiltInStepDefinition } from '../spec/builtin_step_definitions';
 import type {
   BuiltInStepProperty,
@@ -67,9 +67,7 @@ export function isDangerousStatus(status: ExecutionStatus) {
   return status === ExecutionStatus.FAILED || status === ExecutionStatus.CANCELLED;
 }
 
-export function isTerminalStatus(status: ExecutionStatus) {
-  return TerminalExecutionStatuses.includes(status);
-}
+export { isTerminalStatus } from '@kbn/workflows-runtime';
 
 export function isFailedBeforeSteps(
   status: ExecutionStatus,

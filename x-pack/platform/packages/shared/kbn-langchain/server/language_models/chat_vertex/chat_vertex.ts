@@ -11,7 +11,7 @@ import type { PublicMethodsOf } from '@kbn/utility-types';
 import type { BaseMessage, UsageMetadata } from '@langchain/core/messages';
 import type { ChatGenerationChunk } from '@langchain/core/outputs';
 import { ChatVertexAI } from '@langchain/google-vertexai';
-import { get } from 'lodash/fp';
+import get from 'lodash/fp/get';
 import type { Readable } from 'stream';
 
 import type { Logger } from '@kbn/logging';

@@ -6,10 +6,10 @@
  */
 
 import type { AxiosError, AxiosResponse } from 'axios';
-import type { ConnectorTokenClientContract } from '../types';
+import type { ConnectorTokenStore } from '../types';
 
 interface GetDeleteTokenAxiosInterceptorParams {
-  connectorTokenClient: ConnectorTokenClientContract;
+  connectorTokenClient: ConnectorTokenStore;
   connectorId: string;
 }
 export const getDeleteTokenAxiosInterceptor = ({

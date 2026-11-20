@@ -6,7 +6,7 @@
  */
 import type { Logger } from '@kbn/core/server';
 import type { ActionsConfigurationUtilities } from '../actions_config';
-import type { ConnectorToken, ConnectorTokenClientContract } from '../types';
+import type { ConnectorToken, ConnectorTokenStore } from '../types';
 import { createJWTAssertion } from './create_jwt_assertion';
 import { requestOAuthJWTToken } from './request_oauth_jwt_token';
 
@@ -31,7 +31,7 @@ interface GetOAuthJwtAccessTokenOpts {
     config: GetOAuthJwtConfig;
     secrets: GetOAuthJwtSecrets;
   };
-  connectorTokenClient?: ConnectorTokenClientContract;
+  connectorTokenClient?: ConnectorTokenStore;
 }
 
 export const getOAuthJwtAccessToken = async ({

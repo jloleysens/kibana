@@ -16,7 +16,7 @@ import type {
   KqlWildcardNode,
 } from '@kbn/es-query/src/kuery/node_types';
 import { KQL_NODE_TYPE_WILDCARD, nodeTypes } from '@kbn/es-query/src/kuery/node_types';
-import { parseJsPropertyAccess } from '@kbn/workflows/common/utils';
+import { parseJsPropertyAccess } from '@kbn/workflows-runtime';
 
 export function evaluateKql(kql: string | KueryNode, context: Record<string, any>): boolean {
   const kqlAst = typeof kql === 'string' ? fromKueryExpression(kql) : kql;

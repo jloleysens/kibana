@@ -10,8 +10,8 @@
 import { z } from '@kbn/zod/v4';
 import type { AuthMode, ConnectorSpec } from '../connector_spec';
 import * as authTypeSpecs from '../all_auth_types';
-import { getSchemaForAuthType } from '.';
-import { isEarsExperimentalAuthType } from './ears_experimental_utils';
+import { getSchemaForAuthType } from './get_schema_for_auth_type';
+import { isEarsExperimentalAuthType } from './is_ears_experimental_auth_type';
 
 interface GenerateOptions {
   isPfxEnabled?: boolean;

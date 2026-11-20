@@ -1,0 +1,269 @@
+/*
+ * Copyright Elasticsearch B.V. and/or licensed to Elasticsearch B.V. under one
+ * or more contributor license agreements. Licensed under the "Elastic License
+ * 2.0", the "GNU Affero General Public License v3.0 only", and the "Server Side
+ * Public License v 1"; you may not use this file except in compliance with, at
+ * your election, the "Elastic License 2.0", the "GNU Affero General Public
+ * License v3.0 only", or the "Server Side Public License, v 1".
+ */
+
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { build, type Metafile } from 'esbuild';
+import { buildRemoteBundle } from './build';
+import { discoverRemoteManifests } from './discover';
+import { measureShellInputs } from './shell_inputs';
+import { measureShellHeap } from './shell_heap';
+
+// Total bytes are reporting-only; lazy shared Core capabilities are budgeted on first use.
+// Measured SO/uiSettings union: 12,687,273 bytes; reporting threshold includes ~10% headroom.
+const BUNDLE_REPORTING_CEILING_BYTES = 14_000_000;
+const MAX_IDLE_RSS_BYTES = 80 * 1024 * 1024;
+
+it('measures the real workflow bundle and bounds the idle host without loading steps or authoring', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'runner-budgets-'));
+  try {
+    const bundle = await buildRemoteBundle({
+      manifests: discoverRemoteManifests(resolve(__dirname, '../../..')),
+      graph: {
+        id: 'workflows',
+        root: 'workflows.executor',
+        dependencies: ['workflows.stepCatalog'],
+        contributions: ['workflows.step', 'workflows.connector'],
+      },
+      outdir: join(directory, 'bundle'),
+      reportingCeilingBytes: BUNDLE_REPORTING_CEILING_BYTES,
+    });
+    expect(bundle.bytes).toBeGreaterThan(0);
+    expect(JSON.parse(readFileSync(join(directory, 'bundle/bundle_size.json'), 'utf8'))).toEqual({
+      bytes: bundle.bytes,
+      reportingCeilingBytes: BUNDLE_REPORTING_CEILING_BYTES,
+      exceedsReportingCeiling: bundle.bytes > BUNDLE_REPORTING_CEILING_BYTES,
+    });
+    const probe = join(directory, 'probe.cjs');
+    const hook = join(directory, 'hook.mjs');
+    const loads = join(directory, 'loads.jsonl');
+    await build({
+      entryPoints: [
+        resolve(
+          __dirname,
+          '../../core/packages/remote/server-internal/src/__fixtures__/probe_bundle.ts'
+        ),
+      ],
+      bundle: true,
+      platform: 'node',
+      format: 'cjs',
+      outfile: probe,
+    });
+    await build({
+      entryPoints: [resolve(__dirname, '__fixtures__/module_load_hook.ts')],
+      bundle: true,
+      platform: 'node',
+      format: 'esm',
+      outfile: hook,
+    });
+    interface IdleSample {
+      memory: { gcAvailable: boolean; usage: { rss: number } };
+      implementationRoots: string[];
+    }
+    const clean = JSON.parse(
+      execFileSync(process.execPath, [probe, dirname(bundle.entry)], { encoding: 'utf8' })
+    ) as { samples: IdleSample[] };
+    expect(clean.samples).toHaveLength(3);
+    const coreRoots = [
+      bundle.spec.root,
+      ...bundle.spec.executorProviders,
+      ...(bundle.spec.catalog ? [bundle.spec.catalog] : []),
+    ].map(({ modulePath }) => modulePath);
+    expect(coreRoots.map((path) => basename(path)).sort()).toEqual([
+      'executor_data_plane.ts',
+      'executor_log.ts',
+      'executor_storage.ts',
+      'spec_runtime.ts',
+      'step_catalog.ts',
+      'worker_http_provider.ts',
+      'workflow_executor.ts',
+    ]);
+    for (const sample of clean.samples) {
+      expect(sample.memory.gcAvailable).toBe(true);
+      expect(sample.memory.usage.rss).toBeLessThanOrEqual(MAX_IDLE_RSS_BYTES);
+      expect(sample.implementationRoots.sort()).toEqual(coreRoots.slice().sort());
+    }
+    execFileSync(process.execPath, [probe, dirname(bundle.entry)], {
+      env: { ...process.env, RUNNER_LOAD_HOOK: hook, RUNNER_LOAD_LOG: loads },
+    });
+    const metafile = JSON.parse(
+      readFileSync(join(dirname(bundle.entry), 'metafile.json'), 'utf8')
+    ) as Metafile;
+    const shellInputs = measureShellInputs(metafile, bundle.spec, 'actions.specRuntime');
+    expect(shellInputs.inputs).toEqual([
+      'x-pack/platform/plugins/shared/actions/server/remote/spec_runtime.ts',
+      'x-pack/platform/plugins/shared/actions/server/remote/tokens.ts',
+    ]);
+    expect(shellInputs.inputBytes).toBeLessThanOrEqual(3300);
+    process.stdout.write(`${JSON.stringify({ shellInputs })}\n`);
+    const outputs = new Map(
+      Object.entries(metafile.outputs).map(([path, output]) => [realpathSync(path), output])
+    );
+    const loadedInputs = new Set<string>();
+    for (const line of readFileSync(loads, 'utf8').trim().split('\n')) {
+      const { url } = JSON.parse(line) as { url: string };
+      const output = outputs.get(realpathSync(fileURLToPath(url)));
+      for (const [path, input] of Object.entries(output?.inputs ?? {})) {
+        if (input.bytesInOutput > 0) loadedInputs.add(path);
+      }
+    }
+    const connectorProbe = join(directory, 'connector_probe.mjs');
+    await build({
+      entryPoints: [resolve(__dirname, '__fixtures__/connector_execution_probe.ts')],
+      bundle: true,
+      platform: 'node',
+      format: 'esm',
+      outfile: connectorProbe,
+    });
+    const isolatedProbe = join(directory, 'shell_heap_probe.mjs');
+    await build({
+      entryPoints: [resolve(__dirname, '__fixtures__/shell_heap_probe.ts')],
+      bundle: true,
+      platform: 'node',
+      format: 'esm',
+      outfile: isolatedProbe,
+    });
+    const shellHeap = measureShellHeap(isolatedProbe, dirname(bundle.entry));
+    process.stdout.write(`${JSON.stringify({ shellHeap })}\n`);
+    expect(new Set(shellHeap.samples.map(({ pid }) => pid)).size).toBe(5);
+    // Supervisor-approved isolated-method calibration: 54,664B median + ~17% headroom;
+    // same two reviewed shell sources, no new dependency inputs.
+    expect(shellHeap.median).toBeLessThanOrEqual(64_000);
+    const shellHeapSamples: number[] = [];
+    for (let index = 0; index < 3; index++) {
+      const execution = JSON.parse(
+        execFileSync(process.execPath, ['--expose-gc', connectorProbe, dirname(bundle.entry)], {
+          encoding: 'utf8',
+        })
+      ) as {
+        samples: Array<{ phase: string; heapUsed: number }>;
+        requests: number;
+        prepares: number;
+        finalizes: number[];
+      };
+      expect(execution.samples.map(({ phase }) => phase)).toEqual([
+        'engine_core',
+        'shell',
+        'shared_module_import',
+        'type_and_first_execution',
+        'warm_execution',
+        'drained',
+      ]);
+      const [core, shell, shared, firstType] = execution.samples;
+      shellHeapSamples.push(shell.heapUsed - core.heapUsed);
+      // Measured ~14.8MiB shared-module growth; 20MiB ceiling includes headroom, not a type allowance.
+      expect(shared.heapUsed - shell.heapUsed).toBeLessThanOrEqual(20 * 1024 * 1024);
+      // Includes first real HTTP/basic-auth execution and the local fake: conservative attribution.
+      expect(firstType.heapUsed - shared.heapUsed).toBeLessThanOrEqual(2 * 1024 * 1024);
+      expect(execution.requests).toBe(2);
+      expect(execution.prepares).toBe(2);
+      expect(execution.finalizes).toEqual([2]);
+    }
+    process.stdout.write(`${JSON.stringify({ shellHeapSamples })}\n`);
+    // Business-curve shell deltas remain reporting-only; isolated samples above own the SAME guard.
+    expect(loadedInputs.size).toBeGreaterThan(0);
+    expect(
+      [...loadedInputs].filter((path) =>
+        /(?:workflows-template-runtime|liquidjs|node_modules\/(?:zod|joi)\/|kbn-i18n|server\/step\/|server\/steps\/data\/data_.*_runtime\.ts)/.test(
+          path
+        )
+      )
+    ).toEqual([]);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}, 60_000);
+
+it.each([
+  '@kbn/repo-info/index.js',
+  '@kbn/repo-packages/index.js',
+  '@elastic/eui/index.js',
+  '@elastic/charts/index.js',
+  '@emotion/react/index.js',
+  'react/index.js',
+  'react-dom/index.js',
+  'lodash/lodash.js',
+  'lodash-es/lodash.js',
+  'lodash/fp.js',
+])('refuses forbidden worker dependency %s', async (dependency) => {
+  const directory = mkdtempSync(join(tmpdir(), 'runner-forbidden-'));
+  try {
+    const module = join(directory, 'node_modules', dependency);
+    mkdirSync(dirname(module), { recursive: true });
+    writeFileSync(module, 'export const value = 1;');
+    writeFileSync(
+      join(directory, 'root.ts'),
+      `export { value as Root } from ${JSON.stringify(module)};`
+    );
+    const manifest = join(directory, 'index.ts');
+    writeFileSync(
+      manifest,
+      `export const remoteModule = { providers: [{ token: 'root', role: 'root', placement: 'executor', modulePath: require.resolve('./root.ts'), exportName: 'Root' }] };`
+    );
+    await expect(
+      buildRemoteBundle({
+        manifests: [manifest],
+        graph: { id: 'forbidden', root: 'root', dependencies: [], contributions: [] },
+        outdir: join(directory, 'bundle'),
+      })
+    ).rejects.toThrow('Forbidden worker inputs');
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+it('refuses an oversized lazy step exclusive closure without increasing step or idle budgets', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'runner-step-budget-'));
+  try {
+    writeFileSync(join(directory, 'root.ts'), 'export class Root {}');
+    writeFileSync(
+      join(directory, 'payload.ts'),
+      `export const payload = '${'x'.repeat(256 * 1024)}';`
+    );
+    writeFileSync(
+      join(directory, 'step.ts'),
+      "import { payload } from './payload'; export class Step { run() { return payload; } }"
+    );
+    const manifest = join(directory, 'index.ts');
+    writeFileSync(
+      manifest,
+      `export const remoteModule = {
+      providers: [{ token: 'root', role: 'root', placement: 'executor', modulePath: require.resolve('./root.ts'), exportName: 'Root' }],
+      contributions: [{ kind: 'step', stepType: 'oversized', modulePath: require.resolve('./step.ts'), exportName: 'Step' }]
+    };`
+    );
+    const outdir = join(directory, 'bundle');
+    await expect(
+      buildRemoteBundle({
+        manifests: [manifest],
+        graph: { id: 'step-budget', root: 'root', dependencies: [], contributions: ['step'] },
+        outdir,
+      })
+    ).rejects.toThrow('Worker step exclusive chunks exceed 262144 bytes');
+    const sizes = JSON.parse(readFileSync(join(outdir, 'step_chunks.json'), 'utf8')) as Array<{
+      stepType: string;
+      exclusiveBytes: number;
+    }>;
+    expect(sizes).toEqual([
+      {
+        stepType: 'oversized',
+        exclusiveBytes: expect.any(Number),
+        entryBytes: expect.any(Number),
+        modulePath: expect.any(String),
+        sharedBytes: expect.any(Number),
+      },
+    ]);
+    expect(sizes[0].exclusiveBytes).toBeGreaterThan(256 * 1024);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

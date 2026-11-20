@@ -17,6 +17,8 @@
   "kbn_references": [
     "@kbn/agent-builder-elastic-ai-index-ki-types",
     "@kbn/core",
+    "@kbn/core-remote-common",
+    "@kbn/core-remote-server",
     "@kbn/task-manager-plugin",
     "@kbn/features-plugin",
     "@kbn/spaces-plugin",
@@ -69,6 +71,7 @@
     "@kbn/workflows-management-plugin",
     "@kbn/workflows-extensions",
     "@kbn/workflows",
+    "@kbn/workflows-runtime",
     "@kbn/core-http-server-utils",
     "@kbn/eval-kql",
     "@kbn/react-query",

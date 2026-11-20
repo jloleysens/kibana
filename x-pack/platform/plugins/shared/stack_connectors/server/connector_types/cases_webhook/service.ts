@@ -12,10 +12,8 @@ import type { Logger } from '@kbn/core/server';
 import { renderMustacheStringNoEscape } from '@kbn/actions-plugin/server/lib/mustache_renderer';
 import { request } from '@kbn/actions-plugin/server/lib/axios_utils';
 import type { ActionsConfigurationUtilities } from '@kbn/actions-plugin/server/actions_config';
-import {
-  combineHeadersWithBasicAuthHeader,
-  mergeConfigHeadersWithSecretHeaders,
-} from '@kbn/actions-plugin/server/lib';
+import { combineHeadersWithBasicAuthHeader } from '@kbn/actions-plugin/server/lib/get_basic_auth_header';
+import { mergeConfigHeadersWithSecretHeaders } from '@kbn/actions-plugin/server/lib/merge_config_headers_with_secret_headers';
 import type { ConnectorUsageCollector } from '@kbn/actions-plugin/server/types';
 import { CONNECTOR_NAME } from '@kbn/connector-schemas/cases_webhook';
 import { WebhookMethods } from '@kbn/connector-schemas/common/auth/constants';

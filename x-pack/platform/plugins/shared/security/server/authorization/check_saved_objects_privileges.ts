@@ -21,7 +21,7 @@ function uniq<T>(arr: T[]): T[] {
 
 export const checkSavedObjectsPrivilegesWithRequestFactory = (
   checkPrivilegesWithRequest: CheckPrivilegesWithRequest,
-  getSpacesService: () => SpacesService | undefined
+  getSpacesService: () => Pick<SpacesService, 'namespaceToSpaceId'> | undefined
 ): CheckSavedObjectsPrivilegesWithRequest => {
   return function checkSavedObjectsPrivilegesWithRequest(
     request: KibanaRequest

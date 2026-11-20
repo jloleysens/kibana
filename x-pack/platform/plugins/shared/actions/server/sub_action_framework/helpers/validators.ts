@@ -6,7 +6,7 @@
  */
 
 import { i18n } from '@kbn/i18n';
-import { get } from 'lodash';
+import get from 'lodash/get';
 import type { ValidatorServices } from '../../types';
 
 const validProtocols: string[] = ['http:', 'https:'];

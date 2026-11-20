@@ -6,7 +6,7 @@
  */
 
 import { i18n } from '@kbn/i18n';
-import { DEFAULT_APP_CATEGORIES } from '@kbn/core/server';
+import { DEFAULT_APP_CATEGORIES } from '@kbn/core-application-common';
 import {
   DASHBOARD_KI_TYPE,
   VISUALIZATION_KI_TYPE,

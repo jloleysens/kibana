@@ -6,9 +6,9 @@
  */
 
 import type { KibanaRequest } from '@kbn/core/server';
-import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
+import { createServerStepDefinition } from '@kbn/workflows-extensions/server/step_registry/types';
 import { deleteAttachmentsStepCommonDefinition } from '../../../common/workflows/steps/delete_attachments';
-import type { CasesClient } from '../../client';
+import type { WorkflowCasesClient as CasesClient } from '../types';
 import { DELETE_ATTACHMENTS_FAILED_MESSAGE } from './translations';
 import { getCasesClientFromStepsContext, getErrorMessage } from './utils';
 

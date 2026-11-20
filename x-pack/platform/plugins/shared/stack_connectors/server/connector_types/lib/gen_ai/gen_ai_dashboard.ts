@@ -6,7 +6,10 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import type { SavedObject } from '@kbn/core-saved-objects-common/src/server_types';
+import type {
+  SavedObject,
+  SavedObjectAttributes,
+} from '@kbn/core-saved-objects-common/src/server_types';
 import {
   CONNECTOR_NAME as BEDROCK_TITLE,
   CONNECTOR_ID as BEDROCK_CONNECTOR_ID,
@@ -29,7 +32,7 @@ export const getDashboardTitle = (title: string) => `${title} Token Usage`;
 export const getDashboard = (
   genAIProvider: 'OpenAI' | 'Bedrock' | 'Gemini' | 'Inference',
   dashboardId: string
-): SavedObject => {
+): SavedObject<SavedObjectAttributes> => {
   let attributes = {
     provider: OPENAI_TITLE,
     dashboardTitle: getDashboardTitle(OPENAI_TITLE),

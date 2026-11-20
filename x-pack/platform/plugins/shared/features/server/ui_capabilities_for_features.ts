@@ -5,7 +5,8 @@
  * 2.0.
  */
 
-import _ from 'lodash';
+import merge from 'lodash/merge';
+import omit from 'lodash/omit';
 import type { RecursiveReadonly, Writable } from '@kbn/utility-types';
 import type { Capabilities as UICapabilities } from '@kbn/core/server';
 import type { ElasticsearchFeature, KibanaFeature } from '../common';
@@ -105,7 +106,7 @@ function isKibanaFeature(
 
 function buildCapabilities(...allFeatureCapabilities: FeatureCapabilities[]): UICapabilities {
   return allFeatureCapabilities.reduce<UICapabilities>((acc, capabilities) => {
-    const mergableCapabilities = _.omit(capabilities, ...ELIGIBLE_FLAT_MERGE_KEYS);
+    const mergableCapabilities = omit(capabilities, ...ELIGIBLE_FLAT_MERGE_KEYS);
 
     const mergedFeatureCapabilities = {
       ...mergableCapabilities,
@@ -120,11 +121,7 @@ function buildCapabilities(...allFeatureCapabilities: FeatureCapabilities[]): UI
     });
 
     ELIGIBLE_DEEP_MERGE_KEYS.forEach((key) => {
-      mergedFeatureCapabilities[key] = _.merge(
-        {},
-        mergedFeatureCapabilities[key],
-        capabilities[key]
-      );
+      mergedFeatureCapabilities[key] = merge({}, mergedFeatureCapabilities[key], capabilities[key]);
     });
 
     return mergedFeatureCapabilities;

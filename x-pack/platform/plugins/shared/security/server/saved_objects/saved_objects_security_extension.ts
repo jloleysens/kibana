@@ -67,7 +67,7 @@ import { AccessControlService, MANAGE_ACCESS_CONTROL_ACTION } from './access_con
 import { isAuthorizedInAllSpaces } from './authorization_utils';
 import { SecurityAction } from './types';
 import { ALL_SPACES_ID, UNKNOWN_SPACE } from '../../common/constants';
-import { savedObjectEvent } from '../audit';
+import { savedObjectEvent } from '../audit/audit_events';
 
 interface Params {
   actions: Actions;

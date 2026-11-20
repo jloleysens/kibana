@@ -8,7 +8,7 @@
 import type { Logger } from '@kbn/core/server';
 import type { SandboxSession } from '@kbn/sandbox-plugin/server';
 import { formatHydrateNotification } from '../lib/hydrate_notification';
-import { SANDBOX_VIEW_FILE_TOOL_ID } from '../tools/sandbox_bash/view_file_tool';
+import { SANDBOX_VIEW_FILE_TOOL_ID } from '../tools/sandbox_bash/view_file_tool_ids';
 import { formatPageRefs, previewText } from './log_format';
 import type { MemoryPageStore } from './page_store';
 import {
@@ -111,7 +111,9 @@ export const parseMemoryCatalog = (raw: string): MemoryCatalogEntry[] => {
   }
 };
 
-const readMemoryCatalog = async (session: SandboxSession): Promise<MemoryCatalogEntry[]> => {
+const readMemoryCatalog = async (
+  session: Pick<SandboxSession, 'statFiles' | 'readFiles'>
+): Promise<MemoryCatalogEntry[]> => {
   const [metadata] = await session.statFiles([MEMORY_INDEX_PATH]);
   if (!metadata?.exists) {
     return [];
@@ -151,7 +153,7 @@ const readMemoryCatalog = async (session: SandboxSession): Promise<MemoryCatalog
 };
 
 const existingFilePaths = async (
-  session: SandboxSession,
+  session: Pick<SandboxSession, 'statFiles'>,
   paths: string[]
 ): Promise<Set<string>> => {
   if (paths.length === 0) {
@@ -181,8 +183,23 @@ const assertWriteResults = (
   }
 };
 
-export const materializeMemory = async ({
+export const materializeMemory = (options: {
+  session: SandboxSession;
+  store: MemoryPageStore;
+  logger: Logger;
+  query?: string;
+  sampleBeta?: SampleBeta;
+  now?: () => number;
+  keepCount?: number;
+}): Promise<MaterializeMemoryResult> =>
+  materializeMemoryWithSessionState({
+    ...options,
+    getIsReset: () => options.session.isReset,
+  });
+
+export const materializeMemoryWithSessionState = async ({
   session,
+  getIsReset,
   store,
   logger,
   query,
@@ -190,9 +207,10 @@ export const materializeMemory = async ({
   now = () => Date.now() / 1000,
   keepCount = MEMORY_KEEP_COUNT,
 }: {
-  session: SandboxSession;
+  session: Pick<SandboxSession, 'statFiles' | 'readFiles' | 'mkdirs' | 'writeFiles'>;
+  getIsReset: () => boolean | Promise<boolean>;
   store: MemoryPageStore;
-  logger: Logger;
+  logger: Pick<Logger, 'info' | 'warn' | 'debug'>;
   query?: string;
   sampleBeta?: SampleBeta;
   now?: () => number;
@@ -271,7 +289,9 @@ export const materializeMemory = async ({
     `Memory materialize keep ${recalledIds.length}/${candidates.length}: ${formatPageRefs(pages)}`
   );
 
-  const podReset = session.isReset;
+  const resetState = getIsReset();
+  // Preserve the original synchronous property read; only a remote session needs an await.
+  const podReset = typeof resetState === 'boolean' ? resetState : await resetState;
   const priorCatalog = podReset ? [] : await readMemoryCatalog(session);
   const keepPaths = pages.map(pagePath);
   const alreadyOnDisk = podReset ? new Set<string>() : await existingFilePaths(session, keepPaths);

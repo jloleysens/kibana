@@ -7,22 +7,22 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { omit } from 'lodash';
+import omit from 'lodash/omit';
 import type { KibanaRequest } from '@kbn/core/server';
 import type { JsonValue } from '@kbn/utility-types';
 import type { EsWorkflow } from '@kbn/workflows';
-import {
-  ExecutionStatus,
-  isTerminalStatus,
-  toWorkflowExecutionEngineModel,
-  WORKFLOW_STEP_TRIGGER_SOURCE,
-} from '@kbn/workflows';
-import { ExecutionError } from '@kbn/workflows/server';
+import { toWorkflowExecutionEngineModel } from '@kbn/workflows';
 import type {
   EsWorkflowExecution,
   EsWorkflowStepExecution,
   WorkflowStepExecutionDto,
 } from '@kbn/workflows/types/v1';
+import {
+  ExecutionError,
+  ExecutionStatus,
+  isTerminalStatus,
+  WORKFLOW_STEP_TRIGGER_SOURCE,
+} from '@kbn/workflows-runtime';
 import type { StepExecutionRepository } from '../../../repositories/step_execution_repository';
 import type { WorkflowExecutionRepository } from '../../../repositories/workflow_execution_repository';
 import type { WorkflowsExecutionEnginePluginStart } from '../../../types';
@@ -41,9 +41,18 @@ interface SubWorkflowWaitState extends Record<string, unknown> {
 
 export class WorkflowExecuteSyncStrategy {
   constructor(
-    private workflowsExecutionEngine: WorkflowsExecutionEnginePluginStart,
-    private workflowExecutionRepository: WorkflowExecutionRepository,
-    private stepExecutionRepository: StepExecutionRepository,
+    private workflowsExecutionEngine: Pick<
+      WorkflowsExecutionEnginePluginStart,
+      'executeWorkflow' | 'cancelWorkflowExecution'
+    >,
+    private workflowExecutionRepository: Pick<
+      WorkflowExecutionRepository,
+      'getWorkflowExecutionById'
+    >,
+    private stepExecutionRepository: Pick<
+      StepExecutionRepository,
+      'getStepExecutionsByWorkflowExecution'
+    >,
     private stepExecutionRuntime: StepExecutionRuntime,
     private workflowLogger: IWorkflowEventLogger
   ) {}

@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { isFunction } from 'lodash';
+import isFunction from 'lodash/isFunction';
 import { v4 as uuidv4, v5 as uuidv5 } from 'uuid';
 import type {
   SavedObjectsFindOptions,

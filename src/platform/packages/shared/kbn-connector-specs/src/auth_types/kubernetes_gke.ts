@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { AUTH_TYPE_METADATA } from '@kbn/connector-specs-runtime';
 import { z, lazySchema } from '@kbn/zod/v4';
 import type { AuthTypeDefinition } from '../connector_spec';
 import * as i18n from './translations';
@@ -52,6 +53,6 @@ export type KubernetesGkeAuthSchema = z.infer<typeof authSchema>;
  * source without long-lived cluster tokens.
  */
 export const KubernetesGkeAuth: AuthTypeDefinition = {
-  id: KUBERNETES_GKE_AUTH_ID,
+  ...AUTH_TYPE_METADATA.kubernetes_gke,
   schema: authSchema,
 };

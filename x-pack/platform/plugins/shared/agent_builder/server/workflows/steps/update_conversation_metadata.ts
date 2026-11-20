@@ -5,19 +5,19 @@
  * 2.0.
  */
 
-import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
+import { createServerStepDefinition } from '@kbn/workflows-extensions/server/step_registry/types';
 import type { StepHandlerContext } from '@kbn/workflows-extensions/server';
 import {
   updateConversationMetadataStepCommonDefinition,
   type UpdateConversationMetadataStepInput,
 } from '../../../common/workflows/steps/update_conversation_metadata';
 import { createConversationPublicClient } from '../../services/conversation/conversation_public_client';
-import type { ConversationStepDeps } from '../registry';
+import type { ConversationAgentStepDeps } from '../registry';
 
 export const updateConversationMetadataStepDefinition = ({
   getConversationClient,
   getAgentRegistry,
-}: ConversationStepDeps) =>
+}: ConversationAgentStepDeps) =>
   createServerStepDefinition({
     ...updateConversationMetadataStepCommonDefinition,
     handler: async (context: StepHandlerContext) => {

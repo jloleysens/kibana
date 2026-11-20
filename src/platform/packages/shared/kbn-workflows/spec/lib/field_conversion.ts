@@ -10,21 +10,18 @@
 import type { JSONSchema7, JSONSchema7Definition } from 'json-schema';
 import type { Document } from 'yaml';
 import { parseDocument } from 'yaml';
+import { isManualTrigger } from './is_manual_trigger';
 import {
   builtinWorkflowInputDefinitions,
   KIBANA_WORKFLOW_INPUT_DEFINITION_REF_PREFIX,
-} from '../builtin_workflow_input_definitions';
+} from '../builtin_workflow_input_definitions_data';
 import type { WorkflowOutput, WorkflowYaml } from '../schema';
 import type { JsonModelSchemaType } from '../schema/common/json_model_schema';
 import {
   isSchemaValuedAdditionalProperties,
   type JsonSchema,
-} from '../schema/common/json_model_shape_schema';
-import {
-  isManualTrigger,
-  type LegacyWorkflowInput,
-  type WorkflowInput,
-} from '../schema/triggers/manual_trigger_schema';
+} from '../schema/common/json_model_shape';
+import type { LegacyWorkflowInput, WorkflowInput } from '../schema/triggers/manual_trigger_schema';
 
 export type NormalizableFieldSchema =
   | JsonModelSchemaType

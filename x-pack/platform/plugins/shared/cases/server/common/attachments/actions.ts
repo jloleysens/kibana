@@ -6,7 +6,7 @@
  */
 
 import Boom from '@hapi/boom';
-import { isPlainObject } from 'lodash';
+import isPlainObject from 'lodash/isPlainObject';
 import type { AttachmentRequest, AttachmentRequestV2 } from '../../../common/types/api';
 import type {
   AttachmentAttributesV2,

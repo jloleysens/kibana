@@ -6,7 +6,7 @@
  */
 
 import type { KibanaRequest } from '@kbn/core/server';
-import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
+import { createServerStepDefinition } from '@kbn/workflows-extensions/server/step_registry/types';
 import {
   assignCaseStepCommonDefinition,
   type AssignCaseStepInput,
@@ -35,7 +35,7 @@ import {
   setTitleStepCommonDefinition,
   type SetTitleStepInput,
 } from '../../../common/workflows/steps/set_title';
-import type { CasesClient } from '../../client';
+import type { WorkflowCasesClient as CasesClient } from '../types';
 import { createUpdateSingleCaseStepHandler } from './update_case_helpers';
 
 export const assignCaseStepDefinition = (

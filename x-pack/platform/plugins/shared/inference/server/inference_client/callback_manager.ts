@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { isArray } from 'lodash';
+import isArray from 'lodash/isArray';
 import type {
   InferenceCompleteCallbackHandler,
   InferenceErrorCallbackHandler,

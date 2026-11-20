@@ -6,6 +6,7 @@
  */
 
 import type { Severity } from '@kbn/significant-events-schema';
+import type { SlackThreadReference } from './investigation_subject';
 import type { InvestigationTriggerType } from './workflows/triggers';
 
 export type { Severity } from '@kbn/significant-events-schema';
@@ -82,41 +83,12 @@ export interface StartInvestigationRequest {
   slack_thread?: SlackThreadReference;
 }
 
-/** A Slack thread, by the workspace and channel ids and the thread's root message ts. */
-export interface SlackThreadReference {
-  workspace: string;
-  channel: string;
-  thread_ts: string;
-  /** The Relay's key for the thread, when the event or post came through the Relay. */
-  external_conversation_id?: string;
-}
-
-/**
- * The key the Relay and Agent Builder identify a Slack thread's conversation by
- * (`origin.external_conversation_id`), which is also the thread's subject id.
- * Channel ids are only unique within a workspace.
- */
-export const toSlackThreadKey = ({
-  workspace,
-  channel,
-  threadTs,
-}: {
-  workspace: string;
-  channel: string;
-  threadTs: string;
-}): string => ['slack', workspace, channel, threadTs].map(encodeURIComponent).join(':');
-
-/**
- * The thread's subject id: the Relay's key when given, otherwise the same key built from the
- * thread's ids.
- */
-export const toSlackThreadSubjectId = ({
-  workspace,
-  channel,
-  thread_ts: threadTs,
-  external_conversation_id: externalConversationId,
-}: SlackThreadReference): string =>
-  externalConversationId || toSlackThreadKey({ workspace, channel, threadTs });
+export {
+  toSlackThreadKey,
+  toSlackThreadSubjectId,
+  DEFAULT_MANUAL_INVESTIGATION_SUBJECT_ID,
+} from './investigation_subject';
+export type { SlackThreadReference } from './investigation_subject';
 
 export interface StartInvestigationResponse {
   /**
@@ -128,15 +100,9 @@ export interface StartInvestigationResponse {
   investigation_id: string;
 }
 
-export const NIGHTSHIFT_INVESTIGATION_AGENT_ID = 'nightshift.investigation';
+export { NIGHTSHIFT_INVESTIGATION_AGENT_ID, NIGHTSHIFT_ASSISTANT_AGENT_ID } from './agent_ids';
 
-/** Answers one telemetry question from the sandbox without running an investigation. */
-export const NIGHTSHIFT_ASSISTANT_AGENT_ID = 'nightshift.assistant';
-
-/** Bound for investigation ids, concurrency keys, and other keyword-sized strings. */
-export const MAX_KEYWORD_LENGTH = 500;
-
-export const DEFAULT_MANUAL_INVESTIGATION_SUBJECT_ID = 'manual';
+export { MAX_KEYWORD_LENGTH } from './limits';
 
 /** Counts of investigations at each severity tier, zero-filled for all four tiers. */
 export type SeverityCounts = Record<Severity, number>;

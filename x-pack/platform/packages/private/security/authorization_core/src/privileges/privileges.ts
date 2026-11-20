@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { uniq } from 'lodash';
+import uniq from 'lodash/uniq';
 
 import { ApiOperation } from '@kbn/core-security-server';
 import type {

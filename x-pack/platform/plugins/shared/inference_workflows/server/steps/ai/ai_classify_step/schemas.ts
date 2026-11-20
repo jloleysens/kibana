@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { OutputSchema } from '../../../../common/steps/ai/ai_classify_step';
+import { OutputSchema } from '../../../../common/steps/ai/classification_output_schema';
 
 export function convertOutputToModelResponseSchema(output: typeof OutputSchema) {
   return output.omit({ metadata: true });

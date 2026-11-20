@@ -8,7 +8,13 @@
  */
 
 import type { estypes } from '@elastic/elasticsearch';
-import { map, reduce, mapValues, has, get, keys, pickBy } from 'lodash';
+import map from 'lodash/map';
+import reduce from 'lodash/reduce';
+import mapValues from 'lodash/mapValues';
+import has from 'lodash/has';
+import get from 'lodash/get';
+import keys from 'lodash/keys';
+import pickBy from 'lodash/pickBy';
 import type { SerializableRecord } from '@kbn/utility-types';
 import type { Filter, FilterMeta, FilterMetaParams } from './types';
 import { FILTERS } from './types';

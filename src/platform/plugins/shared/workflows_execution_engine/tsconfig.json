@@ -14,10 +14,14 @@
     "integration_tests/**/*"
   ],
   "kbn_references": [
+    "@kbn/workflows-template-runtime",
+    "@kbn/workflows-runtime",
     "@kbn/alerting-plugin",
     "@kbn/apm-utils",
     "@kbn/core",
     "@kbn/core-di",
+    "@kbn/core-http-server",
+    "@kbn/core-http-server-utils",
     "@kbn/core-remote-common",
     "@kbn/core-remote-server",
     "@kbn/config-schema",

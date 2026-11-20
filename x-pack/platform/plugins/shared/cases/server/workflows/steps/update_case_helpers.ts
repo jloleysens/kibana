@@ -10,7 +10,7 @@ import { CaseResponseProperties as CaseResponsePropertiesSchema } from '../../..
 import type { UpdateCaseStepInput } from '../../../common/workflows/steps/update_case';
 import type { CasePatchRequest } from '../../../common/types/api';
 import { CasePatchRequestSchema } from '../../../common/types/api';
-import type { CasesClient } from '../../client';
+import type { WorkflowCasesClient as CasesClient } from '../types';
 import { decodeWithExcessOrThrowZod } from '../../common/runtime_types';
 import { UPDATE_CASE_FAILED_MESSAGE } from './translations';
 import {

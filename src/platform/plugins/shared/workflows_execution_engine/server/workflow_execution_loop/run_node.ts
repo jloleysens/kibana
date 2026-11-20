@@ -8,7 +8,8 @@
  */
 
 import apm from 'elastic-apm-node';
-import { ExecutionStatus } from '@kbn/workflows';
+import { recordRemoteTiming } from '@kbn/core-remote-common';
+import { ExecutionStatus } from '@kbn/workflows-runtime';
 import { cancelWorkflowIfRequested } from './cancel_workflow_if_requested';
 import { catchError } from './catch_error';
 import { handleExecutionDelay } from './handle_execution_delay';
@@ -108,7 +109,14 @@ export async function runNode(params: WorkflowExecutionLoopParams): Promise<void
 
     // Build the node implementation before the cancel short-circuit so cancellable nodes
     // (e.g. workflow.execute holding a child execution) still get their onCancel hook.
-    nodeImplementation = params.nodesFactory.create(stepExecutionRuntime);
+    const resolutionStarted = performance.now();
+    nodeImplementation = await params.nodesFactory.create(stepExecutionRuntime);
+    recordRemoteTiming('node_resolution', {
+      executionId: params.workflowExecutionState.getWorkflowExecution().id,
+      stepId: node.stepId,
+      stepType: node.stepType,
+      durationMs: performance.now() - resolutionStarted,
+    });
 
     if (params.workflowExecutionState.getWorkflowExecution().cancelRequested) {
       await cancelWorkflowIfRequested(

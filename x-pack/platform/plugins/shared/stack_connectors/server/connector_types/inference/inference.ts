@@ -6,14 +6,15 @@
  */
 
 import { text as streamToString } from 'node:stream/consumers';
-import type { ServiceParams } from '@kbn/actions-plugin/server';
-import { SubActionConnector } from '@kbn/actions-plugin/server';
-import { errors } from '@elastic/elasticsearch';
 import type {
-  ElasticsearchClient,
-  IUiSettingsClient,
-  SavedObjectsClientContract,
-} from '@kbn/core/server';
+  ServiceParams,
+  SubActionServices,
+} from '@kbn/actions-plugin/server/sub_action_framework/types';
+import type { Services } from '@kbn/actions-plugin/server/types';
+import type { InferenceStreamingFacts } from '@kbn/actions-plugin/server/remote/types';
+import { SubActionConnector } from '@kbn/actions-plugin/server/sub_action_framework/sub_action_connector';
+import { errors } from '@elastic/elasticsearch';
+import type { ElasticsearchClient, IUiSettingsClient } from '@kbn/core/server';
 import { GEN_AI_SETTINGS_INFERENCE_STREAMING } from '@kbn/management-settings-ids';
 import { supportsNonStreamingChat, type InferenceProvider } from '@kbn/inference-common';
 import { Stream } from 'openai/streaming';
@@ -25,8 +26,11 @@ import type {
   InferenceInferenceResponse,
 } from '@elastic/elasticsearch/lib/api/types';
 import type { ConnectorUsageCollector } from '@kbn/actions-plugin/server/usage';
-import { createTaskRunError, TaskErrorSource } from '@kbn/task-manager-plugin/server';
-import { isUserError } from '@kbn/task-manager-plugin/server/task_running';
+import {
+  createTaskRunError,
+  TaskErrorSource,
+  isUserError,
+} from '@kbn/task-manager-plugin/server/task_running/errors';
 import { trace } from '@opentelemetry/api';
 import type { Observable } from 'rxjs';
 import { filter, from, identity, map, mergeMap, tap } from 'rxjs';
@@ -72,10 +76,12 @@ import { completionToEventStream } from './non_streaming';
 const errorSourceForStatus = (statusCode: number): TaskErrorSource =>
   statusCode >= 500 || statusCode === 429 ? TaskErrorSource.FRAMEWORK : TaskErrorSource.USER;
 
-export interface InferenceConnectorDependencies {
+export interface InferenceConnectorDependencies<
+  ExecutionServices extends SubActionServices = Services
+> {
   /** Resolves a uiSettings client for the request's space; absent when settings cannot be read. */
   getUiSettingsClient?: (
-    savedObjectsClient: SavedObjectsClientContract
+    savedObjectsClient: ExecutionServices['savedObjectsClient']
   ) => Promise<IUiSettingsClient>;
   /**
    * Resolves the internal-user ES client, used to read `GET _inference/_services` because the
@@ -84,23 +90,30 @@ export interface InferenceConnectorDependencies {
   getInternalEsClient?: () => Promise<ElasticsearchClient>;
 }
 
-export class InferenceConnector extends SubActionConnector<Config, Secrets> {
+export class InferenceConnector<
+  ExecutionServices extends SubActionServices = Services
+> extends SubActionConnector<Config, Secrets, ExecutionServices> {
   // Not using Axios for requests, but errors may be Axios-shaped or Elasticsearch client ResponseError-shaped.
   // Must never throw, otherwise the original (upstream) error is lost.
   protected getResponseErrorMessage(error: AxiosError): string {
     return buildInferenceErrorMessage(error);
   }
 
+  private readonly streamingFacts?: InferenceStreamingFacts;
   private inferenceId;
   private taskType;
-  private getUiSettingsClient?: InferenceConnectorDependencies['getUiSettingsClient'];
-  private getInternalEsClient?: InferenceConnectorDependencies['getInternalEsClient'];
+  private getUiSettingsClient?: InferenceConnectorDependencies<ExecutionServices>['getUiSettingsClient'];
+  private getInternalEsClient?: InferenceConnectorDependencies<ExecutionServices>['getInternalEsClient'];
 
   constructor(
-    params: ServiceParams<Config, Secrets>,
-    { getUiSettingsClient, getInternalEsClient }: InferenceConnectorDependencies = {}
+    params: ServiceParams<Config, Secrets, NoInfer<ExecutionServices>>,
+    {
+      getUiSettingsClient,
+      getInternalEsClient,
+    }: InferenceConnectorDependencies<ExecutionServices> = {}
   ) {
     super(params);
+    this.streamingFacts = params.services.inferenceStreamingFacts;
     this.getUiSettingsClient = getUiSettingsClient;
     this.getInternalEsClient = getInternalEsClient;
 
@@ -339,20 +352,26 @@ export class InferenceConnector extends SubActionConnector<Config, Secrets> {
    * never sends a request Elasticsearch would reject. Any failure falls back to streaming.
    */
   private async shouldStream(): Promise<boolean> {
-    if (!this.getUiSettingsClient || !this.getInternalEsClient) {
+    if (!this.streamingFacts && (!this.getUiSettingsClient || !this.getInternalEsClient)) {
       return true;
     }
     try {
-      const uiSettingsClient = await this.getUiSettingsClient(this.savedObjectsClient);
+      const uiSettingsClient = await this.getUiSettingsClient?.(this.savedObjectsClient);
       // only an explicit opt-out disables streaming; an unset setting keeps the default
-      if ((await uiSettingsClient.get<boolean>(GEN_AI_SETTINGS_INFERENCE_STREAMING)) !== false) {
+      if (
+        (this.streamingFacts
+          ? this.streamingFacts.enabled
+          : await uiSettingsClient?.get<boolean>(GEN_AI_SETTINGS_INFERENCE_STREAMING)) !== false
+      ) {
         return true;
       }
       // the services lookup runs as the internal user; this.esClient is scoped to the caller
-      const internalEsClient = await this.getInternalEsClient();
-      const services = await internalEsClient.transport.request<
-        Array<Pick<InferenceProvider, 'service' | 'features'>>
-      >({ method: 'GET', path: '/_inference/_services' });
+      const internalEsClient = this.streamingFacts ? undefined : await this.getInternalEsClient?.();
+      const services = this.streamingFacts
+        ? this.streamingFacts.services
+        : await internalEsClient?.transport.request<
+            Array<Pick<InferenceProvider, 'service' | 'features'>>
+          >({ method: 'GET', path: '/_inference/_services' });
       const service = Array.isArray(services)
         ? services.find(({ service: name }) => name === this.config.provider)
         : undefined;

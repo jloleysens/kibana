@@ -7,15 +7,9 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { isString } from 'lodash';
 import * as allSpecs from '../all_specs';
-import { EARS_AUTH_ID } from '../auth_types/ears';
-import type { AuthTypeDef } from '../connector_spec';
-
-export const isEarsExperimentalAuthType = (
-  authType: string | AuthTypeDef
-): authType is AuthTypeDef =>
-  !isString(authType) && authType.type === EARS_AUTH_ID && authType.isExperimental === true;
+import { isEarsExperimentalAuthType } from './is_ears_experimental_auth_type';
+export { isEarsExperimentalAuthType } from './is_ears_experimental_auth_type';
 
 const experimentalEarsConnectorIds = new Set(
   Object.values(allSpecs)

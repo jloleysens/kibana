@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { isPlainObject } from 'lodash';
+import isPlainObject from 'lodash/isPlainObject';
 /**
  * Deeply merges two objects, omitting undefined values, and not deeply merging Arrays.
  *

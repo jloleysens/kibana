@@ -184,9 +184,9 @@ export const materializeDecisionTrees = async ({
   treeIds,
   signal,
 }: {
-  session: SandboxSession;
+  session: Pick<SandboxSession, 'mkdirs' | 'writeFiles'>;
   store: DecisionTreeStore;
-  logger: Logger;
+  logger: Pick<Logger, 'info'>;
   /**
    * When set, only these trees are written (reinforcement: trees the investigator opened).
    * Omitted for the investigator hydrate so it can discover any matching tree via monitors.md.

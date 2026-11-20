@@ -110,8 +110,10 @@ describe('resumeWorkflow', () => {
       ).not.toHaveBeenCalled();
     });
 
+    const executeRemote = jest.fn();
     await expect(
       resumeWorkflow({
+        executeRemote,
         workflowRunId: 'run-identity-failure',
         spaceId: 'default',
         signal: new AbortController().signal,
@@ -124,6 +126,7 @@ describe('resumeWorkflow', () => {
         stepExecutionRepository,
       })
     ).rejects.toThrow('expected service account');
+    expect(executeRemote).not.toHaveBeenCalled();
 
     expect(stepExecutionRepository.markNonTerminalStepsFailed).toHaveBeenCalledWith(
       'run-identity-failure',
@@ -478,17 +481,20 @@ describe('resumeWorkflow', () => {
     const mockConfig = createMockWorkflowExecutionEngineConfig();
 
     const resumeWorkflowWithDefaults = (overrides?: {
+      config?: typeof mockConfig;
       meteringService?: WorkflowsMeteringService;
       workflowsExecutionEngine?: WorkflowsExecutionEnginePluginStart;
+      executeRemote?: Parameters<typeof resumeWorkflow>[0]['executeRemote'];
     }) =>
       resumeWorkflow({
         workflowRunId,
         spaceId,
         signal: taskAbortController.signal,
         logger,
-        config: mockConfig,
+        config: overrides?.config ?? mockConfig,
         fakeRequest,
         dependencies,
+        executeRemote: overrides?.executeRemote,
         meteringService: overrides?.meteringService,
         workflowsExecutionEngine:
           overrides?.workflowsExecutionEngine ?? mockWorkflowExecutionEngine,
@@ -513,6 +519,29 @@ describe('resumeWorkflow', () => {
       );
 
       mockWorkflowExecutionLoop.mockResolvedValue(undefined);
+    });
+
+    it('admits data-stream remote resume without running the local engine', async () => {
+      const executeRemote = jest.fn().mockResolvedValue({ status: ExecutionStatus.COMPLETED });
+      await resumeWorkflowWithDefaults({
+        executeRemote,
+        config: { ...mockConfig, storage: { ...mockConfig.storage, source: 'data_stream' } },
+      });
+      expect(mockSetupDependencies).toHaveBeenCalled();
+      expect(executeRemote).toHaveBeenCalled();
+      expect(workflowRuntime.resume).not.toHaveBeenCalled();
+    });
+
+    it('delegates only the admitted resume loop to the remote engine', async () => {
+      const executeRemote = jest.fn().mockResolvedValue({ status: ExecutionStatus.COMPLETED });
+      expect(await resumeWorkflowWithDefaults({ executeRemote })).toEqual({});
+      expect(executeRemote).toHaveBeenCalledWith(fakeRequest, taskAbortController.signal, {
+        definitionHash: 'fixture',
+        nodes: {},
+        loops: {},
+      });
+      expect(workflowRuntime.resume).not.toHaveBeenCalled();
+      expect(mockWorkflowExecutionLoop).not.toHaveBeenCalled();
     });
 
     describe('happy path / wiring', () => {

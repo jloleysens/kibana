@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { isEqual } from 'lodash';
+import isEqual from 'lodash/isEqual';
 import type { TypeOf } from '@kbn/config-schema';
 import { schema } from '@kbn/config-schema';
 import { readPkcs12Keystore, readPkcs12Truststore } from '@kbn/crypto';

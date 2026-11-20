@@ -6,13 +6,15 @@
  */
 
 import type { SSLSettings } from '@kbn/actions-utils';
-import type { ServiceParams } from '@kbn/actions-plugin/server';
-import { SubActionConnector } from '@kbn/actions-plugin/server';
+import type {
+  ServiceParams,
+  SubActionServices,
+} from '@kbn/actions-plugin/server/sub_action_framework/types';
+import { SubActionConnector } from '@kbn/actions-plugin/server/sub_action_framework/sub_action_connector';
 import type { AxiosError } from 'axios';
-import OpenAI from 'openai';
+import type OpenAI from 'openai';
 import { PassThrough } from 'stream';
-import type { Agent as HttpsAgent } from 'https';
-import type { Agent as HttpAgent, IncomingMessage } from 'http';
+import type { IncomingMessage } from 'http';
 import type {
   ChatCompletionChunk,
   ChatCompletionCreateParamsStreaming,
@@ -21,7 +23,10 @@ import type {
 import type { Stream } from 'openai/streaming';
 import { trace } from '@opentelemetry/api';
 import type { ConnectorUsageCollector } from '@kbn/actions-plugin/server/types';
-import { TaskErrorSource, createTaskRunError } from '@kbn/task-manager-plugin/server';
+import {
+  TaskErrorSource,
+  createTaskRunError,
+} from '@kbn/task-manager-plugin/server/task_running/errors';
 import { getCustomAgents } from '@kbn/actions-plugin/server/lib/get_custom_agents';
 import {
   DEFAULT_MODEL,
@@ -46,6 +51,7 @@ import type {
   InvokeAIActionParams,
   InvokeAIActionResponse,
 } from '@kbn/connector-schemas/openai';
+import type { Services } from '@kbn/actions-plugin/server/types';
 import { removeEndpointFromUrl } from './lib/openai_utils';
 import { initDashboard } from '../lib/gen_ai/create_gen_ai_dashboard';
 import {
@@ -57,15 +63,18 @@ import {
 } from './lib/utils';
 import { getPKISSLOverrides, pkiErrorHandler } from './lib/other_openai_utils';
 
-export class OpenAIConnector extends SubActionConnector<Config, Secrets> {
+export class OpenAIConnector<
+  ExecutionServices extends SubActionServices = Services
+> extends SubActionConnector<Config, Secrets, ExecutionServices> {
   private url: string;
   private provider: OpenAiProviderType;
   private key: string;
-  private openAI: OpenAI;
+  private openAI?: Promise<OpenAI>;
+  private openAIOptions: ConstructorParameters<typeof OpenAI>[0];
   private headers: Record<string, string>;
   private sslOverrides?: SSLSettings;
 
-  constructor(params: ServiceParams<Config, Secrets>) {
+  constructor(params: ServiceParams<Config, Secrets, ExecutionServices>) {
     super(params);
     this.url = this.config.apiUrl;
     this.provider = this.config.apiProvider;
@@ -126,13 +135,13 @@ export class OpenAIConnector extends SubActionConnector<Config, Secrets> {
         }
       }
 
-      this.openAI = this.createOpenAIClient({
+      this.openAIOptions = {
         apiKey: this.key,
         baseURL,
         defaultHeaders,
         httpAgent,
         defaultQuery,
-      });
+      };
     } catch (error) {
       this.logger.error(`Error initializing OpenAI client: ${error.message}`);
       throw error;
@@ -141,26 +150,17 @@ export class OpenAIConnector extends SubActionConnector<Config, Secrets> {
     this.registerSubActions();
   }
 
-  private createOpenAIClient({
-    apiKey,
-    baseURL,
-    defaultHeaders,
-    httpAgent,
-    defaultQuery,
-  }: {
-    apiKey: string;
-    baseURL: string;
-    defaultHeaders: Record<string, string>;
-    httpAgent?: HttpsAgent | HttpAgent;
-    defaultQuery?: Record<string, string>;
-  }): OpenAI {
-    return new OpenAI({
-      apiKey,
-      baseURL,
-      defaultHeaders,
-      httpAgent,
-      defaultQuery,
-    });
+  private getOpenAIClient(): Promise<OpenAI> {
+    if (!this.openAI) {
+      const pending = import('./openai_sdk').then(({ createOpenAIClient }) =>
+        createOpenAIClient(this.openAIOptions)
+      );
+      this.openAI = pending;
+      void pending.catch(() => {
+        if (this.openAI === pending) this.openAI = undefined;
+      });
+    }
+    return this.openAI;
   }
 
   private registerSubActions() {
@@ -431,7 +431,8 @@ export class OpenAIConnector extends SubActionConnector<Config, Secrets> {
       };
 
       connectorUsageCollector.addRequestBodyBytes(undefined, requestBody);
-      const stream = await this.openAI.chat.completions.create(requestBody, {
+      const client = await this.getOpenAIClient();
+      const stream = await client.chat.completions.create(requestBody, {
         signal,
         timeout, // do not default if not provided
       });

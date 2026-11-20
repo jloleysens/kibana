@@ -7,8 +7,9 @@
 
 import { z } from '@kbn/zod/v4';
 import type { KibanaRequest, Logger } from '@kbn/core/server';
-import type { AgentBuilderPluginStart } from '@kbn/agent-builder-server';
+import type { ConversationPublicClient, AgentBuilderPluginStart } from '@kbn/agent-builder-server';
 import type { ConversationRoundStep, ToolCallStep, ToolResult } from '@kbn/agent-builder-common';
+import { withToolResults } from './with_tool_results';
 import type { InvestigationToolCall } from '../decision_trees/accessed_trees';
 import { toolCallsSchema, toolResultsSchema } from '../step_definitions/tool_calls_schema';
 
@@ -207,21 +208,7 @@ export interface RawRoundStep {
 }
 
 /** Attaches each call's results, matched on `tool_call_id`, so the optimizer sees what it returned. */
-export const withToolResults = (
-  toolCalls: readonly InvestigationToolCall[],
-  toolResults: ReadonlyArray<{ tool_call_id: string; results: unknown[] }>
-): InvestigationToolCall[] => {
-  if (toolResults.length === 0) {
-    return [...toolCalls];
-  }
-  const resultsById = new Map(
-    toolResults.map(({ tool_call_id: toolCallId, results }) => [toolCallId, results])
-  );
-  return toolCalls.map((call) => {
-    const results = call.tool_call_id ? resultsById.get(call.tool_call_id) : undefined;
-    return results ? { ...call, results } : call;
-  });
-};
+export { withToolResults } from './with_tool_results';
 
 const isNonZeroExitCode = (value: unknown): boolean =>
   typeof value === 'number' && Number.isFinite(value) && value !== 0;
@@ -346,6 +333,7 @@ const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
  */
 export const loadInvestigationRound = async ({
   agentBuilder,
+  getConversationClient,
   request,
   conversationId,
   roundId,
@@ -356,7 +344,8 @@ export const loadInvestigationRound = async ({
   signal,
   retryDelaysMs = ROUND_READ_RETRY_DELAYS_MS,
 }: {
-  agentBuilder: AgentBuilderPluginStart | undefined;
+  agentBuilder?: AgentBuilderPluginStart;
+  getConversationClient?: () => Promise<Pick<ConversationPublicClient, 'get'>>;
   request: KibanaRequest;
   conversationId?: string;
   /** Exact round UUID or positional/semantic alias (`"0"`, `"-1"`, `"1st"`, `"first"`, `"last"`, `"investigation_start"`). */
@@ -372,7 +361,12 @@ export const loadInvestigationRound = async ({
   const mergedFallbackCalls = withToolResults(fallbackToolCalls, fallbackToolResults);
   const hasRoundSelector = Boolean(roundId) || roundIndex !== undefined;
 
-  if (agentBuilder?.conversations && conversationId && hasRoundSelector) {
+  const getClient =
+    getConversationClient ??
+    (agentBuilder?.conversations
+      ? () => agentBuilder.conversations.getScopedClient({ request })
+      : undefined);
+  if (getClient && conversationId && hasRoundSelector) {
     let lastProblem = '';
     const selectorLabel = roundId ?? `index:${String(roundIndex)}`;
     for (let attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
@@ -383,7 +377,7 @@ export const loadInvestigationRound = async ({
         }
       }
       try {
-        const client = await agentBuilder.conversations.getScopedClient({ request });
+        const client = await getClient();
         const conversation = await client.get(conversationId);
         const resolved = resolveConversationRound(conversation.rounds, { roundId, roundIndex });
         if (resolved) {

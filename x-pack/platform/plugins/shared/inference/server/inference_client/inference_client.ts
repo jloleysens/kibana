@@ -10,10 +10,7 @@ import type { KibanaRequest } from '@kbn/core-http-server';
 import type { BoundOptions, InferenceCallbacks } from '@kbn/inference-common';
 import type { AnonymizationRule } from '@kbn/ai-anonymization-common';
 import type { ElasticsearchClient } from '@kbn/core/server';
-import type {
-  InferenceAnonymizationOptions,
-  RegexWorkerService,
-} from '@kbn/ai-anonymization-server';
+import type { InferenceAnonymizationOptions, RegexWorker } from '@kbn/ai-anonymization-server';
 import type {
   ActionsClientProvider,
   InferenceServerClient,
@@ -55,7 +52,7 @@ export function createInferenceClient({
   logger: Logger;
   actions: ActionsClientProvider;
   anonymizationRulesPromise: Promise<AnonymizationRule[]>;
-  regexWorker: RegexWorkerService;
+  regexWorker: RegexWorker;
   esClient: ElasticsearchClient;
   replacementsEsClient?: ElasticsearchClient;
   endpointIdCache: InferenceEndpointIdCache;

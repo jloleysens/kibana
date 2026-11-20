@@ -5,7 +5,8 @@
  * 2.0.
  */
 
-import { get, uniq } from 'lodash';
+import get from 'lodash/get';
+import uniq from 'lodash/uniq';
 
 import type { AlertingKibanaPrivilege } from '@kbn/features-plugin/common/alerting_kibana_privilege';
 import type { FeatureKibanaPrivileges, KibanaFeature } from '@kbn/features-plugin/server';

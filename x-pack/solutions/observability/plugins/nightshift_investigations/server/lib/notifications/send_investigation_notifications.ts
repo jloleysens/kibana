@@ -10,11 +10,12 @@ import type { StepHandlerContext } from '@kbn/workflows-extensions/server';
 import type { PluginStartContract as ActionsPluginStart } from '@kbn/actions-plugin/server';
 import type { KibanaRequest, Logger } from '@kbn/core/server';
 import type { NotificationPhase } from './notification_routing';
-import { repliesUnderCallerMessage } from './notification_routing';
+import { repliesUnderCallerMessage } from './replies_under_caller_message';
 import type { NotificationRoutingClient } from './notification_routing_client';
+import type { ExecuteConnector } from './notification_delivery';
 import type { InvestigationLocator } from '../../../common/locators';
 import type { GetInvestigationsClient } from '../../routes/types';
-import { ELASTIC_APPS_SLACK_CONNECTOR_ID } from '../automations/generate_workflow_yaml';
+import { ELASTIC_APPS_SLACK_CONNECTOR_ID } from '../../../common/notification_constants';
 import {
   deliverInvestigationNotifications,
   getSentMessageTs,
@@ -34,14 +35,57 @@ export interface InvestigationNotificationDeps {
   ) => Promise<NotificationRoutingClient>;
 }
 
-/** Sends a lifecycle phase using the workflow's authenticated request and persisted routing. */
+export type NotificationRoutingOperations = Pick<
+  NotificationRoutingClient,
+  'get' | 'isActive' | 'initialize' | 'selectTerminalPhase' | 'claim' | 'record'
+>;
+export type NotificationInvestigationClient = Pick<
+  ReturnType<GetInvestigationsClient>,
+  'getInvestigationExecutionContext' | 'claimSlackThread' | 'recordSlackThreadStatusMessage'
+>;
+export interface InvestigationNotificationRuntime {
+  getClient: (spaceId: string) => NotificationInvestigationClient;
+  getRoutingClient: (
+    spaceId: string,
+    conversationId: string,
+    investigationId: string
+  ) => Promise<NotificationRoutingOperations>;
+  getRedirectUrl: (investigationId: string, spaceId: string) => string;
+  getExecute: (spaceId: string) => Promise<ExecuteConnector>;
+}
+
+/** Adapts the original scoped plugin dependencies without changing delivery scheduling. */
 export const sendInvestigationNotifications = async (
-  {
-    investigationLocator,
-    getInvestigationsClient,
-    getActions,
-    getRoutingClient,
-  }: InvestigationNotificationDeps,
+  deps: InvestigationNotificationDeps,
+  context: Parameters<typeof sendInvestigationNotificationsWithRuntime>[1],
+  options: Parameters<typeof sendInvestigationNotificationsWithRuntime>[2]
+): ReturnType<typeof sendInvestigationNotificationsWithRuntime> => {
+  const request = context.contextManager.getFakeRequest();
+  return sendInvestigationNotificationsWithRuntime(
+    {
+      getClient: (spaceId) => deps.getInvestigationsClient(request, spaceId),
+      getRoutingClient: (spaceId, conversationId, investigationId) =>
+        deps.getRoutingClient(request, spaceId, conversationId, investigationId),
+      getRedirectUrl: (investigationId, spaceId) =>
+        deps.investigationLocator.getRedirectUrl({ investigationId }, { spaceId }),
+      getExecute: async (spaceId) => {
+        const actions = deps.getActions();
+        if (!actions) throw new Error('actions plugin is not available');
+        const actionsClient = await actions.getActionsClientWithRequestInSpace(
+          request,
+          brandSpaceId(spaceId)
+        );
+        return (execution) => actionsClient.execute(execution);
+      },
+    },
+    context,
+    options
+  );
+};
+
+/** Sends a lifecycle phase using the workflow's authenticated request and persisted routing. */
+export const sendInvestigationNotificationsWithRuntime = async (
+  runtime: InvestigationNotificationRuntime,
   context: Pick<StepHandlerContext, 'contextManager' | 'logger' | 'abortSignal'>,
   {
     investigationId,
@@ -55,16 +99,15 @@ export const sendInvestigationNotifications = async (
     onTerminalPhaseSelected?: () => Promise<void>;
   }
 ): Promise<DeliverInvestigationNotificationsResult> => {
-  const request = context.contextManager.getFakeRequest();
   const {
     kibanaUrl,
     execution: { id: executionId },
     workflow: { spaceId },
   } = context.contextManager.getContext();
-  const client = getInvestigationsClient(request, spaceId);
+  const client = runtime.getClient(spaceId);
   const { investigation, conversationId, workflowId, notificationDestinations } =
     await client.getInvestigationExecutionContext(investigationId, executionId);
-  const routingClient = await getRoutingClient(request, spaceId, conversationId, investigationId);
+  const routingClient = await runtime.getRoutingClient(spaceId, conversationId, investigationId);
   // Without server.publicBaseUrl, the server locator returns a relative URL.
   const result = await deliverInvestigationNotifications({
     investigation,
@@ -75,21 +118,11 @@ export const sendInvestigationNotifications = async (
     reason,
     routingClient,
     investigationUrl: new URL(
-      investigationLocator.getRedirectUrl({ investigationId }, { spaceId }),
+      runtime.getRedirectUrl(investigationId, spaceId),
       kibanaUrl
     ).toString(),
     logger: context.logger,
-    getExecute: async () => {
-      const actions = getActions();
-      if (!actions) {
-        throw new Error('actions plugin is not available');
-      }
-      const actionsClient = await actions.getActionsClientWithRequestInSpace(
-        request,
-        brandSpaceId(spaceId)
-      );
-      return (execution) => actionsClient.execute(execution);
-    },
+    getExecute: () => runtime.getExecute(spaceId),
     signal: context.abortSignal,
     onTerminalPhaseSelected,
   });
@@ -123,8 +156,8 @@ const claimRootSlackThreads = async ({
   executionId,
   logger,
 }: {
-  client: ReturnType<GetInvestigationsClient>;
-  routingClient: NotificationRoutingClient;
+  client: NotificationInvestigationClient;
+  routingClient: NotificationRoutingOperations;
   investigationId: string;
   executionId: string;
   logger: Pick<Logger, 'warn'>;
@@ -192,8 +225,8 @@ const recordSlackThreadStatusMessages = async ({
   phase,
   logger,
 }: {
-  client: ReturnType<GetInvestigationsClient>;
-  routingClient: NotificationRoutingClient;
+  client: NotificationInvestigationClient;
+  routingClient: NotificationRoutingOperations;
   investigationId: string;
   executionId: string;
   phase: NotificationPhase;

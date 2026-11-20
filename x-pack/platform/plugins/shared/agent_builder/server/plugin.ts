@@ -44,6 +44,8 @@ import { registerAfterExecutionWorkflowsHook } from './hooks/agent_workflows/reg
 import { registerSkillToolsLoaderHook } from './hooks/skills/register_skill_tools_loader_hook';
 import { registerTaskDefinitions } from './services/execution';
 import { createModelProviderFactory } from './services/execution/runner/model_provider';
+import { resolveModelTelemetryMetadata } from './services/execution/runner/model_provider_telemetry';
+import { recordModelCompletion } from './services/execution/runner/model_completion';
 import { createSmlTools } from './services/tools/builtin/sml';
 import { createConnectorTools } from './services/tools/builtin/connectors';
 import { createAdminPrivilegeSwitcher } from './capabilities/admin_privilege_switcher';
@@ -56,6 +58,15 @@ import { runToolIdBackfill } from './backfills/tool_id_backfill';
 import { RecommendedEndpointsPoller } from './recommended_endpoints_poller';
 import { registerDeductiveAgent } from './services/execution/run_agent/deductive/register_deductive_agent';
 import { getDeploymentInfo } from './utils/deployment_info';
+import { ConversationRegistryToken } from './remote/conversation_tokens';
+import { AttachmentRegistry } from './remote/attachment_registry';
+import { AttachmentRegistryToken } from './remote/attachment_tokens';
+import { ConversationRegistry } from './remote/conversation_registry';
+import { AgentExecution } from './remote/agent_execution';
+import { AgentExecutionToken } from './remote/agent_execution_tokens';
+import { WorkflowAgentToken } from './remote/workflow_agent_tokens';
+import { WorkflowAgent } from './remote/workflow_agent';
+import { createWorkflowAgentRunner } from './step_types/workflow_agent_runner';
 
 export class AgentBuilderPlugin
   implements
@@ -178,6 +189,31 @@ export class AgentBuilderPlugin
     );
     setupDeps.workflowsExtensions.registerStepDefinition(rerankStepDefinition);
 
+    coreSetup.remote.bind(
+      WorkflowAgentToken,
+      (scopes) => new WorkflowAgent(scopes, createWorkflowAgentRunner(this.serviceManager))
+    );
+
+    coreSetup.remote.bind(
+      AgentExecutionToken,
+      (scopes) =>
+        new AgentExecution(scopes, () => {
+          const services = this.serviceManager.internalStart;
+          if (!services) throw new Error('Agent execution service is not started');
+          return services.execution;
+        })
+    );
+
+    coreSetup.remote.bind(
+      ConversationRegistryToken,
+      (scopes) =>
+        new ConversationRegistry(scopes, async (request) => {
+          const services = this.serviceManager.internalStart;
+          if (!services) throw new Error('Conversation service is not started');
+          return services.conversations.getScopedClientOptions({ request });
+        })
+    );
+
     registerConversationWorkflowSteps(setupDeps.workflowsExtensions, {
       getConversationClient: async (request) => {
         const services = this.serviceManager.internalStart;
@@ -201,6 +237,17 @@ export class AgentBuilderPlugin
         return services.execution;
       },
     });
+
+    coreSetup.remote.bind(
+      AttachmentRegistryToken,
+      (scopes) =>
+        new AttachmentRegistry(scopes, async () => {
+          const services = this.serviceManager.internalStart;
+          if (!services) throw new Error('Attachment service is not started');
+          const [coreStart, startDeps] = await coreSetup.getStartServices();
+          return { attachments: services.attachments, coreStart, spaces: startDeps.spaces };
+        })
+    );
 
     registerAttachmentWorkflowSteps(setupDeps.workflowsExtensions, {
       getAttachmentClient: async (request) => {
@@ -454,6 +501,36 @@ export class AgentBuilderPlugin
       },
       runtime: {
         createModelProvider: modelProviderFactory,
+        issueModelObservation: async ({ request, connectorId, metadata }) => {
+          const resolved = await resolveModelTelemetryMetadata({
+            request,
+            spaces,
+            security,
+            elasticsearch,
+            telemetryMetadata: metadata,
+          });
+          const connector = await inference.getConnectorById(connectorId, request);
+          return {
+            metadata: {
+              pluginId: resolved.pluginId,
+              aggregateBy: resolved.aggregateBy,
+              productSolution: resolved.productSolution,
+              productFeature: resolved.productFeature,
+              interactionId: resolved.interactionId,
+              traceId: resolved.traceId,
+              spaceId: resolved.spaceId,
+              userId: resolved.userId,
+            },
+            complete: (event) =>
+              recordModelCompletion({
+                connectorId,
+                connector,
+                event,
+                completedCalls: [],
+                trackingService: this.trackingService,
+              }),
+          };
+        },
       },
       conversations: {
         getScopedClient: async ({ request }) => {

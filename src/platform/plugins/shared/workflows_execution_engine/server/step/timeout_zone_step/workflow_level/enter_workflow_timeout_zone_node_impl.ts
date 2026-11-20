@@ -8,7 +8,7 @@
  */
 
 import type { EnterTimeoutZoneNode } from '@kbn/workflows/graph';
-import { ExecutionError } from '@kbn/workflows/server';
+import { ExecutionError } from '@kbn/workflows-runtime';
 import { parseDuration } from '../../../utils';
 import type { StepExecutionRuntime } from '../../../workflow_context_manager/step_execution_runtime';
 import type { StepExecutionRuntimeFactory } from '../../../workflow_context_manager/step_execution_runtime_factory';

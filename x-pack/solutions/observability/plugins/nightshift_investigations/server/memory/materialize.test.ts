@@ -9,6 +9,7 @@ import { loggerMock } from '@kbn/logging-mocks';
 import {
   boundMemoryCatalog,
   materializeMemory,
+  materializeMemoryWithSessionState,
   MEMORY_INDEX_MAX_BYTES,
   MEMORY_INDEX_MAX_ENTRIES,
   parseMemoryCatalog,
@@ -104,6 +105,33 @@ describe('materializeMemory', () => {
       archive: jest.fn(),
       delete: jest.fn(),
     } as never);
+
+  it('reads live sandbox reset state after retrieval rather than caching it when the handle opens', async () => {
+    const session = createSession();
+    Object.defineProperty(session, 'isReset', {
+      get: () => {
+        throw new Error('Must use live state capability');
+      },
+    });
+    let reset = false;
+    const store = createStore([candidates[0]]);
+    jest.mocked(store.retrieve).mockImplementationOnce(async () => {
+      reset = true;
+      return [candidates[0]];
+    });
+    const getIsReset = jest.fn(async () => reset);
+    const result = await materializeMemoryWithSessionState({
+      session,
+      getIsReset,
+      store,
+      logger: loggerMock.create(),
+    });
+    expect(getIsReset).toHaveBeenCalledTimes(1);
+    expect(result.summary.podReset).toBe(true);
+    expect(result.recalledIds).toEqual(['memory_a']);
+    expect(session.statFiles).not.toHaveBeenCalled();
+    expect(session.readFiles).not.toHaveBeenCalled();
+  });
 
   it('writes only the ranked top-K files, not the full catalog', async () => {
     const store = createStore(candidates);

@@ -5,11 +5,4 @@
  * 2.0.
  */
 
-export class NightshiftModelNotFoundError extends Error {
-  constructor(modelId: string) {
-    super(
-      `Model "${modelId}" was not found. Pass a chat model connector or inference endpoint id, for example ".anthropic-claude-4.6-sonnet-chat_completion".`
-    );
-    this.name = 'NightshiftModelNotFoundError';
-  }
-}
+export { NightshiftModelNotFoundError } from '@kbn/significant-events-runtime';

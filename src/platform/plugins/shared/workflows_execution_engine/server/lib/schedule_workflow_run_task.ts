@@ -8,6 +8,7 @@
  */
 
 import type { KibanaRequest, Logger } from '@kbn/core/server';
+import { recordRemoteTiming } from '@kbn/core-remote-common';
 import type { TaskInstance, TaskManagerStartContract } from '@kbn/task-manager-plugin/server';
 import { ExecutionStatus } from '@kbn/workflows';
 import type { WorkflowExecutionRepository } from '../repositories/workflow_execution_repository';
@@ -67,10 +68,17 @@ const markExecutionsFailed = async (
 export const scheduleRunTaskOrMarkFailed = async (
   deps: ScheduleWorkflowRunTaskDeps,
   taskInstance: WorkflowRunTaskInstance,
-  request: KibanaRequest
+  request: KibanaRequest,
+  direct = false
 ): Promise<void> => {
+  recordRemoteTiming('task_scheduling', {
+    executionId: taskInstance.params.workflowRunId,
+    taskId: taskInstance.id,
+    dispatch: direct ? 'direct' : 'task_manager',
+  });
   try {
-    await deps.taskManager.schedule(taskInstance, { request, cloneApiKey: true });
+    if (direct) await deps.taskManager.scheduleNow(taskInstance, { request, cloneApiKey: true });
+    else await deps.taskManager.schedule(taskInstance, { request, cloneApiKey: true });
   } catch (error) {
     await markExecutionsFailed(deps, [taskInstance.params.workflowRunId], getErrorMessage(error));
     throw error;

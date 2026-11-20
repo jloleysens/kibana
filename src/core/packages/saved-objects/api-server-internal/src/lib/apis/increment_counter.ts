@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { isObject } from 'lodash';
+import isObject from 'lodash/isObject';
 import { SavedObjectsErrorHelpers, type SavedObject } from '@kbn/core-saved-objects-server';
 import type {
   SavedObjectsIncrementCounterField,

@@ -16,6 +16,8 @@
   "kbn_references": [
     "@kbn/i18n",
     "@kbn/workflows",
+    "@kbn/workflows-runtime",
+    "@kbn/workflows-action-schema",
     "@kbn/zod",
   ]
 }

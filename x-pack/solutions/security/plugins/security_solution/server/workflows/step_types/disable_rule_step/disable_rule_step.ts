@@ -6,24 +6,10 @@
  */
 
 import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
-import { DETECTION_ENGINE_RULES_BULK_ACTION } from '../../../../common/constants';
-import type { BulkEditActionResponse } from '../../../../common/api/detection_engine/rule_management';
 import { disableRuleStepCommonDefinition } from '../../../../common/workflows/step_types/disable_rule_step/disable_rule_step_common';
-import { handleBulkRuleActionError, toBulkRuleActionOutput } from '../../utils/bulk_rule_action';
+import { handleDisableRuleStep } from './disable_rule_step_runtime';
 
 export const disableRuleStepDefinition = createServerStepDefinition({
   ...disableRuleStepCommonDefinition,
-  handler: async (context) => {
-    try {
-      const { body } = await context.contextManager.callKibanaApi<BulkEditActionResponse>({
-        method: 'POST',
-        path: DETECTION_ENGINE_RULES_BULK_ACTION,
-        body: { ...context.input, action: 'disable' },
-      });
-
-      return toBulkRuleActionOutput(body);
-    } catch (error) {
-      return handleBulkRuleActionError(error, 'disable rules');
-    }
-  },
+  handler: handleDisableRuleStep,
 });

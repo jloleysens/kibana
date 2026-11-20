@@ -8,7 +8,7 @@
  */
 
 import type { estypes } from '@elastic/elasticsearch';
-import { isString } from 'lodash';
+import isString from 'lodash/isString';
 
 /**
  *

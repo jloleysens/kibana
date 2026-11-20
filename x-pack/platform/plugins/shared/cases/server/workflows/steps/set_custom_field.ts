@@ -6,12 +6,12 @@
  */
 
 import type { KibanaRequest } from '@kbn/core/server';
-import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
+import { createServerStepDefinition } from '@kbn/workflows-extensions/server/step_registry/types';
 import {
   setCustomFieldStepCommonDefinition,
   type SetCustomFieldStepInput,
 } from '../../../common/workflows/steps/set_custom_field';
-import type { CasesClient } from '../../client';
+import type { WorkflowCasesClient as CasesClient } from '../types';
 import { SET_CUSTOM_FIELD_FAILED_MESSAGE } from './translations';
 import { createCasesStepHandler, safeParseCaseForWorkflowOutput } from './utils';
 import { resolveCaseVersion } from './update_case_helpers';

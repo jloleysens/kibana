@@ -8,7 +8,7 @@
 import type { AxiosResponse } from 'axios';
 
 import { request } from '@kbn/actions-plugin/server/lib/axios_utils';
-import { isEmpty } from 'lodash';
+import isEmpty from 'lodash/isEmpty';
 import type {
   ServiceNowSecretConfigurationType,
   ServiceNowPublicConfigurationType,

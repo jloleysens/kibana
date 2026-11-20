@@ -10,7 +10,7 @@ import type { Logger } from '@kbn/logging';
 import type { RegexAnonymizationRule } from '@kbn/ai-anonymization-common';
 import { anonymizeRecords } from './anonymize_records';
 import { applyStringReplacements, flattenJsonStrings } from './flatten_json';
-import type { RegexWorkerService } from './regex_worker_service';
+import type { RegexWorker } from './regex_worker_service';
 
 export interface PatternTestBreakdownEntry {
   entityType: string;
@@ -46,7 +46,7 @@ export async function testAnonymizationPatterns<T = unknown>({
 }: {
   input: T;
   rules: RegexAnonymizationRule[];
-  regexWorker: RegexWorkerService;
+  regexWorker: RegexWorker;
   esClient: ElasticsearchClient;
   logger?: Logger;
 }): Promise<PatternTestResult<T>> {

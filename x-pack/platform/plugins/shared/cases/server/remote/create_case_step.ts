@@ -6,32 +6,17 @@
  */
 
 import { inject } from 'inversify';
-import { remotable } from '@kbn/core-remote-common';
-import type {
-  CreateCaseStepConfig,
-  CreateCaseStepInput,
-} from '../../common/workflows/steps/create_case';
-import { CasesOperationsToken, type CaseAttribution, type CasesOperationsApi } from './tokens';
+import type { RemoteWorkflowStep } from '@kbn/workflows-extensions/server';
+import { createCaseStepDefinition } from '../workflows/steps/create_case';
+import {
+  CasesClientOperationsToken,
+  type CasesClientOperationsApi,
+} from './client_operations_tokens';
+import { runCasesStep } from './run_cases_step';
 
-interface StepCall {
-  with?: CreateCaseStepInput;
-  config?: CreateCaseStepConfig;
-}
-
-interface StepContext {
-  attribution?: CaseAttribution;
-}
-
-/** Executor-side step. Case creation stays on the coordinator. */
-@remotable()
-export class CreateCaseStep {
-  constructor(@inject(CasesOperationsToken) private readonly cases: CasesOperationsApi) {}
-
-  async run(scopeId: string, raw: unknown, context: StepContext): Promise<unknown> {
-    const call = (raw ?? {}) as StepCall;
-    if (!call.with) {
-      throw new Error('cases.createCase requires step input');
-    }
-    return this.cases.create(scopeId, call.with, call.config ?? {}, context.attribution);
+export class CreateCaseStep implements RemoteWorkflowStep {
+  constructor(@inject(CasesClientOperationsToken) private readonly api: CasesClientOperationsApi) {}
+  async run(...args: Parameters<RemoteWorkflowStep['run']>): ReturnType<RemoteWorkflowStep['run']> {
+    return runCasesStep(this.api, createCaseStepDefinition, ...args);
   }
 }

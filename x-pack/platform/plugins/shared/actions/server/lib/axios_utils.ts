@@ -5,7 +5,8 @@
  * 2.0.
  */
 
-import { isEmpty, isObjectLike } from 'lodash';
+import isEmpty from 'lodash/isEmpty';
+import isObjectLike from 'lodash/isObjectLike';
 import type { Agent } from 'agent-base';
 import type {
   AxiosHeaderValue,

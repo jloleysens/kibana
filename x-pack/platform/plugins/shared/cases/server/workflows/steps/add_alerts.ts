@@ -6,7 +6,7 @@
  */
 
 import type { KibanaRequest } from '@kbn/core/server';
-import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
+import { createServerStepDefinition } from '@kbn/workflows-extensions/server/step_registry/types';
 import {
   addAlertsStepCommonDefinition,
   type AddAlertsStepInput,
@@ -14,7 +14,7 @@ import {
 import { LEGACY_ALERT_TYPE } from '../../../common/constants/attachments';
 import type { UnifiedAttachmentPayload } from '../../../common/types/domain/attachment/v2';
 import { toLegacyCaseResponse } from '../../common/attachments';
-import type { CasesClient } from '../../client';
+import type { WorkflowCasesClient as CasesClient } from '../types';
 import { createCasesStepHandler, safeParseCaseForWorkflowOutput, withCaseOwner } from './utils';
 import { toUnifiedAttachmentType } from '../../../common/utils/attachments';
 

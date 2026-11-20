@@ -5,6 +5,7 @@
  * 2.0.
  */
 
+export { SANDBOX_WRITE_FILE_TOOL_ID } from './write_file_tool_ids';
 import * as path from 'path';
 import { z } from '@kbn/zod/v4';
 import { ToolType } from '@kbn/agent-builder-common';
@@ -15,7 +16,7 @@ import type { SandboxPluginStart, SandboxSession } from '@kbn/sandbox-plugin/ser
 import { getConversationId, getSandboxCallContext, resolveAbsolutePath } from './tool_utils';
 import type { SandboxWorkspaceManager } from './sandbox_workspace_manager';
 
-export const SANDBOX_WRITE_FILE_TOOL_ID = 'nightshift_sandbox_write_file';
+import { SANDBOX_WRITE_FILE_TOOL_ID } from './write_file_tool_ids';
 
 const writeFileSchema = z.object({
   file_path: z

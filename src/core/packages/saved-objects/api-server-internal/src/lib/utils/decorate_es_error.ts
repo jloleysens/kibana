@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { get } from 'lodash';
+import get from 'lodash/get';
 import { errors as esErrors } from '@elastic/elasticsearch';
 import type { ErrorCause } from '@elastic/elasticsearch/lib/api/types';
 import type { ElasticsearchErrorDetails } from '@kbn/es-errors';

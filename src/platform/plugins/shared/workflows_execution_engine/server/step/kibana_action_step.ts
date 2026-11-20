@@ -16,11 +16,11 @@ import { UIAM_INTERNAL_CALLER_ATTESTATION_HEADER } from '@kbn/core-security-serv
 import {
   buildKibanaRequest,
   type FetcherConfigSchema,
-  IGNORED_KIBANA_FETCHER_SETTING_MESSAGE,
-  KibanaHttpMethods,
+  type KibanaRequestDefinition,
   WORKFLOWS_CORE_SELF_CLIENT_ENABLED_FLAG,
 } from '@kbn/workflows';
 import type { KibanaGraphNode } from '@kbn/workflows/graph/types';
+import { IGNORED_KIBANA_FETCHER_SETTING_MESSAGE, KibanaHttpMethods } from '@kbn/workflows-runtime';
 import type { z } from '@kbn/zod/v4';
 import { ResponseSizeLimitError } from './errors';
 import type { BaseStep, RunStepResult } from './node_implementation';
@@ -82,7 +82,9 @@ export class KibanaActionStepImpl extends BaseAtomicNodeImplementation<BaseStep>
     private node: KibanaGraphNode,
     stepExecutionRuntime: StepExecutionRuntime,
     workflowRuntime: WorkflowExecutionRuntimeManager,
-    private workflowLogger: IWorkflowEventLogger
+    private workflowLogger: IWorkflowEventLogger,
+    private readonly nativeCallKibanaApi?: StepExecutionRuntime['contextManager']['callKibanaApi'],
+    private readonly nativeDefinition?: KibanaRequestDefinition | null
   ) {
     const step = {
       name: node.stepId,
@@ -205,6 +207,7 @@ export class KibanaActionStepImpl extends BaseAtomicNodeImplementation<BaseStep>
   }
 
   private async shouldUseCoreSelfClient(): Promise<boolean> {
+    if (this.nativeCallKibanaApi) return true;
     return firstValueFrom(
       this.stepExecutionRuntime.contextManager
         .getCoreStart()
@@ -250,7 +253,7 @@ export class KibanaActionStepImpl extends BaseAtomicNodeImplementation<BaseStep>
       const { form_data, method = 'POST', path, query, headers } = cleanParams;
       requestConfig = { method, path, query, headers, rawBody: this.buildFormData(form_data) };
     } else {
-      requestConfig = buildKibanaRequest(stepType, cleanParams, spaceId);
+      requestConfig = buildKibanaRequest(stepType, cleanParams, spaceId, this.nativeDefinition);
     }
 
     const normalizedMethod = requestConfig.method?.toUpperCase();
@@ -277,7 +280,9 @@ export class KibanaActionStepImpl extends BaseAtomicNodeImplementation<BaseStep>
     const contextManager = this.stepExecutionRuntime.contextManager;
     let result: CallKibanaApiResult;
     try {
-      result = await contextManager.callKibanaApi({
+      result = await (
+        this.nativeCallKibanaApi ?? contextManager.callKibanaApi.bind(contextManager)
+      )({
         method: normalizedMethod as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
         path: requestConfig.path,
         prefixSpace: false,
@@ -431,7 +436,7 @@ export class KibanaActionStepImpl extends BaseAtomicNodeImplementation<BaseStep>
         body,
         query,
         headers: connectorHeaders,
-      } = buildKibanaRequest(stepType, cleanParams, spaceId);
+      } = buildKibanaRequest(stepType, cleanParams, spaceId, this.nativeDefinition);
       requestConfig = {
         method,
         path,

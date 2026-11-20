@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { type LoopStepType, LoopStepTypes } from '@kbn/workflows-runtime';
 import type {
   AtomicGraphNode,
   DataSetGraphNode,
@@ -53,8 +54,6 @@ import type {
   ExitSwitchNode,
 } from './nodes/switch_nodes';
 import type { GraphNodeUnion } from './nodes/union';
-import type { LoopStepType } from '../../spec/schema';
-import { LoopStepTypes } from '../../spec/schema';
 
 export const isSynthetic = (node: GraphNodeUnion): node is SyntheticGraphNode =>
   'isSynthetic' in node && node.isSynthetic === true;

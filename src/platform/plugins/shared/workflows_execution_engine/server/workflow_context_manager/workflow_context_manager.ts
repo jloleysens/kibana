@@ -25,11 +25,7 @@ import type { ContextDependencies } from './types';
 import type { StepExecutionMetadata, WorkflowExecutionState } from './workflow_execution_state';
 import type { RuntimeGraphView } from './workflow_runtime_graph';
 import { WorkflowScopeStack } from './workflow_scope_stack';
-import {
-  callKibanaApi,
-  type CallKibanaApiParams,
-  type CallKibanaApiResult,
-} from '../lib/call_kibana_api';
+import type { CallKibanaApiParams, CallKibanaApiResult } from '../lib/call_kibana_api';
 import type { WorkflowTemplatingEngine } from '../templating_engine';
 import { buildStepExecutionId, isTemplateExpression } from '../utils';
 import { isSerializedError } from '../utils/errors';
@@ -334,6 +330,8 @@ export class WorkflowContextManager {
   public async callKibanaApi<T = unknown>(
     params: CallKibanaApiParams
   ): Promise<CallKibanaApiResult<T>> {
+    if (this.dependencies.callKibanaApi) return this.dependencies.callKibanaApi<T>(params);
+    const { callKibanaApi } = await import('../lib/call_kibana_api');
     return callKibanaApi<T>(
       {
         fakeRequest: this.fakeRequest,

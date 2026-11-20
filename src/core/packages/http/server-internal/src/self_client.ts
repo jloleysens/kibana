@@ -16,6 +16,8 @@ import type {
   HttpSelfResponse,
   HttpSelfScopedClient,
   HttpSelfService,
+  HttpSelfRunCredential,
+  HttpSelfClientSslConfig,
   HttpSelfUnauthorizedErrorHandler,
   HttpSelfUnauthorizedErrorHandlerResult,
   HttpSelfUnauthorizedErrorHandlerToolkit,
@@ -33,8 +35,7 @@ import {
   UIAM_INTERNAL_CALLER_ATTESTATION_HEADER,
 } from '@kbn/core-security-server';
 import { getSpaceUrlPrefix } from '@kbn/core-spaces-common';
-import type { HttpConfig } from './http_config';
-import { SelfHttpDispatcherProvider } from './self_client_dispatcher';
+import { SelfHttpDispatcherProvider, type SelfHttpConfig } from './self_client_dispatcher';
 import { SELF_CALL_AUTH_CHALLENGE_HEADER, SELF_CALL_HEADER } from './self_client_observer';
 
 const JSON_CONTENT = /^(application\/(json|x-javascript)|text\/(x-)?javascript|x-json)(;.*)?$/;
@@ -82,10 +83,11 @@ interface HttpSelfClientParams {
   readonly basePath: IBasePath;
   readonly authRequestHeaders: IAuthHeadersStorage;
   readonly getServerInfo: () => HttpServerInfo;
-  readonly getHttpConfig: () => HttpConfig;
+  readonly getHttpConfig: () => SelfHttpConfig;
   readonly kibanaVersion: string;
   readonly log: Logger;
   readonly target: 'auto' | 'local';
+  readonly ssl?: Readonly<Record<'local' | 'public', HttpSelfClientSslConfig>>;
   readonly getUiamAttestationGetter?: () => SelfClientUiamAttestationGetter | undefined;
   readonly getOwnClientAuthenticationCheck?: () =>
     | SelfClientOwnClientAuthenticationCheck
@@ -113,6 +115,33 @@ export const createInternalHttpSelfClient = (
   const dispatcherProvider = new SelfHttpDispatcherProvider(params);
   return {
     asScoped: (request) => new InternalHttpSelfScopedClient(params, request, dispatcherProvider),
+    refreshRunCredential: (request, signal) =>
+      new InternalHttpSelfScopedClient(params, request, dispatcherProvider).refreshRunCredential(
+        signal
+      ),
+    getDispatchConfig: () => {
+      const { name, hostname, port, protocol } = params.getServerInfo();
+      const ssl = {
+        local: dispatcherProvider.getSslConfig('local'),
+        public: dispatcherProvider.getSslConfig('public'),
+      };
+      for (const profile of Object.values(ssl)) {
+        if (
+          profile.certificateAuthorities.some((certificate) => certificate.includes('PRIVATE KEY'))
+        ) {
+          throw new Error('Self HTTP dispatch trust must not contain private keys');
+        }
+      }
+      return {
+        target: params.target,
+        serverInfo: { name, hostname, port, protocol },
+        basePath: params.basePath.serverBasePath,
+        publicBaseUrl: params.basePath.publicBaseUrl,
+        kibanaVersion: params.kibanaVersion,
+        maxRedirects: params.getHttpConfig().selfHttp.maxRedirects ?? 0,
+        ssl,
+      };
+    },
     close: () => dispatcherProvider.close(),
   };
 };
@@ -123,6 +152,32 @@ class InternalHttpSelfScopedClient implements HttpSelfScopedClient {
     private readonly request: KibanaRequest,
     private readonly dispatcherProvider: SelfHttpDispatcherProvider
   ) {}
+
+  public async refreshRunCredential(
+    signal: AbortSignal
+  ): Promise<HttpSelfRunCredential | undefined> {
+    signal.throwIfAborted();
+    const cleanup: Array<() => void> = [];
+    try {
+      const headers = await this.resolveRetryAuthHeaders(
+        '/',
+        this.createRequest('/', {}),
+        new Response(null, { status: 401 }),
+        signal,
+        cleanup
+      );
+      const authorization =
+        headers &&
+        Object.entries(headers).find(([name]) => name.toLowerCase() === 'authorization')?.[1];
+      if (typeof authorization !== 'string') return;
+      return {
+        authorization,
+        uiamAttestation: this.params.getUiamAttestationGetter?.()?.(this.request, authorization),
+      };
+    } finally {
+      cleanup.forEach((clean) => clean());
+    }
+  }
 
   public async fetch<TResponseBody = unknown, TRequestBody = unknown>(
     path: string,
@@ -293,12 +348,9 @@ class InternalHttpSelfScopedClient implements HttpSelfScopedClient {
       throw new Error(SELF_CALL_RECURSION_ERROR);
     }
 
-    const { ssl } = this.params.getHttpConfig();
     if (
-      ssl.enabled &&
-      ssl.requestCert &&
-      ssl.rejectUnauthorized &&
-      this.getEffectiveTarget(target) === 'local'
+      this.dispatcherProvider.getSslConfig(this.getEffectiveTarget(target))
+        .clientCertificateRequired
     ) {
       throw new Error(SELF_CALL_MTLS_ERROR);
     }

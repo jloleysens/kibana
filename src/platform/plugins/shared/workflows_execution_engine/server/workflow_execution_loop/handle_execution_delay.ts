@@ -8,9 +8,9 @@
  */
 
 import type { EsWorkflowExecution, StackFrame } from '@kbn/workflows';
-import { ExecutionStatus, isTerminalStatus } from '@kbn/workflows';
 import type { GraphNodeUnion } from '@kbn/workflows/graph';
 import { isEnterStepTimeoutZone } from '@kbn/workflows/graph';
+import { ExecutionStatus, isTerminalStatus } from '@kbn/workflows-runtime';
 import { ResumeTaskSchedulingError } from './resume_task_scheduling_error';
 import type { WorkflowExecutionLoopParams } from './types';
 import { DEFAULT_WORKFLOW_TIMEOUT } from '../default_workflow_settings';

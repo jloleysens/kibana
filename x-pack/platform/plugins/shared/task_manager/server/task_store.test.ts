@@ -338,6 +338,51 @@ describe('TaskStore', () => {
       );
     });
 
+    test('atomically persists a direct task with the ordinary ownership lease and encrypted key', async () => {
+      const task = { id: 'id', taskType: 'report', params: {}, state: {}, timeoutOverride: '1m' };
+      const request = httpServerMock.createKibanaRequest();
+      (getApiKeyAndUserScope as jest.Mock).mockResolvedValueOnce(
+        new Map([
+          [
+            'id',
+            {
+              apiKey: 'persisted-api-key',
+              userScope: { apiKeyId: 'key-id', spaceId: brandSpaceId('default') },
+            },
+          ],
+        ])
+      );
+      coreStart.savedObjects.getScopedClient.mockReturnValueOnce(scopedSavedObjectsClient);
+      scopedSavedObjectsClient.create.mockImplementation(async (type, attributes) => ({
+        id: 'id',
+        type,
+        attributes,
+        references: [],
+        version: 'claim-version',
+      }));
+      // This suite's Date constructor returns one shared mutable instance, including retry dates.
+      const originalTime = mockedDate.getTime();
+      try {
+        await store.schedule(task, { request }, true);
+        expect(scopedSavedObjectsClient.create).toHaveBeenCalledTimes(1);
+        expect(scopedSavedObjectsClient.create).toHaveBeenCalledWith(
+          'task',
+          expect.objectContaining({
+            status: 'running',
+            ownerId: '',
+            attempts: 1,
+            startedAt: mockedDate.toISOString(),
+            scheduledAt: mockedDate.toISOString(),
+            retryAt: expect.any(String),
+            apiKey: 'persisted-api-key',
+          }),
+          { id: 'id', refresh: false }
+        );
+      } finally {
+        mockedDate.setTime(originalTime);
+      }
+    });
+
     test('schedule a task with API key if request is provided', async () => {
       const task = {
         id: 'id',

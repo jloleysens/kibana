@@ -6,10 +6,11 @@
  */
 
 import { lazySchema, z, isoDateTime } from '@kbn/zod/v4';
-import { isEqual, uniq } from 'lodash';
+import isEqual from 'lodash/isEqual';
+import uniq from 'lodash/uniq';
 import objectHash from 'object-hash';
 import { v5 } from 'uuid';
-import { conditionSchema, type Condition } from '@kbn/streamlang';
+import { conditionSchema, type Condition } from '@kbn/streamlang-conditions';
 import { MAX_ID_LENGTH, MAX_TEXT_LENGTH, MAX_TITLE_LENGTH } from './significant_events/constants';
 
 export const DATASET_ANALYSIS_FEATURE_TYPE = 'dataset_analysis' as const;

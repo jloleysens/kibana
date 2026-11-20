@@ -132,6 +132,31 @@ export interface HttpSelfScopedClient {
   ): Promise<TResponseBody>;
 }
 
+/** Effective public TLS trust and client-certificate requirements for a self HTTP target. */
+export interface HttpSelfClientSslConfig {
+  readonly verificationMode: 'full' | 'certificate' | 'none';
+  readonly certificateAuthorities: readonly string[];
+  readonly exclusiveTrust: boolean;
+  readonly clientCertificateRequired: boolean;
+}
+
+/** Non-secret self-HTTP policy, snapshotted for one native execution lease. */
+export interface HttpSelfClientDispatchConfig {
+  readonly target: 'auto' | 'local';
+  readonly serverInfo: HttpServerInfo;
+  readonly basePath: string;
+  readonly publicBaseUrl?: string;
+  readonly kibanaVersion: string;
+  readonly maxRedirects: number;
+  readonly ssl: Readonly<Record<'local' | 'public', HttpSelfClientSslConfig>>;
+}
+
+/** Scoped run credential and bound attestation, never refresh or master material. */
+export interface HttpSelfRunCredential {
+  readonly authorization: string;
+  readonly uiamAttestation?: string;
+}
+
 /**
  * Creates scoped clients for calling Kibana's own HTTP routes.
  *
@@ -144,6 +169,13 @@ export interface HttpSelfScopedClient {
  */
 export interface HttpSelfService {
   asScoped(request: KibanaRequest): HttpSelfScopedClient;
+  /** Captures public trust material and transport policy; never credentials or private keys. */
+  getDispatchConfig(): HttpSelfClientDispatchConfig;
+  /** Runs the existing scoped refresh hook without exposing its refresh/master material. */
+  refreshRunCredential(
+    request: KibanaRequest,
+    signal: AbortSignal
+  ): Promise<HttpSelfRunCredential | undefined>;
 }
 
 /**

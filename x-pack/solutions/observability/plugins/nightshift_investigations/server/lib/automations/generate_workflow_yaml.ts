@@ -12,9 +12,8 @@ import { parsePresetSchedule } from '../../../common/automation_schedule';
 import type { InvestigationNotificationDestination } from '../../../common';
 import type { NightshiftAutomationAttributes, NightshiftTriggerRow, OverlapPolicy } from './types';
 
-// Defaults to the Elastic Slack app when no connector is selected; the channel remains user-selected.
-// Mirrors significant_events/server/lib/slack_app/service.ts, which depends on this plugin.
-export const ELASTIC_APPS_SLACK_CONNECTOR_ID = 'elastic-apps-slack';
+import { ELASTIC_APPS_SLACK_CONNECTOR_ID } from '../../../common/notification_constants';
+export { ELASTIC_APPS_SLACK_CONNECTOR_ID } from '../../../common/notification_constants';
 
 const ALERT_TRIGGER_TYPE = 'alerting.v1.alertStatusChanged';
 const SLACK_MESSAGE_TRIGGER_TYPE = 'slack2.message';

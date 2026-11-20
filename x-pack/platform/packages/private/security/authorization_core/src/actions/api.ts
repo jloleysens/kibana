@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { isString } from 'lodash';
+import isString from 'lodash/isString';
 
 import { ApiOperation } from '@kbn/core-security-server';
 import type { ApiActions as ApiActionsType } from '@kbn/security-plugin-types-server';

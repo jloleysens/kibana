@@ -7,7 +7,8 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { repeat, uniq } from 'lodash';
+import repeat from 'lodash/repeat';
+import uniq from 'lodash/uniq';
 import { i18n } from '@kbn/i18n';
 
 const endOfInputText = i18n.translate('esQuery.kql.errors.endOfInputText', {

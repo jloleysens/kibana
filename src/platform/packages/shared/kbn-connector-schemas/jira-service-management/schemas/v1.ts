@@ -8,7 +8,7 @@
  */
 
 import { z, lazySchema } from '@kbn/zod/v4';
-import { isEmpty } from 'lodash';
+import isEmpty from 'lodash/isEmpty';
 import { MESSAGE_NON_EMPTY, MESSAGE_SCHEMA_MAX_LENGTH } from '../constants';
 
 export const ConfigSchema = lazySchema(() =>

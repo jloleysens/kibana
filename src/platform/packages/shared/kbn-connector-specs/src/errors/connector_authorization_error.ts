@@ -7,38 +7,10 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { isError } from 'lodash';
-
-export type ConnectorAuthorizationReason =
-  | 'no_token'
-  | 'token_expired'
-  | 'refresh_token_expired'
-  | 'token_revoked'
-  | 'refresh_failed';
-
-/**
- * Structured error thrown when a connector fails to authorize, and should
- * specifically be used to signal that the connector requires user re-authorization.
- */
-export class ConnectorAuthorizationError extends Error {
-  public readonly authMethod: string;
-  public readonly reason: ConnectorAuthorizationReason;
-
-  constructor({
-    authMethod,
-    reason,
-    message,
-  }: {
-    authMethod: string;
-    reason: ConnectorAuthorizationReason;
-    message: string;
-  }) {
-    super(message);
-    this.name = 'ConnectorAuthorizationError';
-    this.authMethod = authMethod;
-    this.reason = reason;
-  }
-}
+import isError from 'lodash/isError';
+import { ConnectorAuthorizationError } from '@kbn/connector-specs-runtime';
+export { ConnectorAuthorizationError } from '@kbn/connector-specs-runtime';
+export type { ConnectorAuthorizationReason } from '@kbn/connector-specs-runtime';
 
 export const isConnectorAuthorizationError = (
   error: unknown

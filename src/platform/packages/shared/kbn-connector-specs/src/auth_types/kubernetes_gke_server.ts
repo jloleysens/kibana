@@ -9,6 +9,7 @@
 
 import type { AxiosInstance } from 'axios';
 import type { AuthContext, AuthTypeSpec } from '../connector_spec';
+import { createGcpTokenTransport } from './gcp_token_transport';
 import { getGcpAccessToken, parseServiceAccountKey } from './gcp_jwt_helpers';
 import {
   KubernetesGkeAuth as KubernetesGkeAuthDefinition,
@@ -31,7 +32,8 @@ export const KubernetesGkeAuth: AuthTypeSpec<KubernetesGkeAuthSchema> = {
     const { accessToken } = await getGcpAccessToken(
       serviceAccount.client_email,
       serviceAccount.private_key,
-      GKE_TOKEN_SCOPE
+      GKE_TOKEN_SCOPE,
+      createGcpTokenTransport(axiosInstance, ctx)
     );
 
     axiosInstance.defaults.headers.common.Authorization = `Bearer ${accessToken}`;

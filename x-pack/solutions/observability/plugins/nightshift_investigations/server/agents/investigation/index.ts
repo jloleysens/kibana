@@ -12,40 +12,28 @@ import type {
   AgentTypeDefinition,
 } from '@kbn/agent-builder-server/agents';
 import type { Logger } from '@kbn/core/server';
-import {
-  SET_HYPOTHESES_TOOL_ID,
-  SET_IMPACT_TOOL_ID,
-} from '@kbn/agentic-investigations-plugin/common';
 import { PROPOSALS_CREATE_TOOL_ID } from '@kbn/proposals-common';
 import {
   NIGHTSHIFT_AGENT_OPTIMIZE_WORKFLOW_ID,
   NIGHTSHIFT_SANDBOX_MATERIALIZE_WORKSPACE_WORKFLOW_ID,
 } from '@kbn/workflows/managed';
+import { INVESTIGATION_TOOL_IDS, SANDBOX_TOOL_IDS } from './tool_ids';
 import { NIGHTSHIFT_INVESTIGATION_AGENT_ID } from '../../../common';
 import instructions from './instructions/investigator.md.text';
 import decisionTreesSection from './instructions/decision_trees.text';
 import knowledgeCortexSection from './instructions/knowledge_cortex.text';
-import { SANDBOX_BASH_TOOL_ID } from '../../tools/sandbox_bash/tool';
-import { SANDBOX_VIEW_FILE_TOOL_ID } from '../../tools/sandbox_bash/view_file_tool';
-import { SANDBOX_STR_REPLACE_TOOL_ID } from '../../tools/sandbox_bash/str_replace_tool';
-import { SANDBOX_WRITE_FILE_TOOL_ID } from '../../tools/sandbox_bash/write_file_tool';
 
 export { NIGHTSHIFT_INVESTIGATION_AGENT_ID };
 export const NIGHTSHIFT_INVESTIGATION_AGENT_TYPE_ID = 'platform.nightshift.investigation-type';
 
-export const SANDBOX_TOOL_IDS = [
-  SANDBOX_BASH_TOOL_ID,
-  SANDBOX_VIEW_FILE_TOOL_ID,
-  SANDBOX_STR_REPLACE_TOOL_ID,
-  SANDBOX_WRITE_FILE_TOOL_ID,
-] as const;
+export { SANDBOX_TOOL_IDS } from './tool_ids';
 
 /**
  * The agentic investigations tools the agent records its findings with.
  * `set_conversation_metadata` (summary, verdict, severity) is not listed: Agent Builder adds it to
  * every run on a template conversation, which every investigation is.
  */
-export const INVESTIGATION_TOOL_IDS = [SET_IMPACT_TOOL_ID, SET_HYPOTHESES_TOOL_ID] as const;
+export { INVESTIGATION_TOOL_IDS } from './tool_ids';
 
 export const INVESTIGATION_AGENT_NAME = 'Nightshift Investigator';
 export const INVESTIGATION_AGENT_DESCRIPTION =

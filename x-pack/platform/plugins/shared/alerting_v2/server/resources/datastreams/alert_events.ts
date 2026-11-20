@@ -11,6 +11,13 @@ import { lazySchema, z } from '@kbn/zod/v4';
 import { alertEventSeveritySchema } from '@kbn/alerting-v2-schemas';
 import { getIngestTimestampPipeline } from './ingest_timestamp_pipeline';
 import type { ResourceDefinition } from './types';
+import {
+  ALERT_EPISODE_STATUSES,
+  ALERT_EVENT_STATUSES,
+  ALERT_EVENT_TYPES,
+} from './alert_event_kinds';
+
+export { alertEpisodeStatus, alertEventStatus, alertEventType } from './alert_event_kinds';
 
 export const ALERT_EVENTS_DATA_STREAM_VERSION = 8;
 export const ALERT_EVENTS_BACKING_INDEX = '.ds-.rule-events-*';
@@ -58,16 +65,10 @@ const mappings: MappingsDefinition = {
   },
 };
 
-const alertEventStatusSchema = lazySchema(() => z.enum(['breached', 'recovered', 'no_data']));
-const alertEventTypeSchema = lazySchema(() => z.enum(['signal', 'alert']));
-const alertEpisodeStatusSchema = lazySchema(() =>
-  z.enum(['inactive', 'pending', 'active', 'recovering'])
-);
+const alertEventStatusSchema = lazySchema(() => z.enum(ALERT_EVENT_STATUSES));
+const alertEventTypeSchema = lazySchema(() => z.enum(ALERT_EVENT_TYPES));
+const alertEpisodeStatusSchema = lazySchema(() => z.enum(ALERT_EPISODE_STATUSES));
 const alertEpisodeStatusCountSchema = lazySchema(() => z.number().int().optional());
-
-export const alertEventStatus = alertEventStatusSchema.enum;
-export const alertEventType = alertEventTypeSchema.enum;
-export const alertEpisodeStatus = alertEpisodeStatusSchema.enum;
 
 export const alertEventSchema = lazySchema(() =>
   z.object({

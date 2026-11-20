@@ -8,7 +8,7 @@
 import type { tracing } from '@elastic/opentelemetry-node/sdk';
 import type { InferenceTracingLangfuseExportConfig } from '@kbn/inference-tracing-config';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { memoize } from 'lodash';
+import memoize from 'lodash/memoize';
 import { diag } from '@opentelemetry/api';
 import { BaseInferenceSpanProcessor } from '../base_inference_span_processor';
 import { parseJsonAttr } from '../util/parse_json_attr';

@@ -27,7 +27,7 @@ interface GetConnectorListWithRequestOptions {
 }
 
 interface GetConnectorListWithActionsClientOptions {
-  actionsClient: PublicMethodsOf<ActionsClient>;
+  actionsClient: Pick<PublicMethodsOf<ActionsClient>, 'getAll'>;
   esClient: ElasticsearchClient;
   logger: Logger;
 }
@@ -38,7 +38,7 @@ type GetConnectorListOptions =
 
 const getActionsClient = async (
   options: GetConnectorListOptions
-): Promise<PublicMethodsOf<ActionsClient>> => {
+): Promise<Pick<PublicMethodsOf<ActionsClient>, 'getAll'>> => {
   if ('actionsClient' in options) {
     return options.actionsClient;
   }

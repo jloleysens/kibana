@@ -8,7 +8,7 @@
  */
 
 import { set } from '@kbn/safer-lodash-set';
-import { isPlainObject } from 'lodash';
+import isPlainObject from 'lodash/isPlainObject';
 import type { TransportRequestMetadata } from '@elastic/elasticsearch';
 import type { Logger } from '@kbn/logging';
 import type { OnRequestHandler } from '../create_transport';

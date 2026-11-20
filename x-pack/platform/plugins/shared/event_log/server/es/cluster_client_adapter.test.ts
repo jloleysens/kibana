@@ -2961,3 +2961,76 @@ async function retryUntil(
 
   return false;
 }
+
+describe('acknowledged indexDocuments', () => {
+  const docs = [{ body: { message: 'durable' }, index: 'event-log' }];
+  afterEach(async () => {
+    await clusterClientAdapter.shutdown();
+  });
+
+  test('rejects transport errors instead of silently dropping a durable batch', async () => {
+    clusterClient.bulk.mockRejectedValue(new Error('offline'));
+    await expect(clusterClientAdapter.indexDocuments(docs, true)).rejects.toThrow('offline');
+  });
+
+  test('rejects item-level bulk errors', async () => {
+    clusterClient.bulk.mockResponse({
+      errors: true,
+      took: 1,
+      items: [
+        {
+          create: { _index: 'event-log', status: 429, error: { type: 'rejected', reason: 'busy' } },
+        },
+      ],
+    });
+    await expect(clusterClientAdapter.indexDocuments(docs, true)).rejects.toThrow(
+      'Error writing some bulk events'
+    );
+  });
+
+  test('rejects initialization failure', async () => {
+    const adapter = new ClusterClientAdapter({
+      logger,
+      elasticsearchClientPromise: Promise.resolve(clusterClient),
+      esNames: getEsNames('kibana'),
+      wait: async () => false,
+    });
+    try {
+      await expect(adapter.indexDocuments(docs, true)).rejects.toThrow(
+        'Event log initialization failed'
+      );
+    } finally {
+      await adapter.shutdown();
+    }
+    expect(clusterClient.bulk).not.toHaveBeenCalled();
+  });
+});
+
+describe('idempotent acknowledged event creates', () => {
+  afterEach(async () => {
+    await clusterClientAdapter.shutdown();
+  });
+  test.each([true, false])(
+    'accepts only conflicts matching the explicit ID (matches=%s)',
+    async (matches) => {
+      clusterClient.bulk.mockResponse({
+        errors: true,
+        took: 1,
+        items: [
+          {
+            create: {
+              _index: 'event-log',
+              _id: matches ? 'stable' : 'other',
+              status: 409,
+              error: { type: 'version_conflict_engine_exception', reason: 'already exists' },
+            },
+          },
+        ],
+      });
+      const docs = [{ id: 'stable', body: { message: 'durable' }, index: 'event-log' }];
+      const result = clusterClientAdapter.indexDocuments(docs, true);
+      if (matches) await expect(result).resolves.toBeUndefined();
+      else await expect(result).rejects.toThrow('Error writing some bulk events');
+    }
+  );
+});

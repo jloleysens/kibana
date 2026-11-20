@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { recordRemoteTiming } from '@kbn/core-remote-common';
 import type { JsonValue } from '@kbn/utility-types';
 import type {
   EsWorkflowExecution,
@@ -14,9 +15,8 @@ import type {
   StackFrame,
   WorkflowTokenUsage,
 } from '@kbn/workflows';
-import { ExecutionStatus } from '@kbn/workflows';
 import type { GraphNodeUnion } from '@kbn/workflows/graph';
-import { ExecutionError } from '@kbn/workflows/server';
+import { ExecutionError, ExecutionStatus } from '@kbn/workflows-runtime';
 import type { StepIoService } from './step_io_service';
 import type { WorkflowContextManager } from './workflow_context_manager';
 import type { WorkflowExecutionState } from './workflow_execution_state';
@@ -208,6 +208,13 @@ export class StepExecutionRuntime {
   }
 
   public startStep(): void {
+    if (!('isSynthetic' in this.node && this.node.isSynthetic)) {
+      recordRemoteTiming('step_start', {
+        executionId: this.workflowExecution.id,
+        stepId: this.node.stepId,
+        stepType: this.node.stepType,
+      });
+    }
     const stepId = this.node.stepId;
     const stepStartedAt = new Date();
     // Capture before upsert: the write below sets startedAt, so a later read cannot
@@ -391,7 +398,7 @@ export class StepExecutionRuntime {
    * (returns `undefined`) for steps that don't report usage. Shared by
    * `finishStep` (full output) and `failStep` (partial output before a failure).
    */
-  private recordTokenUsage(stepOutput: unknown): WorkflowTokenUsage | undefined {
+  public recordTokenUsage(stepOutput: unknown): WorkflowTokenUsage | undefined {
     const usage = extractTokenUsage(stepOutput);
     this.workflowExecutionState.accumulateUsage(usage);
     if (usage) {

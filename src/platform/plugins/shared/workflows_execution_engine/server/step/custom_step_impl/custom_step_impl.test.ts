@@ -9,18 +9,21 @@
 
 import { z } from '@kbn/zod/v4';
 import { CustomStepImpl } from './custom_step_impl';
-import { OneShotStepDefinitionHandler, PollPolicyStepHandler } from './step_definition_handlers';
+import { OneShotStepDefinitionHandler } from './step_definition_handlers/one_shot_step_definition_handler';
+import { PollPolicyStepHandler } from './step_definition_handlers/polling_step_definition_handler';
 
 const mockOneShotRun = jest.fn();
 const mockOneShotOnCancel = jest.fn();
 const mockPollRun = jest.fn();
 const mockPollOnCancel = jest.fn();
 
-jest.mock('./step_definition_handlers', () => ({
+jest.mock('./step_definition_handlers/one_shot_step_definition_handler', () => ({
   OneShotStepDefinitionHandler: jest.fn().mockImplementation(() => ({
     run: mockOneShotRun,
     onCancel: mockOneShotOnCancel,
   })),
+}));
+jest.mock('./step_definition_handlers/polling_step_definition_handler', () => ({
   PollPolicyStepHandler: jest.fn().mockImplementation(() => ({
     run: mockPollRun,
     onCancel: mockPollOnCancel,
@@ -109,11 +112,14 @@ describe('CustomStepImpl', () => {
   });
 
   describe('resolveStepHandler', () => {
-    it('constructs OneShotStepDefinitionHandler for handler definitions', () => {
+    it('constructs OneShotStepDefinitionHandler for handler definitions on first reach', async () => {
       const mocks = createMocks();
       const stepDefinition = { handler: jest.fn() };
 
-      buildImpl(stepDefinition, mocks);
+      const impl = buildImpl(stepDefinition, mocks);
+      expect(MockedOneShotStepDefinitionHandler).not.toHaveBeenCalled();
+      expect(MockedPollPolicyStepHandler).not.toHaveBeenCalled();
+      await impl.onCancel();
 
       expect(MockedOneShotStepDefinitionHandler).toHaveBeenCalledTimes(1);
       expect(MockedOneShotStepDefinitionHandler).toHaveBeenCalledWith(
@@ -125,14 +131,17 @@ describe('CustomStepImpl', () => {
       expect(MockedPollPolicyStepHandler).not.toHaveBeenCalled();
     });
 
-    it('constructs PollPolicyStepHandler for poll-only definitions', () => {
+    it('constructs PollPolicyStepHandler for poll-only definitions on first reach', async () => {
       const mocks = createMocks();
       const stepDefinition = {
         poll: jest.fn(),
         policy: { strategy: 'fixed', intervalMs: 1000 },
       };
 
-      buildImpl(stepDefinition, mocks);
+      const impl = buildImpl(stepDefinition, mocks);
+      expect(MockedOneShotStepDefinitionHandler).not.toHaveBeenCalled();
+      expect(MockedPollPolicyStepHandler).not.toHaveBeenCalled();
+      await impl.onCancel();
 
       expect(MockedPollPolicyStepHandler).toHaveBeenCalledTimes(1);
       expect(MockedPollPolicyStepHandler).toHaveBeenCalledWith(
@@ -144,7 +153,7 @@ describe('CustomStepImpl', () => {
       expect(MockedOneShotStepDefinitionHandler).not.toHaveBeenCalled();
     });
 
-    it('constructs PollPolicyStepHandler for start + poll definitions', () => {
+    it('constructs PollPolicyStepHandler for start + poll definitions on first reach', async () => {
       const mocks = createMocks();
       const stepDefinition = {
         start: jest.fn(),
@@ -152,7 +161,10 @@ describe('CustomStepImpl', () => {
         policy: { strategy: 'fixed', intervalMs: 1000 },
       };
 
-      buildImpl(stepDefinition, mocks);
+      const impl = buildImpl(stepDefinition, mocks);
+      expect(MockedOneShotStepDefinitionHandler).not.toHaveBeenCalled();
+      expect(MockedPollPolicyStepHandler).not.toHaveBeenCalled();
+      await impl.onCancel();
 
       expect(MockedPollPolicyStepHandler).toHaveBeenCalledTimes(1);
       expect(MockedOneShotStepDefinitionHandler).not.toHaveBeenCalled();

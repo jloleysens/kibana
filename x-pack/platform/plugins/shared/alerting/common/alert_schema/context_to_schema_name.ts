@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { capitalize } from 'lodash';
+import capitalize from 'lodash/capitalize';
 
 export const contextToSchemaName = (context: string) => {
   return `${context

@@ -18,6 +18,9 @@
     ".storybook/**/*.js"
   ],
   "kbn_references": [
+    "@kbn/core-di",
+    "@kbn/core-remote-common",
+    "@kbn/core-remote-server",
     "@kbn/i18n",
     "@kbn/esql-language",
     "@kbn/core",

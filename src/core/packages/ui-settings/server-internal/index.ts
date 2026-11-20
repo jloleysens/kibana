@@ -19,6 +19,7 @@ export type {
   InternalUiSettingsServiceSetup,
   InternalUiSettingsServiceStart,
   UiSettingsServiceOptions,
+  UiSettingsServiceDependencies,
 } from './src';
 
 // only exported for integration tests

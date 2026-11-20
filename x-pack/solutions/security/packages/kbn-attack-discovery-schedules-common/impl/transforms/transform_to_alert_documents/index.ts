@@ -17,7 +17,7 @@ import {
   getOriginalAlertIds,
 } from '@kbn/elastic-assistant-common';
 import { ALERT_INSTANCE_ID, ALERT_URL, ALERT_UUID, ECS_VERSION } from '@kbn/rule-data-utils';
-import { isEmpty } from 'lodash/fp';
+import isEmpty from 'lodash/fp/isEmpty';
 
 import {
   ALERT_ATTACK_DISCOVERY_ALERT_IDS,

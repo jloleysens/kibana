@@ -10,11 +10,7 @@ import { chunk } from 'lodash/fp';
 import type {
   CreateExceptionListItemSchema,
   Entry,
-  EntryExists,
   EntryList,
-  EntryMatch,
-  EntryMatchAny,
-  EntryMatchWildcard,
   EntryNested,
   ExceptionListItemSchema,
   OsTypeArray,
@@ -44,10 +40,25 @@ import {
 } from '../../apm_field_names';
 import type { ListClient } from '../..';
 
+import {
+  buildExistsClause,
+  buildMatchAnyClause,
+  buildMatchClause,
+  buildMatchWildcardClause,
+} from './exception_clause_builders';
+import type { BooleanFilter } from './exception_clause_builders';
+
+export {
+  buildExclusionClause,
+  buildMatchClause,
+  getBaseMatchAnyClause,
+  buildMatchAnyClause,
+  buildMatchWildcardClause,
+  buildExistsClause,
+} from './exception_clause_builders';
+export type { BooleanFilter } from './exception_clause_builders';
+
 type ExceptionEntry = Entry | EntryNested;
-export interface BooleanFilter {
-  bool: estypes.QueryDslBoolQuery;
-}
 
 export interface NestedFilter {
   nested: estypes.QueryDslNestedQuery;
@@ -366,127 +377,6 @@ export const buildExceptionFilter = async <
     filter: exceptionFilter,
     unprocessedExceptions: unprocessedExceptions.concat(unprocessableExceptionItems),
   };
-};
-
-export const buildExclusionClause = (booleanFilter: BooleanFilter): BooleanFilter => {
-  return {
-    bool: {
-      must_not: booleanFilter,
-    },
-  };
-};
-
-export const buildMatchClause = (entry: EntryMatch): BooleanFilter => {
-  const { field, operator, value } = entry;
-  const matchClause = {
-    bool: {
-      minimum_should_match: 1,
-      should: [
-        {
-          match_phrase: {
-            [field]: value,
-          },
-        },
-      ],
-    },
-  };
-
-  if (operator === 'excluded') {
-    return buildExclusionClause(matchClause);
-  } else {
-    return matchClause;
-  }
-};
-
-export const getBaseMatchAnyClause = (entry: EntryMatchAny): BooleanFilter => {
-  const { field, value } = entry;
-
-  if (value.length === 1) {
-    return {
-      bool: {
-        minimum_should_match: 1,
-        should: [
-          {
-            match_phrase: {
-              [field]: value[0],
-            },
-          },
-        ],
-      },
-    };
-  }
-
-  return {
-    bool: {
-      minimum_should_match: 1,
-      should: value.map((val) => {
-        return {
-          bool: {
-            minimum_should_match: 1,
-            should: [
-              {
-                match_phrase: {
-                  [field]: val,
-                },
-              },
-            ],
-          },
-        };
-      }),
-    },
-  };
-};
-
-export const buildMatchAnyClause = (entry: EntryMatchAny): BooleanFilter => {
-  const { operator } = entry;
-  const matchAnyClause = getBaseMatchAnyClause(entry);
-
-  if (operator === 'excluded') {
-    return buildExclusionClause(matchAnyClause);
-  } else {
-    return matchAnyClause;
-  }
-};
-
-export const buildMatchWildcardClause = (entry: EntryMatchWildcard): BooleanFilter => {
-  const { field, operator, value } = entry;
-  const wildcardClause = {
-    bool: {
-      filter: {
-        wildcard: {
-          [field]: value,
-        },
-      },
-    },
-  };
-
-  if (operator === 'excluded') {
-    return buildExclusionClause(wildcardClause);
-  } else {
-    return wildcardClause;
-  }
-};
-
-export const buildExistsClause = (entry: EntryExists): BooleanFilter => {
-  const { field, operator } = entry;
-  const existsClause = {
-    bool: {
-      minimum_should_match: 1,
-      should: [
-        {
-          exists: {
-            field,
-          },
-        },
-      ],
-    },
-  };
-
-  if (operator === 'excluded') {
-    return buildExclusionClause(existsClause);
-  } else {
-    return existsClause;
-  }
 };
 
 const isBooleanFilter = (clause?: object): clause is BooleanFilter => {

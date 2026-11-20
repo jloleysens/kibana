@@ -503,6 +503,14 @@ describe('DataStreamDataClient', () => {
       });
     });
 
+    it('rejects a partially failed refresh rather than claiming search visibility', async () => {
+      const { esClient, dataAccess } = createClient();
+      esClient.indices.refresh.mockResolvedValue({
+        _shards: { total: 1, successful: 0, failed: 1 },
+      });
+      await expect(dataAccess.refresh()).rejects.toThrow('search visibility');
+    });
+
     it('refreshes only the data stream when no legacy index is configured', async () => {
       const { esClient, dataAccess } = createClient();
 

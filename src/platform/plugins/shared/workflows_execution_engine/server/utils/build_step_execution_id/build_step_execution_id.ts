@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { createSHA256Hash } from '@kbn/crypto';
+import { createHash } from 'node:crypto';
 import type { StackFrame } from '@kbn/workflows';
 
 /**
@@ -43,5 +43,5 @@ export function buildStepExecutionId(
     .map((frame) => [frame.stepId, ...frame.nestedScopes.map((s) => s.scopeId || '')])
     .flat();
   const generatedId = [executionId, ...stepPath, stepId].join('_');
-  return createSHA256Hash(generatedId);
+  return createHash('sha256').update(Buffer.from(generatedId, 'utf8')).digest('hex');
 }

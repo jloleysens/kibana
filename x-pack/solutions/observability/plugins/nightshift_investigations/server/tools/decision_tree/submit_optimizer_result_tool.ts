@@ -5,6 +5,7 @@
  * 2.0.
  */
 
+export { DECISION_TREE_SUBMIT_TOOL_ID } from './submit_optimizer_result_tool_ids';
 import { z } from '@kbn/zod/v4';
 import { ToolType } from '@kbn/agent-builder-common';
 import { ToolResultType } from '@kbn/agent-builder-common/tools/tool_result';
@@ -36,7 +37,7 @@ import {
   resolveAbsolutePath,
 } from '../sandbox_bash/tool_utils';
 
-export const DECISION_TREE_SUBMIT_TOOL_ID = 'nightshift_submit_optimizer_result';
+import { DECISION_TREE_SUBMIT_TOOL_ID } from './submit_optimizer_result_tool_ids';
 
 const MAX_TREE_FILE_BYTES = 2 * 1024 * 1024;
 const MAX_SUBMISSIONS = 10;

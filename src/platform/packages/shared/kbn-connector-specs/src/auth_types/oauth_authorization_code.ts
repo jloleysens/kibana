@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { AUTH_TYPE_METADATA } from '@kbn/connector-specs-runtime';
 import { z, lazySchema } from '@kbn/zod/v4';
 import type { AxiosInstance } from 'axios';
 import type { AuthContext, AuthTypeSpec, OAuthGetTokenOpts } from '../connector_spec';
@@ -14,7 +15,7 @@ import { normalizeAuthorizationHeaderValue } from './oauth_authz_code_and_ears_h
 import { isConnectorAuthorizationError } from '../errors';
 import * as i18n from './translations';
 
-export const OAUTH_AUTHORIZATION_CODE_AUTH_ID = 'oauth_authorization_code';
+export { OAUTH_AUTHORIZATION_CODE_AUTH_ID } from '@kbn/connector-specs-runtime';
 
 const authSchema = lazySchema(() =>
   z
@@ -138,9 +139,8 @@ const resolveAccessToken = async (ctx: AuthContext, secret: AuthSchemaType): Pro
  * The _start_oauth_flow and _oauth_callback routes are generic and work with any provider.
  */
 export const OAuthAuthorizationCode: AuthTypeSpec<AuthSchemaType> = {
-  id: OAUTH_AUTHORIZATION_CODE_AUTH_ID,
+  ...AUTH_TYPE_METADATA.oauth_authorization_code,
   schema: authSchema,
-  authMode: 'per-user',
   configure: async (
     ctx: AuthContext,
     axiosInstance: AxiosInstance,

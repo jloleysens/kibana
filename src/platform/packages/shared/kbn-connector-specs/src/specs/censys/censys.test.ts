@@ -9,6 +9,7 @@
 
 import type { ActionContext } from '../../connector_spec';
 import { CensysConnector } from './censys';
+import { createCensysConnector } from './censys_spec';
 import { CensEyeCreateAnalysisJobInputSchema } from './types';
 
 jest.mock('@kbn/repo-info', () => ({
@@ -41,6 +42,16 @@ describe('CensysConnector', () => {
       /^CensysKibana\/\S+ \(Kibana\/\S+; Node\/\S+; ts=\d+\)$/
     );
   };
+
+  it('uses the dispatched version rather than the local repository version', async () => {
+    mockClient.get.mockResolvedValue({ data: {} });
+    const spec = createCensysConnector(async (context) => context.kibanaVersion ?? 'missing');
+    await spec.actions.getHost.handler(
+      { ...mockContext, kibanaVersion: '99.1.2' },
+      { host: '1.1.1.1' }
+    );
+    expect(mockClient.get.mock.calls[0][1].headers['User-Agent']).toContain('Kibana/99.1.2;');
+  });
 
   describe('getHost', () => {
     it('calls the host endpoint with organization_id and User-Agent', async () => {

@@ -25,7 +25,7 @@
  * `CredentialAccessor.getAuthHeaders()` by the client type, not read directly here.
  */
 
-import { escapeRegExp } from 'lodash';
+import escapeRegExp from 'lodash/escapeRegExp';
 import { i18n } from '@kbn/i18n';
 import { z, lazySchema } from '@kbn/zod/v4';
 import type { CollectionInfo } from 'mongodb';

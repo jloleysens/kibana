@@ -73,6 +73,8 @@ describe('setupDependencies', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockWorkflowExecution.workflowDefinition.name =
+      expect.getState().currentTestName ?? 'setup-default';
 
     mockDependencies = mockContextDependencies();
     mockDependencies.actions.getActionsClientWithRequest = jest
@@ -167,6 +169,31 @@ describe('setupDependencies', () => {
     expect(mockDependencies.actions.getActionsClientWithRequest).toHaveBeenCalledWith(
       mockFakeRequest
     );
+  });
+
+  it('does not assemble runtime state until an engine-owned dependency is reached', async () => {
+    const result = await setupDependencies(
+      workflowRunId,
+      spaceId,
+      mockLogger,
+      mockConfig,
+      mockDependencies,
+      mockWorkflowExecutionRepository,
+      mockStepExecutionRepository,
+      { headers: {} } as KibanaRequest
+    );
+    const graph = (WorkflowGraph.fromWorkflowDefinition as jest.Mock).mock.results[0].value;
+    const order = graph.topologicalOrder;
+    const readOrder = jest.fn(() => order);
+    Object.defineProperty(graph, 'topologicalOrder', { get: readOrder });
+    expect(result.workflowExecutionState.getWorkflowExecution().id).toBe(workflowRunId);
+    expect(result.dependencyPlan).toBeDefined();
+    expect(readOrder).not.toHaveBeenCalled();
+    const runtime = result.workflowRuntime;
+    expect(readOrder).toHaveBeenCalled();
+    const reads = readOrder.mock.calls.length;
+    expect(result.workflowRuntime).toBe(runtime);
+    expect(readOrder).toHaveBeenCalledTimes(reads);
   });
 
   describe('WorkflowGraph', () => {

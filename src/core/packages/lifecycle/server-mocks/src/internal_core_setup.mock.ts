@@ -72,6 +72,10 @@ export function createInternalCoreSetupMock() {
     remote: lazyObject({
       register: () => undefined,
       bind: () => undefined,
+      bindInProcess: () => undefined,
+      lease: async () => {
+        throw new Error('Remote execution was not started in this test');
+      },
       whenReady: async () => {
         throw new Error('Remote execution was not started in this test');
       },

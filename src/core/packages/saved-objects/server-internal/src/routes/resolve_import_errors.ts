@@ -9,7 +9,9 @@
 
 import path from 'node:path';
 import type { Readable } from 'stream';
-import { chain } from 'lodash';
+import map from 'lodash/map';
+import uniq from 'lodash/uniq';
+import filter from 'lodash/filter';
 import { schema } from '@kbn/config-schema';
 import type { SavedObjectConfig } from '@kbn/core-saved-objects-base-server-internal';
 import {
@@ -25,7 +27,12 @@ import { catchAndReturnBoomErrors, createSavedObjectsStreamFromNdJson } from './
 
 interface RouteDependencies {
   config: SavedObjectConfig;
-  coreUsageData: InternalCoreUsageDataSetup;
+  coreUsageData: {
+    getClient: () => Pick<
+      ReturnType<InternalCoreUsageDataSetup['getClient']>,
+      'incrementSavedObjectsResolveImportErrors'
+    >;
+  };
 }
 
 interface FileStream extends Readable {
@@ -141,13 +148,10 @@ export const registerResolveImportErrorsRoute = (
 
       const { getClient, getImporter, typeRegistry } = (await context.core).savedObjects;
 
-      const includedHiddenTypes = chain(req.body.retries)
-        .map('type')
-        .uniq()
-        .filter(
-          (type) => typeRegistry.isHidden(type) && typeRegistry.isImportableAndExportable(type)
-        )
-        .value();
+      const includedHiddenTypes = filter(
+        uniq(map(req.body.retries, 'type')),
+        (type) => typeRegistry.isHidden(type) && typeRegistry.isImportableAndExportable(type)
+      );
 
       const client = getClient({ includedHiddenTypes });
       const importer = getImporter(client);

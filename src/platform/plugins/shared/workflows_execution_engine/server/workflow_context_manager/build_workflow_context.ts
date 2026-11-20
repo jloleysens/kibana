@@ -9,11 +9,11 @@
 
 import type { CoreStart } from '@kbn/core/server';
 import type { EsWorkflowExecution, WorkflowContext } from '@kbn/workflows';
-import { pickWorkflowDocumentVersion } from '@kbn/workflows';
 import {
   applyInputDefaults,
   getInputsFromDefinition,
 } from '@kbn/workflows/spec/lib/field_conversion';
+import { pickWorkflowDocumentVersion } from '@kbn/workflows-runtime';
 import type { ContextDependencies } from './types';
 import { buildWorkflowExecutionUrl, getKibanaUrl } from '../utils';
 

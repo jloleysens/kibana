@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { toPath } from 'lodash';
+import toPath from 'lodash/toPath';
 import type { SavedObjectsFieldMapping } from '@kbn/core-saved-objects-server';
 import type { IndexMapping } from '../types';
 

@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { isEmpty } from 'lodash';
+import isEmpty from 'lodash/isEmpty';
 import { ALERT_HISTORY_PREFIX } from '@kbn/connector-schemas/es_index/constants';
 
 export const AlertHistoryDefaultIndexName = `${ALERT_HISTORY_PREFIX}default`;

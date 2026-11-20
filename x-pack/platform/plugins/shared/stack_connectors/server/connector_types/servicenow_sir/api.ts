@@ -5,7 +5,8 @@
  * 2.0.
  */
 
-import { isEmpty, isString } from 'lodash';
+import isEmpty from 'lodash/isEmpty';
+import isString from 'lodash/isString';
 import type { ExecutorSubActionPushParamsSIR } from '@kbn/connector-schemas/servicenow_sir';
 import { api as commonApi } from '../lib/servicenow/api';
 import type {

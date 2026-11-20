@@ -10,7 +10,7 @@
 import { createToken } from '@kbn/core-di';
 
 export interface EchoApi {
-  where():
+  where(scopeId?: string):
     | Promise<{ threadId: number; isMainThread: boolean; marker: string }>
     | {
         threadId: number;
@@ -31,3 +31,5 @@ export const DemoRootToken = createToken<{
   block(milliseconds: number): Promise<number>;
 }>('demo.root');
 export const DemoStepKind = createToken('demo.step');
+
+export const DemoValueToken = createToken<{ label(): string }>('demo.value');

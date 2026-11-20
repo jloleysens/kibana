@@ -1575,3 +1575,133 @@ describe('InternalHttpSelfScopedClient', () => {
     });
   });
 });
+
+describe('getDispatchConfig', () => {
+  it('serializes only allowlisted policy and public certificates, never private configuration', () => {
+    const publicCertificate = '-----BEGIN CERTIFICATE-----\npublic\n-----END CERTIFICATE-----';
+    const secret = '-----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----';
+    const { getHttpConfig } = createClient();
+    const config = Object.assign(getHttpConfig(), {
+      ssl: {
+        enabled: true,
+        requestCert: true,
+        rejectUnauthorized: true,
+        certificate: publicCertificate,
+        key: secret,
+        keyPassphrase: 'key-passphrase',
+        keystore: { path: 'private-keystore-path', password: 'keystore-password' },
+      },
+      selfHttp: {
+        target: 'auto' as const,
+        maxRedirects: 3,
+        ssl: { verificationMode: 'full' as const },
+      },
+    });
+    const { self } = createClient({ getHttpConfig: jest.fn(() => config) });
+    const snapshot = self.getDispatchConfig();
+    const serialized = JSON.stringify(snapshot);
+    expect(snapshot).toEqual({
+      target: 'auto',
+      serverInfo: { name: 'kibana', hostname: '0.0.0.0', port: 5601, protocol: 'http' },
+      basePath: '/base',
+      publicBaseUrl: 'https://kibana.example.com/base',
+      kibanaVersion: '9.9.9',
+      maxRedirects: 3,
+      ssl: {
+        local: {
+          verificationMode: 'certificate',
+          certificateAuthorities: [publicCertificate],
+          exclusiveTrust: true,
+          clientCertificateRequired: true,
+        },
+        public: {
+          verificationMode: 'full',
+          certificateAuthorities: [],
+          exclusiveTrust: false,
+          clientCertificateRequired: false,
+        },
+      },
+    });
+    for (const forbidden of [
+      'PRIVATE KEY',
+      'secret',
+      'keyPassphrase',
+      'key-passphrase',
+      'keystore',
+      'password',
+      'encryptionKey',
+      'decryptionOnlyKeys',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+    config.selfHttp.maxRedirects = 1;
+    expect(snapshot.maxRedirects).toBe(3);
+    expect(self.getDispatchConfig().maxRedirects).toBe(1);
+  });
+
+  it('refuses private-key material accidentally combined with public CA certificates', () => {
+    const { self } = createClient({
+      getHttpConfig: jest.fn().mockReturnValue({
+        ssl: { enabled: false, requestCert: false },
+        selfHttp: {
+          ssl: {
+            verificationMode: 'full',
+            certificateAuthorities: ['-----BEGIN RSA PRIVATE KEY-----'],
+          },
+        },
+      }),
+    });
+    expect(() => self.getDispatchConfig()).toThrow('must not contain private keys');
+  });
+});
+
+it('refreshRunCredential reuses the registered hook and exports only scoped bearer + bound attestation', async () => {
+  const request = createFakeRequest({ authorization: 'Bearer essu_expired' });
+  const handler: HttpSelfUnauthorizedErrorHandler = async (_options, toolkit) =>
+    toolkit.retry({
+      authHeaders: {
+        authorization: 'Bearer essu_refreshed',
+        'refresh-token': 'never-export-refresh',
+        'master-key': 'never-export-master',
+      },
+    });
+  const { self } = createClient({
+    unauthorizedErrorHandler: handler,
+    getUiamAttestationGetter: () => (_request, authorization) =>
+      authorization === 'Bearer essu_refreshed' ? 'bound-attestation' : undefined,
+  });
+  const refreshed = await self.refreshRunCredential(request, new AbortController().signal);
+  expect(refreshed).toEqual({
+    authorization: 'Bearer essu_refreshed',
+    uiamAttestation: 'bound-attestation',
+  });
+  expect(JSON.stringify(refreshed)).not.toMatch(/refresh-token|master-key|never-export/);
+  await self.close();
+});
+
+it('refreshRunCredential preserves the local not-handled failure result', async () => {
+  const { self } = createClient({
+    unauthorizedErrorHandler: async () => {
+      throw new Error('refresh unavailable');
+    },
+  });
+  await expect(
+    self.refreshRunCredential(
+      createFakeRequest({ authorization: 'Bearer essu_expired' }),
+      new AbortController().signal
+    )
+  ).resolves.toBeUndefined();
+  await self.close();
+});
+
+it('refreshRunCredential aborts its scoped wait without cancelling a shared Core exchange', async () => {
+  const controller = new AbortController();
+  const { self } = createClient({ unauthorizedErrorHandler: () => new Promise(() => {}) });
+  const pending = self.refreshRunCredential(
+    createFakeRequest({ authorization: 'Bearer essu_expired' }),
+    controller.signal
+  );
+  controller.abort();
+  await expect(pending).rejects.toThrow();
+  await self.close();
+});

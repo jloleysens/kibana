@@ -78,5 +78,4 @@ export const ManualTriggerEventSchema = BaseEventSchema.extend({
 });
 export type ManualTriggerEvent = z.infer<typeof ManualTriggerEventSchema>;
 
-export const isManualTrigger = (trigger: { type?: string }): trigger is ManualTrigger =>
-  trigger.type === 'manual';
+export { isManualTrigger } from '../../lib/is_manual_trigger';

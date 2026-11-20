@@ -6,7 +6,7 @@
  */
 
 import type { KibanaRequest } from '@kbn/core/server';
-import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
+import { createServerStepDefinition } from '@kbn/workflows-extensions/server/step_registry/types';
 import {
   createCaseFromTemplateStepCommonDefinition,
   type CreateCaseFromTemplateStepConfig,
@@ -15,7 +15,7 @@ import {
 } from '../../../common/workflows/steps/create_case_from_template';
 import type { Configurations, TemplateConfiguration } from '../../../common/types/domain';
 import type { CasePostRequest } from '../../../common/types/api';
-import type { CasesClient } from '../../client';
+import type { WorkflowCasesClient as CasesClient } from '../types';
 import {
   createCasesStepHandler,
   normalizeCaseStepUpdatesForBulkPatch,

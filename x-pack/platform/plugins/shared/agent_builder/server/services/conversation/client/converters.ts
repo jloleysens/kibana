@@ -35,7 +35,7 @@ import {
   normalizeConversationAccessControl,
 } from '@kbn/agent-builder-common';
 import { isInternalTool } from '@kbn/agent-builder-common/tools';
-import { getToolResultId } from '@kbn/agent-builder-server';
+import { getToolResultId } from '@kbn/agent-builder-server/tools';
 import type {
   ConversationPermissions,
   ConversationWithPermissions,
@@ -76,6 +76,7 @@ export type Document = Omit<
   '_source'
 > & {
   _source: ConversationProperties;
+  _version?: number;
 };
 
 export const isConversationDocument = (hit: Partial<Document>): hit is Document => {

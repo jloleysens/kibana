@@ -5,6 +5,7 @@
  * 2.0.
  */
 
+export { SANDBOX_STR_REPLACE_TOOL_ID } from './str_replace_tool_ids';
 import { z } from '@kbn/zod/v4';
 import { ToolType } from '@kbn/agent-builder-common';
 import { ToolResultType } from '@kbn/agent-builder-common/tools/tool_result';
@@ -14,7 +15,7 @@ import type { SandboxPluginStart, SandboxSession } from '@kbn/sandbox-plugin/ser
 import { getConversationId, getSandboxCallContext, resolveAbsolutePath } from './tool_utils';
 import type { SandboxWorkspaceManager } from './sandbox_workspace_manager';
 
-export const SANDBOX_STR_REPLACE_TOOL_ID = 'nightshift_sandbox_str_replace';
+import { SANDBOX_STR_REPLACE_TOOL_ID } from './str_replace_tool_ids';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 const CONTEXT_LINES = 5;

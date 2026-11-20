@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { invert } from 'lodash/fp';
+import invert from 'lodash/fp/invert';
 import { v4 } from 'uuid';
 import type { Replacements } from '../../schemas';
 

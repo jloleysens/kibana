@@ -12,12 +12,17 @@ import { actionsClientMock } from '@kbn/actions-plugin/server/actions_client/act
 import type { AnonymizationFieldResponse } from '@kbn/elastic-assistant-common/impl/schemas';
 import { getDefaultAlertRetrievalStepDefinition } from './default_alert_retrieval_step';
 import { DefaultAlertRetrievalStepTypeId } from '../../../common/step_types/default_alert_retrieval_step';
-import { getAnonymizedAlerts } from '@kbn/discoveries/impl/attack_discovery/graphs';
+import { getAnonymizedAlerts } from '@kbn/discoveries/impl/attack_discovery/graphs/default_attack_discovery_graph/nodes/retriever/helpers/get_anonymized_alerts';
 
-jest.mock('@kbn/discoveries/impl/attack_discovery/graphs', () => ({
-  ...jest.requireActual('@kbn/discoveries/impl/attack_discovery/graphs'),
-  getAnonymizedAlerts: jest.fn(),
-}));
+jest.mock(
+  '@kbn/discoveries/impl/attack_discovery/graphs/default_attack_discovery_graph/nodes/retriever/helpers/get_anonymized_alerts',
+  () => ({
+    ...jest.requireActual(
+      '@kbn/discoveries/impl/attack_discovery/graphs/default_attack_discovery_graph/nodes/retriever/helpers/get_anonymized_alerts'
+    ),
+    getAnonymizedAlerts: jest.fn(),
+  })
+);
 
 const mockGetAnonymizedAlerts = getAnonymizedAlerts as jest.Mock;
 

@@ -7,10 +7,12 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { AUTH_TYPE_METADATA } from '@kbn/connector-specs-runtime';
 import { z, lazySchema } from '@kbn/zod/v4';
 import type { AxiosInstance } from 'axios';
 import type { AuthContext, AuthTypeSpec } from '../connector_spec';
 import * as i18n from './translations';
+import { createGcpTokenTransport } from './gcp_token_transport';
 import { getGcpAccessToken, parseServiceAccountKey } from './gcp_jwt_helpers';
 
 const DEFAULT_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
@@ -54,10 +56,10 @@ type AuthSchemaType = z.infer<typeof authSchema>;
  * Use for: Cloud Functions, Cloud Run, Cloud Storage, BigQuery, and any GCP API.
  */
 export const GcpServiceAccountAuth: AuthTypeSpec<AuthSchemaType> = {
-  id: 'gcp_service_account',
+  ...AUTH_TYPE_METADATA.gcp_service_account,
   schema: authSchema,
   configure: async (
-    _: AuthContext,
+    ctx: AuthContext,
     axiosInstance: AxiosInstance,
     secret: AuthSchemaType
   ): Promise<AxiosInstance> => {
@@ -67,7 +69,8 @@ export const GcpServiceAccountAuth: AuthTypeSpec<AuthSchemaType> = {
     const { accessToken } = await getGcpAccessToken(
       serviceAccount.client_email,
       serviceAccount.private_key,
-      scope
+      scope,
+      createGcpTokenTransport(axiosInstance, ctx)
     );
 
     axiosInstance.defaults.headers.common.Authorization = `Bearer ${accessToken}`;

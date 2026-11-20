@@ -6,7 +6,7 @@
  */
 
 import { schema } from '@kbn/config-schema';
-import type { CoreSetup } from '@kbn/core/server';
+import type { CoreSetup, SavedObjectsType } from '@kbn/core/server';
 
 import { SpacesSavedObjectMappings, UsageStatsMappings } from './mappings';
 import { spaceMigrations, usageStatsMigrations } from './migrations';
@@ -29,53 +29,55 @@ interface SetupDeps {
   getSpacesService: () => SpacesServiceStart;
 }
 
+export const getSpaceSavedObjectType = (): SavedObjectsType => ({
+  name: 'space',
+  hidden: true,
+  namespaceType: 'agnostic',
+  mappings: SpacesSavedObjectMappings,
+  schemas: SpacesSavedObjectSchemas,
+  migrations: {
+    '6.6.0': spaceMigrations.migrateTo660,
+  },
+  modelVersions: {
+    1: {
+      changes: [
+        {
+          type: 'mappings_addition',
+          addedMappings: {
+            solution: { type: 'keyword' },
+          },
+        },
+      ],
+      schemas: {
+        create: spaceCreateSchemaWithSolution,
+      },
+    },
+    2: {
+      changes: [
+        {
+          type: 'mappings_addition',
+          addedMappings: {
+            disabledFeatures: { type: 'keyword' },
+          },
+        },
+      ],
+    },
+    3: {
+      changes: [],
+      schemas: {
+        create: spaceCreateSchemaWithSolutionSetup,
+        forwardCompatibility: spaceCreateSchemaWithSolutionSetup.extends(
+          {},
+          { unknowns: 'ignore' }
+        ),
+      },
+    },
+  },
+});
+
 export class SpacesSavedObjectsService {
   public setup({ core, getSpacesService }: SetupDeps) {
-    core.savedObjects.registerType({
-      name: 'space',
-      hidden: true,
-      namespaceType: 'agnostic',
-      mappings: SpacesSavedObjectMappings,
-      schemas: SpacesSavedObjectSchemas,
-      migrations: {
-        '6.6.0': spaceMigrations.migrateTo660,
-      },
-      modelVersions: {
-        1: {
-          changes: [
-            {
-              type: 'mappings_addition',
-              addedMappings: {
-                solution: { type: 'keyword' },
-              },
-            },
-          ],
-          schemas: {
-            create: spaceCreateSchemaWithSolution,
-          },
-        },
-        2: {
-          changes: [
-            {
-              type: 'mappings_addition',
-              addedMappings: {
-                disabledFeatures: { type: 'keyword' },
-              },
-            },
-          ],
-        },
-        3: {
-          changes: [],
-          schemas: {
-            create: spaceCreateSchemaWithSolutionSetup,
-            forwardCompatibility: spaceCreateSchemaWithSolutionSetup.extends(
-              {},
-              { unknowns: 'ignore' }
-            ),
-          },
-        },
-      },
-    });
+    core.savedObjects.registerType(getSpaceSavedObjectType());
 
     core.savedObjects.registerType({
       name: SPACES_USAGE_STATS_TYPE,

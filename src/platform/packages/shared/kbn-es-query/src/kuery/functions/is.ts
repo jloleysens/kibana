@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { isUndefined } from 'lodash';
+import isUndefined from 'lodash/isUndefined';
 import type { QueryDslQueryContainer } from '@elastic/elasticsearch/lib/api/types';
 import { getPhraseScript } from '../../filters';
 import { getFields } from './utils/get_fields';

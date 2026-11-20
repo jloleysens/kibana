@@ -5,6 +5,7 @@
  * 2.0.
  */
 
+import type { DocWithOptionalId } from './es/cluster_client_adapter';
 import { nanosToMillis } from '../common';
 import type { IEvent, IEventLogger, IEventLogService } from '.';
 import { ECS_VERSION } from './types';
@@ -38,6 +39,79 @@ describe('EventLogger', () => {
       kibanaVersion: '1.0.1',
     });
     eventLogger = service.getLogger({});
+  });
+
+  test('logEvents waits for one acknowledged batch and surfaces indexing failures', async () => {
+    service.registerProviderActions('test-provider', ['test-action-1']);
+    eventLogger = service.getLogger({
+      event: { provider: 'test-provider', action: 'test-action-1' },
+    });
+    let acknowledge: () => void = () => {};
+    jest.mocked(esContext.esAdapter.indexDocuments).mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          acknowledge = resolve;
+        })
+    );
+    let complete = false;
+    const pending = eventLogger.logEvents([{ message: 'one' }, { message: 'two' }]).then(() => {
+      complete = true;
+    });
+    await Promise.resolve();
+    expect(complete).toBe(false);
+    expect(esContext.esAdapter.indexDocuments).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({ body: expect.objectContaining({ message: 'one' }) }),
+        expect.objectContaining({ body: expect.objectContaining({ message: 'two' }) }),
+      ],
+      true
+    );
+    expect(esContext.esAdapter.indexDocument).not.toHaveBeenCalled();
+    acknowledge();
+    await pending;
+    jest
+      .mocked(esContext.esAdapter.indexDocuments)
+      .mockRejectedValue(new Error('bulk unavailable'));
+    await expect(eventLogger.logEvents([{ message: 'three' }])).rejects.toThrow('bulk unavailable');
+  });
+
+  test.each(['partial success', 'lost acknowledgement'])(
+    'logEvents reuses explicit IDs after %s',
+    async (failure) => {
+      service.registerProviderActions('test-provider', ['test-action-1']);
+      eventLogger = service.getLogger({
+        event: { provider: 'test-provider', action: 'test-action-1' },
+      });
+      const persisted = new Map();
+      let attempt = 0;
+      jest.mocked(esContext.esAdapter.indexDocuments).mockImplementation(async (docs) => {
+        attempt++;
+        for (const [index, doc] of docs.entries()) {
+          if (failure === 'partial success' && attempt === 1 && index === 1) break;
+          const { id, body } = doc as DocWithOptionalId;
+          expect(typeof id).toBe('string');
+          persisted.set(id, body);
+        }
+        if (attempt === 1) throw new Error(failure);
+      });
+      const events = [{ message: 'one' }, { message: 'two' }];
+      await expect(eventLogger.logEvents(events)).rejects.toThrow(failure);
+      await eventLogger.logEvents(events);
+      expect(persisted.size).toBe(2);
+      const calls = jest.mocked(esContext.esAdapter.indexDocuments).mock.calls;
+      expect(calls[1][0]).toEqual(calls[0][0]);
+    }
+  );
+
+  test('logEvents validates the whole batch before writing anything', async () => {
+    service.registerProviderActions('test-provider', ['test-action-1']);
+    eventLogger = service.getLogger({
+      event: { provider: 'test-provider', action: 'test-action-1' },
+    });
+    await expect(
+      eventLogger.logEvents([{ message: 'valid' }, { event: { provider: 'unregistered' } }])
+    ).rejects.toThrow();
+    expect(esContext.esAdapter.indexDocuments).not.toHaveBeenCalled();
   });
 
   test('handles successful initialization', async () => {

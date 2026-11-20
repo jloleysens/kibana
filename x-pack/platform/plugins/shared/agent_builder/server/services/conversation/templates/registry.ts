@@ -19,3 +19,6 @@ export const registerTemplate = (template: ConversationTemplate): void => {
 };
 
 export const getTemplate = (id: string): ConversationTemplate | undefined => templates.get(id);
+
+/** Snapshots the registered JSON template facts for an executor-local client. */
+export const listTemplates = (): ConversationTemplate[] => structuredClone([...templates.values()]);

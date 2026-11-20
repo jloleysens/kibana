@@ -18,6 +18,7 @@ import type { AnonymizationFailureMode, AnonymizationRule } from '@kbn/ai-anonym
 import type { KibanaRequest } from '@kbn/core-http-server';
 import type { InferenceTaskType } from '@elastic/elasticsearch/lib/api/types';
 import {
+  GEN_AI_SETTINGS_DEFAULT_AI_CONNECTOR,
   GEN_AI_SETTINGS_DEFAULT_AI_CONNECTOR_DEFAULT_ONLY,
   GEN_AI_SETTINGS_INFERENCE_STREAMING,
   GEN_AI_SETTINGS_TOKEN_USAGE_TRACKING,
@@ -49,6 +50,11 @@ import { InferenceEndpointIdCache } from './util/inference_endpoint_id_cache';
 import { shouldStreamInferenceEndpoint } from './util/should_stream_inference_endpoint';
 import { TokenUsageLogger } from './token_usage';
 import { installTokenUsageDashboard } from './dashboard';
+import { InferencePolicyToken, type InferencePolicyApi } from './remote/tokens';
+import {
+  InferencePolicyCapability,
+  getWorkerConnectorDescriptors,
+} from './remote/inference_policy';
 
 /**
  * Resolves the `onFailure` mode from the legacy `ai:anonymizationSettings` read. A failed read
@@ -134,6 +140,7 @@ export class InferencePlugin
   private endpointIdCache: InferenceEndpointIdCache;
   private tokenUsageLogger: TokenUsageLogger;
   private featureEndpointResolver?: FeatureEndpointResolver;
+  private workerPolicy?: (request: KibanaRequest) => ReturnType<InferencePolicyApi['read']>;
 
   constructor(context: PluginInitializerContext<InferenceConfig>) {
     this.logger = context.logger.get();
@@ -151,6 +158,21 @@ export class InferencePlugin
     pluginsSetup.aiAnonymizationSettings?.configurePatternTester({
       enabled: this.config.workers.anonymization.enabled,
     });
+    coreSetup.remote.bind(
+      InferencePolicyToken,
+      (scopes) =>
+        new InferencePolicyCapability(
+          scopes,
+          (request) => {
+            if (!this.workerPolicy) throw new Error('Inference policy is not started');
+            return this.workerPolicy(request);
+          },
+          async (_scopeId, payload) => {
+            if (!this.regexWorker) throw new Error('Inference regex pool is not started');
+            return this.regexWorker.run(payload);
+          }
+        )
+    );
     const router = coreSetup.http.createRouter();
 
     registerRoutes({
@@ -353,6 +375,46 @@ export class InferencePlugin
       return resolver ? (featureId: string) => resolver(featureId, request) : undefined;
     };
 
+    this.workerPolicy = async (request) => {
+      // The dormant persistent-replacement mode needs a separate key-free capability.
+      if (anonymizationEnabled) return null;
+      const options = getAnonymizationOptions(request);
+      const client = core.savedObjects.getScopedClient(request);
+      const settings = core.uiSettings.asScopedToClient(client);
+      const [
+        rules,
+        onFailure,
+        defaultConnector,
+        defaultOnly,
+        tokenUsageTracking,
+        streaming,
+        stackConnectors,
+      ] = await Promise.all([
+        options.anonymizationRulesPromise,
+        options.anonymization.onFailurePromise,
+        settings.get<string>(GEN_AI_SETTINGS_DEFAULT_AI_CONNECTOR, { request }),
+        settings.get<boolean>(GEN_AI_SETTINGS_DEFAULT_AI_CONNECTOR_DEFAULT_ONLY, { request }),
+        createTokenUsageTrackingEnabledCheck(request)(),
+        settings.get<boolean>(GEN_AI_SETTINGS_INFERENCE_STREAMING),
+        pluginsStart.actions
+          .getActionsClientWithRequest(request)
+          .then((actions) => actions.getAll({ includeSystemActions: false }))
+          .then(getWorkerConnectorDescriptors)
+          .catch((error: Error) => ({ error: error.message })),
+      ]);
+      return {
+        namespace: options.namespace,
+        rules,
+        onFailure,
+        defaultConnector,
+        defaultOnly,
+        tokenUsageTracking,
+        streaming,
+        regexWorkerEnabled: options.regexWorker.isEnabled(),
+        stackConnectors,
+      };
+    };
+
     return {
       getClient: <T extends InferenceClientCreateOptions>(options: T) => {
         return createInferenceClient({
@@ -461,6 +523,7 @@ export class InferencePlugin
   }
 
   async stop() {
+    this.workerPolicy = undefined;
     await this.regexWorker?.stop();
   }
 }

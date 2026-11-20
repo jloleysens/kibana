@@ -3216,6 +3216,28 @@ describe('execute()', () => {
     });
   });
 
+  test('worker preparation retains client authorization without invoking ActionExecutor.execute', async () => {
+    const actionId = uuidv4();
+    unsecuredSavedObjectsClient.get.mockResolvedValue(actionTypeIdFromSavedObjectMock());
+    actionExecutor.executeWithRuntime.mockResolvedValue({ status: 'ok', actionId });
+    const runtime = { execute: jest.fn(), events: [] };
+    await expect(
+      actionsClient.executeWithRuntime({ actionId, params: { name: 'worker' } }, runtime)
+    ).resolves.toMatchObject({ status: 'ok', actionId });
+    expect(authorization.ensureAuthorized).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: 'execute' })
+    );
+    expect(actionExecutor.execute).not.toHaveBeenCalled();
+    expect(actionExecutor.executeWithRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({ actionId, runtime })
+    );
+    authorization.ensureAuthorized.mockRejectedValueOnce(new Error('forbidden'));
+    await expect(
+      actionsClient.executeWithRuntime({ actionId, params: {} }, runtime)
+    ).rejects.toThrow('forbidden');
+    expect(actionExecutor.executeWithRuntime).toHaveBeenCalledTimes(1);
+  });
+
   test('calls the actionExecutor with the appropriate parameters', async () => {
     const actionId = uuidv4();
     const actionExecutionId = uuidv4();

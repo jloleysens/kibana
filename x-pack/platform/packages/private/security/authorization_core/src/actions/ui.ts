@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { isString } from 'lodash';
+import isString from 'lodash/isString';
 
 import type { Capabilities as UICapabilities } from '@kbn/core/server';
 import { uiCapabilitiesRegex } from '@kbn/features-plugin/server';

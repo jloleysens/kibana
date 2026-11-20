@@ -6,10 +6,10 @@
  */
 
 import type { KibanaRequest } from '@kbn/core/server';
-import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
+import { createServerStepDefinition } from '@kbn/workflows-extensions/server/step_registry/types';
 import { getAllAttachmentsStepCommonDefinition } from '../../../common/workflows/steps/get_all_attachments';
 import { toLegacyAttachmentResponse } from '../../common/attachments';
-import type { CasesClient } from '../../client';
+import type { WorkflowCasesClient as CasesClient } from '../types';
 import { getCasesClientFromStepsContext, safeParseCaseForWorkflowOutput } from './utils';
 
 export const getAllAttachmentsStepDefinition = (

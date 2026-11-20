@@ -8,7 +8,9 @@
  */
 
 import { z } from '@kbn/zod/v4';
-import { difference, isArray, isPlainObject } from 'lodash';
+import difference from 'lodash/difference';
+import isArray from 'lodash/isArray';
+import isPlainObject from 'lodash/isPlainObject';
 
 function getFlattenedKeys(obj: unknown, parentKey = '', keys: Set<string> = new Set()) {
   if (isPlainObject(obj)) {

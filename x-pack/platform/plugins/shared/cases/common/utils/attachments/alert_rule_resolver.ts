@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { get } from 'lodash';
+import get from 'lodash/get';
 import { ALERT_RULE_NAME, ALERT_RULE_UUID } from '@kbn/rule-data-utils';
 import { getNonEmptyField } from './string_utils';
 

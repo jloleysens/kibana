@@ -52,6 +52,12 @@ export class StepExecutionRepositoryMock implements Required<StepExecutionReposi
     return Promise.resolve(results);
   }
 
+  public async hasStepExecutionsForWorkflow(workflowRunId: string): Promise<boolean> {
+    return Array.from(this.stepExecutions.values()).some(
+      (step) => step.workflowRunId === workflowRunId
+    );
+  }
+
   public getStepExecutionsByWorkflowExecution(
     workflowExecutionId: string,
     _stepExecutionIds?: string[]

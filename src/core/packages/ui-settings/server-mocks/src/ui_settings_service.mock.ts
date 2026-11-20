@@ -69,6 +69,7 @@ const createMock = () => {
   const mocked: jest.Mocked<UiSettingsServiceContract> = lazyObject({
     preboot: jest.fn().mockResolvedValue(createPrebootMock()),
     setup: jest.fn().mockResolvedValue(createSetupMock()),
+    setupTask: jest.fn().mockResolvedValue(createSetupMock()),
     start: jest.fn().mockResolvedValue(createStartMock()),
     stop: jest.fn(),
   });

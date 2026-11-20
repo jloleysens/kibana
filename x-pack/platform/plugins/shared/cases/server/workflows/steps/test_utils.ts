@@ -7,7 +7,7 @@
 
 import type { KibanaRequest } from '@kbn/core/server';
 import type { StepHandlerContext } from '@kbn/workflows-extensions/server';
-import type { CasesClient } from '../../client';
+import type { WorkflowCasesClient as CasesClient } from '../types';
 
 interface CreateStepHandlerContextParams {
   input?: unknown;

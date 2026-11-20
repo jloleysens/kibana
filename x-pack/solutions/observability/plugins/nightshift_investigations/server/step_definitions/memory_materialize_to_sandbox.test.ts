@@ -7,11 +7,11 @@
 
 import { loggerMock } from '@kbn/logging-mocks';
 import type { SandboxPluginStart, SandboxSession } from '@kbn/sandbox-plugin/server';
-import { hydrateMemoryWorkspace } from '../memory/register_memory';
+import { hydrateMemoryWorkspaceWithSessionState } from '../memory/hydrate_workspace';
 import { memoryMaterializeToSandboxStepDefinition } from './memory_materialize_to_sandbox';
 
-jest.mock('../memory/register_memory', () => ({
-  hydrateMemoryWorkspace: jest.fn().mockResolvedValue({
+jest.mock('../memory/hydrate_workspace', () => ({
+  hydrateMemoryWorkspaceWithSessionState: jest.fn().mockResolvedValue({
     recalledIds: ['memory_a'],
     notification: '',
     summary: {
@@ -28,7 +28,9 @@ jest.mock('../memory/register_memory', () => ({
   }),
 }));
 
-const hydrateMemoryWorkspaceMock = jest.mocked(hydrateMemoryWorkspace);
+const hydrateMemoryWorkspaceWithSessionStateMock = jest.mocked(
+  hydrateMemoryWorkspaceWithSessionState
+);
 
 describe('memoryMaterializeToSandboxStepDefinition', () => {
   const esClient = { search: jest.fn() };
@@ -101,8 +103,9 @@ describe('memoryMaterializeToSandboxStepDefinition', () => {
 
     expect(sandboxStart.getSessionForSpace).toHaveBeenCalledWith('default', 'conv-1');
     expect(getScopedEsClient).toHaveBeenCalledTimes(1);
-    expect(hydrateMemoryWorkspace).toHaveBeenCalledWith({
+    expect(hydrateMemoryWorkspaceWithSessionState).toHaveBeenCalledWith({
       session: mockSession,
+      getIsReset: expect.any(Function),
       esClient,
       spaceId: 'default',
       agentId: 'nightshift.investigation',
@@ -148,9 +151,10 @@ describe('memoryMaterializeToSandboxStepDefinition', () => {
     );
 
     expect(sandboxStart.getSessionForSpace).toHaveBeenCalledWith('marketing', 'conv-1');
-    expect(hydrateMemoryWorkspace).toHaveBeenCalledWith(
+    expect(hydrateMemoryWorkspaceWithSessionState).toHaveBeenCalledWith(
       expect.objectContaining({
         session: mockSession,
+        getIsReset: expect.any(Function),
       })
     );
     expect(result).toEqual({
@@ -174,13 +178,13 @@ describe('memoryMaterializeToSandboxStepDefinition', () => {
         createContext('default__conv-1', 'default', undefined, 'nightshift.investigation')
       )
     ).rejects.toThrow(/sandbox is not configured/);
-    expect(hydrateMemoryWorkspace).not.toHaveBeenCalled();
+    expect(hydrateMemoryWorkspaceWithSessionState).not.toHaveBeenCalled();
   });
 
   // This used to reject. The step is a before-agent hook, so a throw aborted the whole
   // investigator round over one writer; it now degrades to a system_update line.
   it('reports one terminal failure and degrades when materialization fails', async () => {
-    hydrateMemoryWorkspaceMock.mockRejectedValueOnce(new Error('write failed'));
+    hydrateMemoryWorkspaceWithSessionStateMock.mockRejectedValueOnce(new Error('write failed'));
     const definition = memoryMaterializeToSandboxStepDefinition({
       getSandboxStart: () => makeSandboxStart(),
       logger: loggerMock.create(),
@@ -221,7 +225,7 @@ describe('memoryMaterializeToSandboxStepDefinition', () => {
 
     const result = await definition.handler(createContext('default__conv-1'));
 
-    expect(hydrateMemoryWorkspace).not.toHaveBeenCalled();
+    expect(hydrateMemoryWorkspaceWithSessionState).not.toHaveBeenCalled();
     expect(result).toEqual({
       output: {
         sandbox_id: 'default__conv-1',
@@ -241,7 +245,7 @@ describe('memoryMaterializeToSandboxStepDefinition', () => {
 
     const result = await definition.handler(createContext('default__conv-1', 'default', 'task'));
 
-    expect(hydrateMemoryWorkspace).not.toHaveBeenCalled();
+    expect(hydrateMemoryWorkspaceWithSessionState).not.toHaveBeenCalled();
     expect(result).toEqual({
       output: {
         sandbox_id: 'default__conv-1',
@@ -265,7 +269,7 @@ describe('memoryMaterializeToSandboxStepDefinition', () => {
     );
 
     expect(sandboxStart.getSessionForSpace).not.toHaveBeenCalled();
-    expect(hydrateMemoryWorkspace).not.toHaveBeenCalled();
+    expect(hydrateMemoryWorkspaceWithSessionState).not.toHaveBeenCalled();
     expect(result).toEqual({
       output: {
         sandbox_id: 'default__conv-1',

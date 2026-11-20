@@ -8,7 +8,7 @@
 import type { ElasticsearchClient } from '@kbn/core-elasticsearch-server';
 import { asSpaceId } from '@kbn/core-spaces-common';
 import { isNotFoundError } from '@kbn/es-errors';
-import { DEFAULT_ALERTS_INDEX } from '../../../../common/constants';
+import { DEFAULT_ALERTS_INDEX } from '../../../../common/alert_index';
 import { boundAlertEntities } from './bound_alert_entities';
 import { buildEntityAggs } from './build_entity_aggs';
 import { parseEntityAggs } from './parse_entity_aggs';

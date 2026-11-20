@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { once } from 'lodash';
+import once from 'lodash/once';
 import type {
   AddVersionOpts,
   RouteValidationSpec,

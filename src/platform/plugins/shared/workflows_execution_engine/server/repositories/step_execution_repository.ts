@@ -8,7 +8,7 @@
  */
 
 import type { EsWorkflowStepExecution, SerializedError } from '@kbn/workflows';
-import { ExecutionStatus, isTerminalStatus } from '@kbn/workflows';
+import { ExecutionStatus, isTerminalStatus } from '@kbn/workflows-runtime';
 import type { StepExecutionsDataClient } from './data_access_layer';
 import { getStepExecutionsByWorkflowExecution as getStepExecutionsByWorkflowExecutionShared } from './data_access_layer/lib/get_step_executions_by_workflow_execution';
 
@@ -42,6 +42,22 @@ export class StepExecutionRepository {
     });
 
     return response.hits.hits.map((hit) => hit._source as EsWorkflowStepExecution);
+  }
+
+  /** Checks bounded step existence, refreshing search visibility only when recovery requires it. */
+  public async hasStepExecutionsForWorkflow(
+    workflowRunId: string,
+    options: { refresh?: boolean } = {}
+  ): Promise<boolean> {
+    if (options.refresh) await this.stepExecutionsDataClient.refresh();
+    const response = await this.stepExecutionsDataClient.count({
+      query: { term: { workflowRunId } },
+      terminate_after: 1,
+    });
+    if (response._shards?.failed) {
+      throw new Error('Unable to verify workflow step absence because a count shard failed');
+    }
+    return response.count > 0;
   }
 
   /**

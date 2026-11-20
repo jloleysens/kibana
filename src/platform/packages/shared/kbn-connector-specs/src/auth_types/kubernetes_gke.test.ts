@@ -73,7 +73,8 @@ describe('KubernetesGkeAuth', () => {
     expect(mockGetGcpAccessToken).toHaveBeenCalledWith(
       'gke-sa@my-project.iam.gserviceaccount.com',
       expect.stringContaining('BEGIN PRIVATE KEY'),
-      'https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email'
+      'https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email',
+      expect.any(Function)
     );
   });
 

@@ -19,6 +19,7 @@ import type {
   WorkflowYaml,
 } from '@kbn/workflows';
 import { WorkflowGraph } from '@kbn/workflows/graph';
+import { sourceStepDependencyAnalyzer } from '../../execution_functions/prepare_step_dependency_plan';
 import type { StepExecutionRepository } from '../../repositories/step_execution_repository';
 import type { WorkflowExecutionRepository } from '../../repositories/workflow_execution_repository';
 import { buildStepExecutionId } from '../../utils';
@@ -54,6 +55,7 @@ function buildHarness(opts: { evictionMinBytes?: number; logger?: Logger } = {})
   // cast — set an empty stack here so prepareForRead can read it.
   state.updateWorkflowExecution({ scopeStack: [] });
   const service = new StepIoService({
+    dependencyAnalyzer: sourceStepDependencyAnalyzer,
     stepRepository: stepExecutionRepository,
     state,
     evictionMinBytes: opts.evictionMinBytes ?? Infinity,
@@ -113,6 +115,34 @@ describe('StepIoService', () => {
   const EVICTION_THRESHOLD = 100; // bytes
 
   describe('flush', () => {
+    it('awaits earlier step and execution-reference writes before a coordinator flush resolves', async () => {
+      const { state, service, workflowExecutionRepository } = buildHarness();
+      createCompletedStep(state, service, 'seed-id', 'seed', { value: 'current' }, 'data.set');
+      let finishWrite: () => void = () => {};
+      workflowExecutionRepository.updateWorkflowExecution.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finishWrite = resolve;
+          })
+      );
+      const background = service.flush();
+      await Promise.resolve();
+      await Promise.resolve();
+      let ready = false;
+      const coordinator = service.flush().then(() => {
+        ready = true;
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(ready).toBe(false);
+      finishWrite();
+      await Promise.all([background, coordinator]);
+      expect(ready).toBe(true);
+      expect(workflowExecutionRepository.updateWorkflowExecution).toHaveBeenCalledWith(
+        expect.objectContaining({ stepExecutionIds: ['seed-id'] }),
+        {}
+      );
+    });
+
     it('persists step changes before a terminal workflow status', async () => {
       const { state, service, stepExecutionRepository, workflowExecutionRepository } =
         buildHarness();
@@ -136,6 +166,23 @@ describe('StepIoService', () => {
       await flushPromise;
 
       expect(workflowExecutionRepository.updateWorkflowExecution).toHaveBeenCalled();
+    });
+
+    it('recovers the flush queue after a failed flush so later flushes still persist', async () => {
+      const { state, service, workflowExecutionRepository } = buildHarness();
+      workflowExecutionRepository.updateWorkflowExecution.mockRejectedValueOnce(
+        new Error('storage unavailable')
+      );
+      state.updateWorkflowExecution({ status: ExecutionStatus.RUNNING });
+      await expect(service.flush()).rejects.toThrow('storage unavailable');
+
+      workflowExecutionRepository.updateWorkflowExecution.mockResolvedValue(undefined);
+      state.updateWorkflowExecution({ status: ExecutionStatus.COMPLETED });
+      await expect(service.flush()).resolves.toBeUndefined();
+      expect(workflowExecutionRepository.updateWorkflowExecution).toHaveBeenLastCalledWith(
+        expect.objectContaining({ status: ExecutionStatus.COMPLETED }),
+        expect.anything()
+      );
     });
 
     it('persists non-terminal workflow and step changes concurrently', async () => {

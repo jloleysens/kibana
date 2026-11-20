@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { flow } from 'lodash';
+import flow from 'lodash/flow';
 
 /**
  * Escapes backslashes and double-quotes. (Useful when putting a string in quotes to use as a value

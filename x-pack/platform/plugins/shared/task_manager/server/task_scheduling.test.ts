@@ -103,6 +103,119 @@ describe('TaskScheduling', () => {
     mockTaskStore.willGrantApiKeys.mockImplementation((options) => Boolean(options?.request));
   });
 
+  describe('scheduleNow', () => {
+    const request = httpServerMock.createKibanaRequest();
+    const task = { id: 'direct-task', taskType: 'foo', params: {}, state: {} };
+    let saved: ConcreteTaskInstance;
+
+    beforeEach(() => {
+      taskPollingLifecycle.canRunDirect.mockReturnValue(true);
+      taskPollingLifecycle.runClaimedTask.mockResolvedValue(true);
+      mockTaskStore.schedule.mockImplementation(async (instance, _options, claim) => {
+        saved = getTask({
+          ...instance,
+          schedule: undefined,
+          version: 'claim-version',
+          ...(claim
+            ? { status: TaskStatus.Running, ownerId: '123', attempts: 1, startedAt: new Date() }
+            : {}),
+        });
+        return saved;
+      });
+      mockTaskStore.get.mockImplementation(async () => ({ ...saved, apiKey: 'persisted-run-key' }));
+    });
+
+    test('persists normal ownership fields and restores the persisted credential before running', async () => {
+      const scheduling = new TaskScheduling(taskSchedulingOpts);
+      await scheduling.scheduleNow(task, { request, cloneApiKey: true });
+      expect(mockTaskStore.schedule).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'direct-task' }),
+        { request, cloneApiKey: true },
+        true
+      );
+      expect(saved.retryAt?.getTime()).toBeGreaterThan(Date.now());
+      expect(mockTaskStore.get).toHaveBeenCalledWith('direct-task');
+      expect(taskPollingLifecycle.runClaimedTask).toHaveBeenCalledWith({
+        ...saved,
+        apiKey: 'persisted-run-key',
+      });
+      expect(mockTaskStore.bulkPartialUpdate).not.toHaveBeenCalled();
+    });
+
+    test('retains a recoverable ownership lease if hydration aborts after persistence', async () => {
+      mockTaskStore.get.mockRejectedValueOnce(new Error('simulated process loss before dispatch'));
+      const scheduling = new TaskScheduling(taskSchedulingOpts);
+      const result = await scheduling.scheduleNow(task, { request });
+      expect(result).toBe(saved);
+      expect(saved.status).toBe(TaskStatus.Running);
+      expect(saved.ownerId).toBe('123');
+      expect(saved.retryAt?.getTime()).toBeGreaterThan(Date.now());
+      expect(taskPollingLifecycle.runClaimedTask).not.toHaveBeenCalled();
+      expect(mockTaskStore.bulkPartialUpdate).not.toHaveBeenCalled();
+    });
+
+    test('does not dispatch an ownership version changed before hydration', async () => {
+      mockTaskStore.get.mockImplementationOnce(async () => ({ ...saved, version: 'someone-else' }));
+      await new TaskScheduling(taskSchedulingOpts).scheduleNow(task, { request });
+      expect(taskPollingLifecycle.runClaimedTask).not.toHaveBeenCalled();
+      expect(mockTaskStore.bulkPartialUpdate).not.toHaveBeenCalled();
+    });
+
+    test('releases a claim when capacity or pause changes before dispatch', async () => {
+      taskPollingLifecycle.runClaimedTask.mockResolvedValueOnce(false);
+      mockTaskStore.bulkPartialUpdate.mockImplementationOnce(async (docs) => docs.map(asOk));
+      await new TaskScheduling(taskSchedulingOpts).scheduleNow(task, { request });
+      expect(mockTaskStore.bulkPartialUpdate).toHaveBeenCalledWith([
+        {
+          id: task.id,
+          version: 'claim-version',
+          status: TaskStatus.Idle,
+          ownerId: null,
+          startedAt: null,
+          retryAt: null,
+          attempts: 0,
+        },
+      ]);
+    });
+
+    test('uses ordinary scheduling when capacity is unavailable', async () => {
+      taskPollingLifecycle.canRunDirect.mockReturnValueOnce(false);
+      await new TaskScheduling(taskSchedulingOpts).scheduleNow(task, { request });
+      expect(mockTaskStore.schedule.mock.calls[0][0]).not.toHaveProperty('ownerId');
+      expect(mockTaskStore.get).not.toHaveBeenCalled();
+    });
+
+    test('uses ordinary scheduling without a security-backed key grant', async () => {
+      mockTaskStore.willGrantApiKeys.mockReturnValueOnce(false);
+      await new TaskScheduling(taskSchedulingOpts).scheduleNow(task, { request });
+      expect(mockTaskStore.schedule.mock.calls[0][0]).not.toHaveProperty('ownerId');
+      expect(mockTaskStore.get).not.toHaveBeenCalled();
+    });
+
+    test('rejects recurring, runAs and unscoped requests before persisting', async () => {
+      const scheduling = new TaskScheduling(taskSchedulingOpts);
+      await expect(
+        scheduling.scheduleNow({ ...task, schedule: { interval: '1m' } }, { request })
+      ).rejects.toThrow('one-off');
+      await expect(
+        scheduling.scheduleNow(
+          {
+            ...task,
+            runAs: {
+              workloadType: 'workflow',
+              workloadId: 'wf',
+              spaceId: 'default',
+              expectedServiceAccountId: 'sa',
+            },
+          },
+          { request }
+        )
+      ).rejects.toThrow('API-key');
+      await expect(scheduling.scheduleNow(task)).rejects.toThrow('request-scoped');
+      expect(mockTaskStore.schedule).not.toHaveBeenCalled();
+    });
+  });
+
   test('allows scheduling tasks', async () => {
     const taskScheduling = new TaskScheduling(taskSchedulingOpts);
     const task = {

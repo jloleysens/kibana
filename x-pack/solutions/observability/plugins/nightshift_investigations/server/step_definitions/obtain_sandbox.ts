@@ -5,16 +5,41 @@
  * 2.0.
  */
 
-import { z } from '@kbn/zod/v4';
+import { lazySchema, z } from '@kbn/zod/v4';
 import { StepCategory } from '@kbn/workflows';
 import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
 import type { Logger } from '@kbn/core/server';
 import type { SandboxPluginStart } from '@kbn/sandbox-plugin/server';
-import { scopeConversationId } from '../tools/sandbox_bash/tool_utils';
-import { withTimeout } from './with_timeout';
+import { createWorkspaceAllocator } from '../remote/allocate_workspace';
+import { createObtainSandboxHandler } from '../remote/obtain_sandbox';
 
-/** Caps a stuck sandbox allocate so it cannot stall hydrate or optimize. */
-const ALLOCATE_TIMEOUT_MS = 45_000;
+export const inputSchema = lazySchema(() =>
+  z.object({
+    conversation_id: z
+      .string()
+      .min(1)
+      .max(1024)
+      .describe('Unscoped conversation id from the Agent Builder hook.'),
+    required: z
+      .boolean()
+      .optional()
+      .describe(
+        'When false, a missing sandbox config skips allocate and still returns sandbox_id. ' +
+          'Hydrate leaves this unset (fail closed). Optimize sets false so transcript ' +
+          'extraction still runs.'
+      ),
+  })
+);
+
+export const outputSchema = lazySchema(() =>
+  z.object({
+    sandbox_id: z
+      .string()
+      .describe('Workspace key (`<space>__<conversation>`). Pass this to every writer.'),
+    conversation_id: z.string().describe('Unscoped conversation id from the hook.'),
+    skipped: z.boolean().optional(),
+  })
+);
 
 /**
  * Forces the sandbox plugin to allocate (or reuse) the conversation's session.
@@ -43,83 +68,14 @@ export const obtainSandboxStepDefinition = ({
     description:
       'Allocates the conversation sandbox and returns the space-scoped sandbox_id ' +
       'that hydrate, agent tools, and optimize must share.',
-    inputSchema: z.object({
-      conversation_id: z
-        .string()
-        .min(1)
-        .max(1024)
-        .describe('Unscoped conversation id from the Agent Builder hook.'),
-      required: z
-        .boolean()
-        .optional()
-        .describe(
-          'When false, a missing sandbox config skips allocate and still returns sandbox_id. ' +
-            'Hydrate leaves this unset (fail closed). Optimize sets false so transcript ' +
-            'extraction still runs.'
-        ),
-    }),
-    outputSchema: z.object({
-      sandbox_id: z
-        .string()
-        .describe('Workspace key (`<space>__<conversation>`). Pass this to every writer.'),
-      conversation_id: z.string().describe('Unscoped conversation id from the hook.'),
-      skipped: z.boolean().optional(),
-    }),
-    handler: async (context) => {
-      const { conversation_id: conversationId, required = true } = context.input;
+    inputSchema,
+    outputSchema,
+    handler: createObtainSandboxHandler((context, conversationId, required) => {
       const { spaceId } = context.contextManager.getContext().workflow;
-      const sandboxId = scopeConversationId(spaceId, conversationId);
-      const sandboxStart = getSandboxStart();
-
-      if (!sandboxStart) {
-        if (!required) {
-          logger.info(`Sandbox is not configured — skipping allocate for ${sandboxId}`);
-          return {
-            output: { sandbox_id: sandboxId, conversation_id: conversationId, skipped: true },
-          };
-        }
-        throw new Error(
-          'The sandbox is not configured — ' +
-            'ensure the sandbox plugin is installed and configured.'
-        );
-      }
-
-      try {
-        const session = sandboxStart.getSessionForSpace(spaceId, conversationId);
-
-        // Stat is enough: the session allocates on the first RPC, including workspace restore.
-        const allocate = () =>
-          withTimeout(
-            (_signal) => session.statFiles(['/workspace']),
-            ALLOCATE_TIMEOUT_MS,
-            `Sandbox allocate timed out after ${ALLOCATE_TIMEOUT_MS}ms`
-          );
-        try {
-          await allocate();
-        } catch (error) {
-          logger.warn(
-            `Sandbox allocate failed for ${sandboxId}, retrying once: ${
-              error instanceof Error ? error.message : String(error)
-            }`
-          );
-          await allocate();
-        }
-      } catch (error) {
-        if (required) {
-          throw error;
-        }
-        logger.info(`Sandbox unavailable — skipping allocate for ${sandboxId}`);
-        logger.debug(
-          `Optional sandbox allocation failed: ${
-            error instanceof Error ? error.message : String(error)
-          }`
-        );
-        return {
-          output: { sandbox_id: sandboxId, conversation_id: conversationId, skipped: true },
-        };
-      }
-
-      logger.info(`Obtained sandbox ${sandboxId}`);
-      return { output: { sandbox_id: sandboxId, conversation_id: conversationId } };
-    },
+      return createWorkspaceAllocator({ getSandboxStart, logger })(
+        spaceId,
+        conversationId,
+        required
+      );
+    }),
   });

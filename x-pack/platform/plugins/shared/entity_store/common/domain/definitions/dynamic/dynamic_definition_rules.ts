@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { isEqual } from 'lodash';
+import isEqual from 'lodash/isEqual';
 import type { z } from '@kbn/zod/v4';
 import type { Condition } from '@kbn/streamlang';
 import { isLiteralFieldPath } from './dynamic_block_schema';

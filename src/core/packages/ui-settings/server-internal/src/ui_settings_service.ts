@@ -11,7 +11,7 @@ import type { Observable } from 'rxjs';
 import { firstValueFrom } from 'rxjs';
 import { mapToObject } from '@kbn/std';
 
-import type { Logger } from '@kbn/logging';
+import type { Logger, LoggerFactory } from '@kbn/logging';
 import { stripVersionQualifier } from '@kbn/std';
 import type { CoreContext, CoreService } from '@kbn/core-base-server-internal';
 import type { InternalHttpServiceSetup } from '@kbn/core-http-server-internal';
@@ -34,7 +34,6 @@ import type {
 } from './types';
 import type { InternalUiSettingsRequestHandlerContext } from './internal_types';
 import { uiSettingsType, uiSettingsGlobalType } from './saved_objects';
-import { registerRoutes, registerInternalRoutes } from './routes';
 import { getCoreSettings, getGlobalCoreSettings } from './settings';
 import { UiSettingsDefaultsClient } from './clients/ui_settings_defaults_client';
 import { NamespacedCache } from './namespaced_cache';
@@ -50,6 +49,16 @@ type ClientType<T> = T extends 'global'
   ? UiSettingsClient
   : never;
 
+/** Explicit local dependencies for lazy worker settings, without a Core/plugin lifecycle. */
+export interface UiSettingsServiceDependencies {
+  readonly logger: Pick<LoggerFactory, 'get'>;
+  readonly config$: Observable<UiSettingsConfigType>;
+  readonly isDev: boolean;
+  readonly isDist: boolean;
+  readonly version: string;
+  readonly buildNum: number;
+}
+
 /** @internal */
 export class UiSettingsService
   implements CoreService<InternalUiSettingsServiceSetup, InternalUiSettingsServiceStart>
@@ -63,13 +72,27 @@ export class UiSettingsService
   private overrides: Record<string, any> = {};
   private globalOverrides: Record<string, any> = {};
   private allowlist: Set<string> | null = null;
+  private useSharedUserProvidedCache = true;
   private readonly sharedUserProvidedCache = new NamespacedCache<Record<string, any>>();
 
-  constructor(private readonly coreContext: CoreContext) {
-    this.log = coreContext.logger.get('ui-settings-service');
-    this.isDist = coreContext.env.packageInfo.dist;
-    this.config$ = coreContext.configService.atPath<UiSettingsConfigType>(uiConfigDefinition.path);
-    this.isDev = coreContext.env.mode.dev;
+  private readonly dependencies: UiSettingsServiceDependencies;
+
+  constructor(context: CoreContext | UiSettingsServiceDependencies) {
+    this.dependencies =
+      'config$' in context
+        ? context
+        : {
+            logger: context.logger,
+            config$: context.configService.atPath<UiSettingsConfigType>(uiConfigDefinition.path),
+            isDev: context.env.mode.dev,
+            isDist: context.env.packageInfo.dist,
+            version: context.env.packageInfo.version,
+            buildNum: context.env.packageInfo.buildNum,
+          };
+    this.log = this.dependencies.logger.get('ui-settings-service');
+    this.isDist = this.dependencies.isDist;
+    this.config$ = this.dependencies.config$;
+    this.isDev = this.dependencies.isDev;
   }
 
   public async preboot(): Promise<InternalUiSettingsServicePreboot> {
@@ -99,7 +122,24 @@ export class UiSettingsService
     };
   }
 
-  public async setup({ http, savedObjects }: SetupDeps): Promise<InternalUiSettingsServiceSetup> {
+  public async setup(deps: SetupDeps): Promise<InternalUiSettingsServiceSetup> {
+    return this.setupInternal(deps);
+  }
+
+  /** Sets up request-scoped worker clients without HTTP routes or cross-run settings caches. */
+  public async setupTask(
+    deps: Pick<SetupDeps, 'savedObjects'>
+  ): Promise<InternalUiSettingsServiceSetup> {
+    // Retained workers must observe settings written by Kibana before their next execution.
+    this.useSharedUserProvidedCache = false;
+    return this.setupInternal(deps);
+  }
+
+  private async setupInternal({
+    http,
+    savedObjects,
+  }: Pick<SetupDeps, 'savedObjects'> &
+    Partial<Pick<SetupDeps, 'http'>>): Promise<InternalUiSettingsServiceSetup> {
     this.log.debug('Setting up ui settings service');
 
     const config = await firstValueFrom(this.config$);
@@ -108,12 +148,15 @@ export class UiSettingsService
     savedObjects.registerType(uiSettingsType);
     savedObjects.registerType(uiSettingsGlobalType);
 
-    const router = http.createRouter<InternalUiSettingsRequestHandlerContext>('');
-    registerInternalRoutes(router);
+    if (http) {
+      const { registerRoutes, registerInternalRoutes } = await import('./routes');
+      const router = http.createRouter<InternalUiSettingsRequestHandlerContext>('');
+      registerInternalRoutes(router);
 
-    // Register public routes by default unless the publicApiEnabled config setting is set to false
-    if (!Object.hasOwn(config, 'publicApiEnabled') || config.publicApiEnabled === true) {
-      registerRoutes(router);
+      // Register public routes by default unless the publicApiEnabled config setting is set to false
+      if (!Object.hasOwn(config, 'publicApiEnabled') || config.publicApiEnabled === true) {
+        registerRoutes(router);
+      }
     }
 
     return {
@@ -148,7 +191,7 @@ export class UiSettingsService
   private getScopedClientFactory<T extends UiSettingsScope>(
     scope: UiSettingsScope
   ): (savedObjectsClient: SavedObjectsClientContract) => ClientType<T> {
-    const { version, buildNum } = this.coreContext.env.packageInfo;
+    const { version, buildNum } = this.dependencies;
     return (savedObjectsClient: SavedObjectsClientContract): ClientType<T> => {
       const isNamespaceScope = scope === 'namespace';
       const namespace = isNamespaceScope
@@ -165,7 +208,9 @@ export class UiSettingsService
           : mapToObject(this.uiSettingsGlobalDefaults),
         overrides: isNamespaceScope ? this.overrides : this.globalOverrides,
         log: this.log,
-        sharedUserProvidedCache: this.sharedUserProvidedCache,
+        sharedUserProvidedCache: this.useSharedUserProvidedCache
+          ? this.sharedUserProvidedCache
+          : undefined,
         namespace,
       };
       return UiSettingsClientFactory.create(options) as ClientType<T>;

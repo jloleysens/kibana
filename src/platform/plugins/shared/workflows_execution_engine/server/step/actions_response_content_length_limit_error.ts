@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { ExecutionError } from '@kbn/workflows/server';
+import { ExecutionError } from '@kbn/workflows-runtime';
 import { formatBytes } from './errors';
 
 export const ACTIONS_MAX_RESPONSE_CONTENT_LENGTH_CONFIG = 'xpack.actions.maxResponseContentLength';

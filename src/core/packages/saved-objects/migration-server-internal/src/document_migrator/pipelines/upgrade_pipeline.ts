@@ -8,7 +8,7 @@
  */
 
 import Boom from '@hapi/boom';
-import { cloneDeep } from 'lodash';
+import cloneDeep from 'lodash/cloneDeep';
 import Semver from 'semver';
 import type { SavedObjectUnsanitizedDoc } from '@kbn/core-saved-objects-server';
 import type { ActiveMigrations, Transform } from '../types';

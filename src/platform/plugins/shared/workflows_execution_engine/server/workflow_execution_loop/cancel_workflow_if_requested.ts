@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { ExecutionStatus } from '@kbn/workflows';
+import { ExecutionStatus } from '@kbn/workflows-runtime';
 import { buildStepExecutionId } from '../utils';
 import type { StepExecutionRuntime } from '../workflow_context_manager/step_execution_runtime';
 import type { WorkflowExecutionCursorApi } from '../workflow_context_manager/workflow_execution_cursor';

@@ -6,10 +6,14 @@
  */
 
 import crypto from 'crypto';
-import type { ServiceParams } from '@kbn/actions-plugin/server';
-import { SubActionConnector } from '@kbn/actions-plugin/server';
+import type { Services } from '@kbn/actions-plugin/server/types';
+import type {
+  ServiceParams,
+  SubActionServices,
+} from '@kbn/actions-plugin/server/sub_action_framework/types';
+import { SubActionConnector } from '@kbn/actions-plugin/server/sub_action_framework/sub_action_connector';
 import type { AxiosError } from 'axios';
-import { isEmpty } from 'lodash';
+import isEmpty from 'lodash/isEmpty';
 import type { ConnectorUsageCollector } from '@kbn/actions-plugin/server/types';
 import {
   SUB_ACTION,
@@ -30,8 +34,10 @@ import * as i18n from './translations';
 
 const INTEGRATION_API_BASE_PATH = 'jsm/ops/integration/v2';
 
-export class JiraServiceManagementConnector extends SubActionConnector<Config, Secrets> {
-  constructor(params: ServiceParams<Config, Secrets>) {
+export class JiraServiceManagementConnector<
+  ExecutionServices extends SubActionServices = Services
+> extends SubActionConnector<Config, Secrets, ExecutionServices> {
+  constructor(params: ServiceParams<Config, Secrets, ExecutionServices>) {
     super(params);
 
     this.registerSubAction({

@@ -57,6 +57,7 @@ const createStartContractMock = (typeRegistry?: jest.Mocked<ISavedObjectTypeRegi
 const createInternalStartContractMock = (typeRegistry?: jest.Mocked<ISavedObjectTypeRegistry>) => {
   const internalStartContract: jest.Mocked<InternalSavedObjectsServiceStart> = lazyObject({
     ...createStartContractMock(typeRegistry),
+    createWorkerAdmissionProducer: jest.fn(),
     metrics: {
       migrationDuration: 0,
     },
@@ -94,8 +95,11 @@ const createInternalSetupContractMock = () => {
 
 const createSavedObjectsServiceMock = () => {
   const mocked: jest.Mocked<SavedObjectsServiceContract> = lazyObject({
+    createWorkerAdmissionProducer: jest.fn(),
     setup: jest.fn().mockResolvedValue(createInternalSetupContractMock()),
+    setupTask: jest.fn().mockResolvedValue(createInternalSetupContractMock()),
     start: jest.fn().mockResolvedValue(createInternalStartContractMock()),
+    startTask: jest.fn().mockResolvedValue(createInternalStartContractMock()),
     stop: jest.fn().mockResolvedValue(void 0),
   });
 

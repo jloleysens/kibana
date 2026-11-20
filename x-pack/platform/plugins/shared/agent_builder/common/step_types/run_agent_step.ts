@@ -245,12 +245,8 @@ export const OutputSchema = z.object({
 export const AGGREGATE_BY_REQUIRES_PLUGIN_ID_MESSAGE =
   '`aggregate-by` can only be set when `plugin-id` is also set.';
 
-/**
- * Validation message shown when `ephemeral` is combined with `create-conversation`: a run that
- * stores nothing cannot create a conversation.
- */
-export const EPHEMERAL_WITH_CREATE_CONVERSATION_MESSAGE =
-  '`ephemeral` cannot be combined with `create-conversation`.';
+export { EPHEMERAL_WITH_CREATE_CONVERSATION_MESSAGE } from './run_agent_constraints';
+import { EPHEMERAL_WITH_CREATE_CONVERSATION_MESSAGE } from './run_agent_constraints';
 
 /**
  * Config schema for the run agent step.

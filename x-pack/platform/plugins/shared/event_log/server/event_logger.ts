@@ -5,6 +5,7 @@
  * 2.0.
  */
 
+import { randomUUID } from 'node:crypto';
 import { schema } from '@kbn/config-schema';
 import type { Logger } from '@kbn/core/server';
 import { merge } from 'lodash';
@@ -30,6 +31,7 @@ interface IEventLoggerCtorParams {
 }
 
 export class EventLogger implements IEventLogger {
+  private readonly durableBatches = new WeakMap<IEvent[], DocWithOptionalId[]>();
   private esContext: EsContext;
   private eventLogService: EventLogService;
   private initialProperties: IEvent;
@@ -63,6 +65,40 @@ export class EventLogger implements IEventLogger {
 
   // non-blocking, but spawns an async task to do the work
   logEvent(eventProperties: IEvent, id?: string): void {
+    let doc: DocWithOptionalId;
+    try {
+      doc = this.createDocument(eventProperties, id);
+    } catch (err) {
+      this.systemLogger.warn(
+        `invalid event logged: ${err.message}; ${JSON.stringify(eventProperties)})`
+      );
+      return;
+    }
+
+    if (this.eventLogService.isIndexingEntries()) {
+      indexEventDoc(this.esContext, doc);
+    }
+
+    if (this.eventLogService.isLoggingEntries()) {
+      logEventDoc(this.systemLogger, doc);
+    }
+  }
+
+  async logEvents(events: IEvent[]): Promise<void> {
+    let docs = this.durableBatches.get(events);
+    if (!docs) {
+      docs = events.map((event) => this.createDocument(event, randomUUID()));
+      this.durableBatches.set(events, docs);
+    }
+    if (this.eventLogService.isIndexingEntries() && docs.length > 0) {
+      await this.esContext.esAdapter.indexDocuments(docs, true);
+    }
+    if (this.eventLogService.isLoggingEntries()) {
+      for (const doc of docs) logEventDoc(this.systemLogger, doc);
+    }
+  }
+
+  private createDocument(eventProperties: IEvent, id?: string): DocWithOptionalId {
     const event: IEvent = {};
     const fixedProperties = {
       ecs: {
@@ -81,27 +117,14 @@ export class EventLogger implements IEventLogger {
     // merge the initial properties and event properties
     merge(event, defaultProperties, this.initialProperties, eventProperties, fixedProperties);
 
-    let validatedEvent: IValidatedEvent;
-    try {
-      validatedEvent = validateEvent(this.eventLogService, event);
-    } catch (err) {
-      this.systemLogger.warn(`invalid event logged: ${err.message}; ${JSON.stringify(event)})`);
-      return;
-    }
-
+    const validatedEvent = validateEvent(this.eventLogService, event);
     const doc: DocWithOptionalId = {
       id,
       index: this.esContext.esNames.dataStream,
       body: validatedEvent,
     };
 
-    if (this.eventLogService.isIndexingEntries()) {
-      indexEventDoc(this.esContext, doc);
-    }
-
-    if (this.eventLogService.isLoggingEntries()) {
-      logEventDoc(this.systemLogger, doc);
-    }
+    return doc;
   }
 
   async updateEvents(

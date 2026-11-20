@@ -78,7 +78,7 @@ import type {
 } from './types';
 
 import type { ActionsConfigurationUtilities } from './actions_config';
-import { getActionsConfigurationUtilities } from './actions_config';
+import { getActionsConfigurationUtilities, serializeActionsConfiguration } from './actions_config';
 
 import { defineRoutes } from './routes';
 import { setupInboundEvents, type ConnectorEventEmitter } from './inbound';
@@ -132,7 +132,11 @@ import { ConnectorUsageReportingTask } from './usage/connector_usage_reporting_t
 import { ConnectorRateLimiter } from './lib/connector_rate_limiter';
 import { OAuthRateLimiter } from './lib/oauth_rate_limiter';
 import type { GetAxiosInstanceWithAuthFnOpts, GetCredentialFnOpts } from './lib/get_axios_instance';
-import { getAxiosInstanceWithAuth, getCredentialWithAuth } from './lib/get_axios_instance';
+import {
+  buildUserAgent,
+  getAxiosInstanceWithAuth,
+  getCredentialWithAuth,
+} from './lib/get_axios_instance';
 import { RelayClient, type RelayClientContract } from './lib/relay';
 
 export interface PluginSetupContract {
@@ -308,6 +312,7 @@ export class ActionsPlugin
   private actionTypeRegistry?: ActionTypeRegistry;
   private authTypeRegistry?: AuthTypeRegistry;
   private actionExecutor?: ActionExecutor;
+  private runtimeUserAgent?: string;
   private licenseState: ILicenseState | null = null;
   private security?: SecurityPluginSetup;
   private securityStart?: SecurityPluginStart;
@@ -344,6 +349,7 @@ export class ActionsPlugin
     core: CoreSetup<ActionsPluginsStart, PluginStartContract>,
     plugins: ActionsPluginsSetup
   ): PluginSetupContract {
+    this.runtimeUserAgent = buildUserAgent(plugins.cloud);
     this.licenseState = new LicenseState(plugins.licensing.license$);
     this.isESOCanEncrypt = plugins.encryptedSavedObjects.canEncrypt;
 
@@ -839,6 +845,9 @@ export class ActionsPlugin
       getCurrentUserProfileIdFromRequest(requestWithAuth, plugins.security, logger);
 
     actionExecutor!.initialize({
+      getRelayClient: () => this.relayClient,
+      runtimeConfig: serializeActionsConfiguration(actionsConfig),
+      runtimeUserAgent: this.runtimeUserAgent,
       logger,
       eventLogger: this.eventLogger!,
       spaces: plugins.spaces?.spacesService,

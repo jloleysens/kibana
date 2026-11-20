@@ -26,6 +26,7 @@
 import { i18n } from '@kbn/i18n';
 import { z, lazySchema } from '@kbn/zod/v4';
 import type { ActionContext, ConnectorSpec } from '../../connector_spec';
+import { createGcpTokenTransport } from '../../auth_types/gcp_token_transport';
 import { getGcpIdToken, parseServiceAccountKey } from '../../auth_types/gcp_jwt_helpers';
 
 const CLOUD_RUN_API_BASE = 'https://run.googleapis.com/v2';
@@ -207,7 +208,12 @@ export const GcpCloudFunctionsConnector: ConnectorSpec = {
         // Cloud Run requires an OIDC ID token (not an access token) for service invocation.
         const serviceAccountJson = ctx.secrets?.serviceAccountJson as string;
         const sa = parseServiceAccountKey(serviceAccountJson);
-        const idToken = await getGcpIdToken(sa.client_email, sa.private_key, serviceUrl);
+        const idToken = await getGcpIdToken(
+          sa.client_email,
+          sa.private_key,
+          serviceUrl,
+          createGcpTokenTransport(ctx.client)
+        );
 
         const invokeResponse = await callGcpApi(ctx, 'POST', serviceUrl, {}, body, {
           Authorization: `Bearer ${idToken}`,

@@ -52,6 +52,13 @@ import { registerStepDefinitions } from './step_types';
 import { ContextEngineAnalyticsService, registerContextEngineUsageCollector } from './telemetry';
 import { isContextEngineEnabledInSpace } from './utils/is_context_engine_enabled_in_space';
 import { resolveSpaceId } from './utils/resolve_space_id';
+import { RecordImprovementsOperations } from './remote/record_improvements_operations';
+import { RecordImprovementsOperationsToken } from './remote/record_improvements_tokens';
+import { KiOperations } from './remote/ki_operations';
+import { KiOperationsToken } from './remote/ki_tokens';
+import { createVerifyKiOperation, type VerifyKiDependencies } from './step_types/verify_ki';
+import { FeedbackOperations } from './remote/feedback_operations';
+import { FeedbackOperationsToken } from './remote/feedback_tokens';
 
 /** Must match the `pluginId` on the managed workflow definition. */
 const CONTEXT_ENGINE_WORKFLOW_OWNER = 'contextEngine';
@@ -134,7 +141,7 @@ export class ContextEnginePlugin
       return hasAllRequested;
     };
 
-    const verifyKi = createVerifyKi({
+    const verifyKiDependencies: VerifyKiDependencies = {
       getAuditLogger: async (request) => {
         const [coreStart] = await coreSetup.getStartServices();
         return coreStart.security.audit.asScoped(request);
@@ -146,7 +153,9 @@ export class ContextEnginePlugin
       },
       analyticsService,
       logger: this.logger.get('context_steps'),
-    });
+    };
+    const verifyKi = createVerifyKi(verifyKiDependencies);
+    const verifyKiOperation = createVerifyKiOperation(verifyKiDependencies);
     setupDeps.workflowsExtensions.registerStepDefinition(
       createVerifyKiStepDefinition(coreSetup, verifyKi)
     );
@@ -287,6 +296,59 @@ export class ContextEnginePlugin
         });
       return hasAllRequested;
     };
+
+    coreSetup.remote.bind(
+      KiOperationsToken,
+      (scopes) =>
+        new KiOperations(scopes, {
+          getAiIndexService,
+          isContextEngineEnabled,
+          checkWritePrivilege,
+          analyticsService,
+          logger: this.logger.get('context_steps'),
+          verify: verifyKiOperation,
+          getScopedEsClient: async (request) => {
+            const [coreStart] = await coreSetup.getStartServices();
+            return coreStart.elasticsearch.client.asScoped(request).asCurrentUser;
+          },
+        })
+    );
+
+    coreSetup.remote.bind(
+      RecordImprovementsOperationsToken,
+      (scopes) =>
+        new RecordImprovementsOperations(scopes, {
+          getAiIndexService,
+          getImprovementsService,
+          isContextEngineEnabled,
+          checkWritePrivilege,
+          isFeedbackLoopEnabled: () => this.isFeedbackLoopEnabled(),
+          logger: this.logger.get('feedback_analysis'),
+          getAuditLogger: async (request) => {
+            const [coreStart] = await coreSetup.getStartServices();
+            return coreStart.security.audit.asScoped(request);
+          },
+          getScopedEsClient: async (request) => {
+            const [coreStart] = await coreSetup.getStartServices();
+            return coreStart.elasticsearch.client.asScoped(request).asCurrentUser;
+          },
+        })
+    );
+
+    coreSetup.remote.bind(
+      FeedbackOperationsToken,
+      (scopes) =>
+        new FeedbackOperations(scopes, {
+          getAiIndexService,
+          getImprovementsService,
+          getScopedEsClient: async (request) => {
+            const [coreStart] = await coreSetup.getStartServices();
+            return coreStart.elasticsearch.client.asScoped(request).asCurrentUser;
+          },
+          isContextEngineEnabled,
+          isFeedbackLoopEnabled: () => this.isFeedbackLoopEnabled(),
+        })
+    );
 
     registerStepDefinitions({
       workflowsExtensions: setupDeps.workflowsExtensions,

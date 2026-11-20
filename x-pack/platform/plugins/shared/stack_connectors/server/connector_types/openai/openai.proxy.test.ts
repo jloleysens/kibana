@@ -102,9 +102,8 @@ describe('OpenAI with proxy config', () => {
     jest.clearAllMocks();
   });
 
-  it('verifies that the OpenAI client is initialized with the custom proxy HTTP agent', () => {
-    // @ts-ignore .openAI is private
-    const openAIClient = connector.openAI;
+  it('verifies that the OpenAI client is initialized with the custom proxy HTTP agent', async () => {
+    const openAIClient = await connector['getOpenAIClient']();
 
     // Verify the client was initialized with the custom agent configuration
     expect(openAIClient).toBeDefined();

@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-import { omit } from 'lodash';
+import omit from 'lodash/omit';
 import type { Logger } from '@kbn/logging';
 import type {
   GetUiSettingsContext,

@@ -18,7 +18,7 @@ import {
 import type { ActionsClientProvider } from '../types';
 import { getConnectorList } from './get_connector_list';
 
-type GetActionsClient = () => Promise<PublicMethodsOf<ActionsClient>>;
+type GetActionsClient = () => Promise<Pick<PublicMethodsOf<ActionsClient>, 'getAll'>>;
 
 const isForbiddenError = (e: unknown): boolean => isBoom(e) && e.output.statusCode === 403;
 
@@ -32,7 +32,7 @@ const getRawStackConnectors = async (
   getActionsClient: GetActionsClient,
   logger: Logger
 ): Promise<RawConnector[]> => {
-  let actionsClient: PublicMethodsOf<ActionsClient>;
+  let actionsClient: Pick<PublicMethodsOf<ActionsClient>, 'getAll'>;
   try {
     actionsClient = await getActionsClient();
   } catch (e) {
@@ -139,7 +139,7 @@ export const getConnectorByIdWithoutClientRequest = async ({
   logger,
 }: {
   connectorId: string;
-  actionsClient: PublicMethodsOf<ActionsClient>;
+  actionsClient: Pick<PublicMethodsOf<ActionsClient>, 'getAll'>;
   esClient: ElasticsearchClient;
   logger: Logger;
 }): Promise<InferenceConnector> => {

@@ -11,12 +11,14 @@ import {
   WorkflowsConnectorFeatureId,
   AgentBuilderConnectorFeatureId,
 } from '@kbn/actions-plugin/common';
-import { urlAllowListValidator } from '@kbn/actions-plugin/server';
-import type { PluginSetupContract as ActionsPluginSetupContract } from '@kbn/actions-plugin/server';
+import { urlAllowListValidator } from '@kbn/actions-plugin/server/sub_action_framework/helpers/validators';
+import type { LeasePool } from '@kbn/actions-plugin/server/lib/lease_pool';
+import type { Services } from '@kbn/actions-plugin/server/types';
 import type { ValidatorServices } from '@kbn/actions-plugin/server/types';
 import {
   ValidatorType,
   type SubActionConnectorType,
+  type SubActionServices,
 } from '@kbn/actions-plugin/server/sub_action_framework/types';
 import {
   CONNECTOR_ID,
@@ -29,12 +31,16 @@ import {
 import { McpConnector } from './mcp';
 
 export interface McpConnectorTypeDeps {
-  getClientLeasePool: ActionsPluginSetupContract['getClientLeasePool'];
+  getClientLeasePool: () => LeasePool<unknown>;
 }
 
-export const getMcpConnectorType = ({
+export const getMcpConnectorType = <ExecutionServices extends SubActionServices = Services>({
   getClientLeasePool,
-}: McpConnectorTypeDeps): SubActionConnectorType<MCPConnectorConfig, MCPConnectorSecrets> => ({
+}: McpConnectorTypeDeps): SubActionConnectorType<
+  MCPConnectorConfig,
+  MCPConnectorSecrets,
+  ExecutionServices
+> => ({
   id: CONNECTOR_ID,
   name: CONNECTOR_NAME,
   getService: (params) => new McpConnector(params, getClientLeasePool()),

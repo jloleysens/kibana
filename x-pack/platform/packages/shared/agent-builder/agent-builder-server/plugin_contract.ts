@@ -5,6 +5,8 @@
  * 2.0.
  */
 
+import type { ConnectorTelemetryMetadata } from '@kbn/inference-common';
+import type { InferenceCompleteCallbackHandler } from '@kbn/inference-common/src/chat_complete';
 import type { ZodObject } from '@kbn/zod/v4';
 import type { KibanaRequest } from '@kbn/core-http-server';
 import type { AgentCreateRequest, ConversationTemplate } from '@kbn/agent-builder-common';
@@ -222,6 +224,15 @@ export interface PluginsStart {
  * AgentBuilder runtime service's start contract.
  */
 export interface RuntimeStart {
+  /** Issues request-derived metadata and an original completion tracker for coordinator-side use only. */
+  issueModelObservation: (opts: {
+    request: KibanaRequest;
+    connectorId: string;
+    metadata: ConnectorTelemetryMetadata;
+  }) => Promise<{
+    metadata: ConnectorTelemetryMetadata;
+    complete: InferenceCompleteCallbackHandler;
+  }>;
   /**
    * Creates a model provider for the given request context.
    * The model provider can be used to obtain a ScopedModel for use

@@ -11,23 +11,19 @@ import type { ContextEnginePluginSetup } from '@kbn/context-engine-plugin/server
 import type { InferenceServerStart } from '@kbn/inference-plugin/server';
 import type { SandboxSession } from '@kbn/sandbox-plugin/server';
 import { i18n } from '@kbn/i18n';
+import { runMemoryOptimize as runMemoryOptimizeNative } from './run_optimize';
 import { MEMORY_AI_INDEX_ID, MEMORY_INDEX } from '../../common/memory';
 import {
   createInvestigationMemoryTelemetry,
   createOptimizeModel,
 } from '../lib/create_optimize_model';
 import type { InvestigationToolCall } from '../decision_trees/accessed_trees';
-import { previewText } from './log_format';
-import { stepsFromRound, stepsFromToolCalls, type TranscriptStep } from './transcript';
-import { loadInvestigationRound } from '../investigation_round';
-import { materializeMemory, type MaterializeMemoryResult } from './materialize';
-import {
-  createLlmProposeMemoryExtractions,
-  createLlmProposeMemoryLabels,
-  createLlmSynthesizeMemoryGroup,
-  optimizeMemory,
-  type MemoryOptimizeSummary,
-} from './optimize';
+import { loadRoundSteps } from './load_round_steps';
+export { loadRoundSteps } from './load_round_steps';
+import type { MaterializeMemoryResult } from './materialize';
+import { hydrateMemoryWorkspaceWithSessionState } from './hydrate_workspace';
+export { hydrateMemoryWorkspaceWithSessionState } from './hydrate_workspace';
+import type { MemoryOptimizeSummary } from './optimize';
 import { createMemoryPageStore, type MemoryPageStore } from './page_store';
 
 /** Registers the AI index so Context Engine manages it; the backing index is created on first write. */
@@ -68,15 +64,7 @@ export const createMemoryStore = ({
   return createMemoryPageStore({ esClient, logger, spaceId, signal });
 };
 
-export const hydrateMemoryWorkspace = async ({
-  session,
-  esClient,
-  spaceId,
-  agentId,
-  query,
-  signal,
-  logger,
-}: {
+export const hydrateMemoryWorkspace = (options: {
   session: SandboxSession;
   esClient: ElasticsearchClient;
   spaceId: string;
@@ -84,47 +72,8 @@ export const hydrateMemoryWorkspace = async ({
   query?: string;
   signal?: AbortSignal;
   logger: Logger;
-}): Promise<MaterializeMemoryResult> => {
-  const store = createMemoryStore({ esClient, logger, spaceId, signal });
-  logger.debug(
-    `Memory hydrate space=${spaceId} agent=${agentId} query=${JSON.stringify(previewText(query))}`
-  );
-  return materializeMemory({ session, store, logger, query });
-};
-
-export const loadRoundSteps = async ({
-  agentBuilder,
-  request,
-  conversationId,
-  roundId,
-  roundIndex,
-  logger,
-  signal,
-  retryDelaysMs,
-}: {
-  agentBuilder: AgentBuilderPluginStart | undefined;
-  request: KibanaRequest;
-  conversationId?: string;
-  roundId?: string;
-  roundIndex?: number;
-  logger: Logger;
-  signal?: AbortSignal;
-  retryDelaysMs?: readonly number[];
-}): Promise<TranscriptStep[] | undefined> => {
-  const loaded = await loadInvestigationRound({
-    agentBuilder,
-    request,
-    conversationId,
-    roundId,
-    roundIndex,
-    logger,
-    signal,
-    retryDelaysMs,
-  });
-  return loaded.source === 'persisted_round'
-    ? stepsFromRound(loaded.rawSteps as Parameters<typeof stepsFromRound>[0])
-    : undefined;
-};
+}): Promise<MaterializeMemoryResult> =>
+  hydrateMemoryWorkspaceWithSessionState({ ...options, getIsReset: () => options.session.isReset });
 
 export const runMemoryOptimize = async ({
   request,
@@ -168,61 +117,35 @@ export const runMemoryOptimize = async ({
   requestedConnectorId?: string;
   roundConnectorId?: string;
   interactionId: string;
-}): Promise<MemoryOptimizeSummary | undefined> => {
-  logger.debug(
-    `Memory optimize wiring space=${spaceId} agent=${agentId} ` +
-      `connector=${requestedConnectorId ?? '(none)'} round=${roundConnectorId ?? '(none)'} ` +
-      `recalledIds=${recalledIds.length} toolCalls=${toolCalls.length} userChars=${userMessage.length} ` +
-      `assistantChars=${assistantMessage.length} user=${JSON.stringify(previewText(userMessage))}`
-  );
-
-  const model = await createOptimizeModel({
+}): Promise<MemoryOptimizeSummary | undefined> =>
+  runMemoryOptimizeNative({
     request,
-    requestedConnectorId,
-    roundConnectorId,
-    agentBuilder: getAgentBuilder(),
-    inference: getInference(),
-    savedObjects: getSavedObjects(),
-    uiSettings: getUiSettings(),
-    telemetryMetadata: createInvestigationMemoryTelemetry(interactionId),
-    logger,
-  });
-  if (!model) {
-    return undefined;
-  }
-
-  const investigation =
-    (await loadRoundSteps({
-      agentBuilder: getAgentBuilder(),
-      request,
-      conversationId,
-      roundId,
-      roundIndex,
-      logger,
-      signal,
-    })) ?? stepsFromToolCalls(toolCalls);
-
-  const store = createMemoryStore({ esClient, logger, spaceId, signal });
-  return optimizeMemory({
-    store,
-    recalledIds,
-    proposeLabels: createLlmProposeMemoryLabels({ inferenceClient: model.inferenceClient, signal }),
-    proposeExtractions: createLlmProposeMemoryExtractions({
-      inferenceClient: model.inferenceClient,
-      signal,
-    }),
-    synthesizeMemoryGroup: createLlmSynthesizeMemoryGroup({
-      inferenceClient: model.inferenceClient,
-      signal,
-      logger,
-    }),
+    agentId,
     userMessage,
     assistantMessage,
     toolCalls,
-    investigation,
-    agentId,
     conversationId,
-    logger,
+    roundId,
+    roundIndex,
+    recalledIds,
+    esClient,
+    spaceId,
     signal,
+    logger,
+    requestedConnectorId,
+    roundConnectorId,
+    interactionId,
+    createModel: () =>
+      createOptimizeModel({
+        request,
+        requestedConnectorId,
+        roundConnectorId,
+        agentBuilder: getAgentBuilder(),
+        inference: getInference(),
+        savedObjects: getSavedObjects(),
+        uiSettings: getUiSettings(),
+        telemetryMetadata: createInvestigationMemoryTelemetry(interactionId),
+        logger,
+      }),
+    loadRound: (options) => loadRoundSteps({ ...options, agentBuilder: getAgentBuilder() }),
   });
-};

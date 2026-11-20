@@ -10,7 +10,8 @@
 import type { KibanaRequest } from '@kbn/core/server';
 import type { JsonObject } from '@kbn/utility-types';
 import type { EsWorkflow } from '@kbn/workflows';
-import { toWorkflowExecutionEngineModel, WORKFLOW_STEP_TRIGGER_SOURCE } from '@kbn/workflows';
+import { toWorkflowExecutionEngineModel } from '@kbn/workflows';
+import { WORKFLOW_STEP_TRIGGER_SOURCE } from '@kbn/workflows-runtime';
 import type { WorkflowExecutionRepository } from '../../../repositories/workflow_execution_repository';
 import type { WorkflowsExecutionEnginePluginStart } from '../../../types';
 import type { StepExecutionRuntime } from '../../../workflow_context_manager/step_execution_runtime';
@@ -20,8 +21,14 @@ import type { StrategyResult } from '../types';
 
 export class WorkflowExecuteAsyncStrategy {
   constructor(
-    private workflowsExecutionEngine: WorkflowsExecutionEnginePluginStart,
-    private workflowExecutionRepository: WorkflowExecutionRepository,
+    private workflowsExecutionEngine: Pick<
+      WorkflowsExecutionEnginePluginStart,
+      'executeWorkflow' | 'cancelWorkflowExecution'
+    >,
+    private workflowExecutionRepository: Pick<
+      WorkflowExecutionRepository,
+      'getWorkflowExecutionById'
+    >,
     private stepExecutionRuntime: StepExecutionRuntime,
     private workflowLogger: IWorkflowEventLogger
   ) {}

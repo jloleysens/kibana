@@ -9,6 +9,10 @@ import { z } from '@kbn/zod/v4';
 import { loggerMock } from '@kbn/logging-mocks';
 import type { KibanaRequest } from '@kbn/core/server';
 import type { AgentBuilderPluginStart } from '@kbn/agent-builder-server';
+import {
+  buildInvestigationRound,
+  buildInvestigationConversation,
+} from '../decision_trees/investigation_round';
 import { SANDBOX_BASH_TOOL_ID } from '../tools/sandbox_bash/tool';
 import { SANDBOX_STR_REPLACE_TOOL_ID } from '../tools/sandbox_bash/str_replace_tool';
 import { SANDBOX_VIEW_FILE_TOOL_ID } from '../tools/sandbox_bash/view_file_tool';
@@ -58,6 +62,53 @@ describe('server/investigation_round', () => {
   });
 
   describe('loadInvestigationRound', () => {
+    it('uses the injected original native conversation client with the same persisted-round selector and parsing', async () => {
+      const round = buildInvestigationRound({
+        roundId: 'round',
+        prompt: 'prompt',
+        response: 'response',
+        startedAt: 'now',
+        toolCalls: [
+          {
+            tool_id: 'tool',
+            tool_call_id: 'call',
+            params: { query: 'original' },
+            results: [{ type: 'other', data: 'result' }],
+          },
+        ],
+      });
+      const get = jest.fn().mockResolvedValue(
+        buildInvestigationConversation({
+          conversationId: 'conversation',
+          agentId: 'agent',
+          round,
+          now: 'now',
+        })
+      );
+      const loaded = await loadInvestigationRound({
+        getConversationClient: async () => ({ get }),
+        request,
+        conversationId: 'conversation',
+        roundId: 'last',
+        logger,
+      });
+      expect(get).toHaveBeenCalledWith('conversation');
+      expect(loaded).toMatchObject({
+        source: 'persisted_round',
+        roundId: 'round',
+        roundIndex: 0,
+        roundCount: 1,
+        toolCalls: [
+          {
+            tool_id: 'tool',
+            tool_call_id: 'call',
+            params: { query: 'original' },
+            results: [{ type: 'other', data: 'result' }],
+          },
+        ],
+      });
+    });
+
     it('loads persisted ConversationRound.steps (including reasoning notes) with retry', async () => {
       const getConversation = jest
         .fn()

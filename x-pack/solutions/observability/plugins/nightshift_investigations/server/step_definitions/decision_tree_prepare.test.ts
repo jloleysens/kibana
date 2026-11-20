@@ -7,10 +7,10 @@
 
 import { loggerMock } from '@kbn/logging-mocks';
 import { NIGHTSHIFT_INVESTIGATION_AGENT_ID } from '../agents/investigation';
-import { prepareReinforcementTurn } from '../decision_trees/register_decision_trees';
+import { prepareReinforcementTurn } from '../decision_trees/prepare_reinforcement_turn';
 import { decisionTreePrepareStepDefinition } from './decision_tree_prepare';
 
-jest.mock('../decision_trees/register_decision_trees', () => ({
+jest.mock('../decision_trees/prepare_reinforcement_turn', () => ({
   prepareReinforcementTurn: jest.fn().mockResolvedValue({
     message: 'turn prompt',
     treeCount: 1,

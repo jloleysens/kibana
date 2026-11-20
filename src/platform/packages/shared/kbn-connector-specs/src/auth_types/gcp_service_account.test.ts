@@ -72,7 +72,8 @@ describe('GcpServiceAccountAuth', () => {
       expect(mockGetGcpAccessToken).toHaveBeenCalledWith(
         'test-sa@my-project.iam.gserviceaccount.com',
         expect.stringContaining('BEGIN PRIVATE KEY'),
-        'https://www.googleapis.com/auth/cloud-platform'
+        'https://www.googleapis.com/auth/cloud-platform',
+        expect.any(Function)
       );
     });
 
@@ -110,7 +111,8 @@ describe('GcpServiceAccountAuth', () => {
       expect(mockGetGcpAccessToken).toHaveBeenCalledWith(
         expect.any(String),
         expect.any(String),
-        'https://www.googleapis.com/auth/cloudfunctions'
+        'https://www.googleapis.com/auth/cloudfunctions',
+        expect.any(Function)
       );
     });
 

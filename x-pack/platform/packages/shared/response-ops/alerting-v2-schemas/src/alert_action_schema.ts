@@ -9,14 +9,7 @@ import { z, lazySchema } from '@kbn/zod/v4';
 import { futureIsoDateTime, seriesIdSchema, tagsSchema } from './common';
 import { ID_MAX_LENGTH, MAX_BULK_ITEMS } from './constants';
 
-export const ALERT_EPISODE_STATUS = {
-  INACTIVE: 'inactive',
-  PENDING: 'pending',
-  ACTIVE: 'active',
-  RECOVERING: 'recovering',
-} as const;
-
-export type AlertEpisodeStatus = (typeof ALERT_EPISODE_STATUS)[keyof typeof ALERT_EPISODE_STATUS];
+export { ALERT_EPISODE_STATUS, type AlertEpisodeStatus } from './alert_episode_status';
 
 export enum ALERT_EPISODE_ACTION_TYPE {
   ACK = 'ack',

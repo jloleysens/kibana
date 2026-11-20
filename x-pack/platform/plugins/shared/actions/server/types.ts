@@ -32,8 +32,8 @@ import type { SubActionConnector } from './sub_action_framework/sub_action_conne
 import type { ServiceParams } from './sub_action_framework/types';
 
 export type { ActionTypeExecutorRawResult, ActionTypeExecutorResult } from '../common';
-export { ActionExecutionSourceType } from './lib';
-export { ConnectorUsageCollector } from './usage';
+export { ActionExecutionSourceType } from './lib/action_execution_source';
+export { ConnectorUsageCollector } from './usage/connector_usage_collector';
 export type WithoutQueryAndParams<T> = Pick<T, Exclude<keyof T, 'query' | 'params'>>;
 export type GetServicesFunction = (request: KibanaRequest) => Services;
 export type GetUnsecuredServicesFunction = () => UnsecuredServices;
@@ -43,6 +43,16 @@ export type ActionTypeConfig = Record<string, unknown>;
 export type ActionTypeSecrets = Record<string, unknown>;
 export type ActionTypeParams = Record<string, unknown>;
 export type ConnectorTokenClientContract = PublicMethodsOf<ConnectorTokenClient>;
+export type ConnectorTokenStore = Pick<
+  ConnectorTokenClientContract,
+  'get' | 'updateOrReplace' | 'deleteConnectorTokens' | 'updateWithRefreshToken'
+> & {
+  readonly refreshEars?: (
+    refreshToken: string
+  ) => Promise<import('./lib/request_oauth_token').OAuthTokenResponse>;
+  readonly withRefreshTransaction?: <T>(id: string, refresh: () => Promise<T>) => Promise<T>;
+  readonly withRefreshLock?: <T>(refresh: () => Promise<T>) => Promise<T>;
+};
 
 import type { Connector, ConnectorWithExtraFindData } from './application/connector/types';
 import type { ActionExecutionSource, ActionExecutionSourceType } from './lib';
@@ -235,6 +245,9 @@ export interface ActionTypeCoreFields<
   id: string;
   name: string;
   maxAttempts?: number;
+  getEmailExecutionFacts?: (
+    config: Record<string, unknown>
+  ) => Promise<import('./remote/classic_connector_types').EmailExecutionFacts>;
   minimumLicenseRequired: LicenseType;
   supportedFeatureIds: string[];
   isSystemActionType?: boolean;
@@ -308,6 +321,9 @@ export interface ActionTypeCoreFields<
   // Headers that should be added to every Axios request made by this action type
   globalAuthHeaders?: Record<string, AxiosHeaderValue>;
   renderParameterTemplates?: RenderParameterTemplates<Params>;
+  getDashboardAttributes?: (
+    dashboardId: string
+  ) => import('@kbn/core/server').SavedObjectAttributes;
   getService?: (params: ServiceParams<Config, Secrets>) => SubActionConnector<Config, Secrets>;
   preSaveHook?: (params: PreSaveConnectorHookParams<Config, Secrets>) => Promise<void>;
   postSaveHook?: (params: PostSaveConnectorHookParams<Config, Secrets>) => Promise<void>;

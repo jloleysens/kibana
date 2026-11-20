@@ -9,6 +9,14 @@ import { i18n } from '@kbn/i18n';
 import { StepCategory } from '@kbn/workflows';
 import { z } from '@kbn/zod/v4';
 import type { CommonStepDefinition } from '@kbn/workflows-extensions/common';
+import { CategorySchema, OutputSchema } from './classification_output_schema';
+export {
+  CategorySchema,
+  getCategoryName,
+  OutputSchema,
+  buildStructuredOutputSchema,
+} from './classification_output_schema';
+export type { Category } from './classification_output_schema';
 
 /**
  * Step type ID for the AI classify step.
@@ -18,15 +26,6 @@ export const AiClassifyStepTypeId = 'ai.classify';
 export const ConfigSchema = z.object({
   'connector-id': z.string().optional(),
 });
-
-export const CategorySchema = z.union([
-  z.string(),
-  z.object({ name: z.string(), description: z.string() }),
-]);
-
-export type Category = z.infer<typeof CategorySchema>;
-export const getCategoryName = (category: Category): string =>
-  typeof category === 'string' ? category : category.name;
 
 /**
  * Input schema for the AI classify step.
@@ -39,17 +38,6 @@ export const InputSchema = z.object({
   fallbackCategory: CategorySchema.optional(),
   includeRationale: z.boolean().optional(),
   temperature: z.number().min(0).max(1).optional(),
-});
-
-/**
- * Output schema for the AI classify step.
- * This is the base schema - the dynamic schema will be created based on input parameters.
- */
-export const OutputSchema = z.object({
-  category: z.string().optional(),
-  categories: z.array(z.string()).optional(),
-  rationale: z.string().optional(),
-  metadata: z.record(z.string(), z.any()),
 });
 
 export type AiClassifyStepConfigSchema = typeof ConfigSchema;
@@ -159,28 +147,3 @@ When \`allowMultipleCategories\` is true, the output includes a \`categories\` a
   outputSchema: OutputSchema,
   configSchema: ConfigSchema,
 };
-
-/**
- * Builds a dynamic Zod schema for structured output based on AI classification step inputs.
- */
-export function buildStructuredOutputSchema(
-  params: z.infer<AiClassifyStepInputSchema>
-): typeof OutputSchema {
-  const { allowMultipleCategories, includeRationale } = params;
-
-  const shape: Record<string, z.ZodType> = {
-    metadata: z.record(z.string(), z.any()),
-  };
-
-  if (allowMultipleCategories) {
-    shape.categories = z.array(z.string());
-  } else {
-    shape.category = z.string();
-  }
-
-  if (includeRationale) {
-    shape.rationale = z.string();
-  }
-
-  return z.object(shape) as typeof OutputSchema;
-}

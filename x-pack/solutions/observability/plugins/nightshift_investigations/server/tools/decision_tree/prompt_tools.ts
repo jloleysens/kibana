@@ -6,15 +6,15 @@
  */
 
 import type { DecisionTreePromptTools } from '@kbn/nightshift-decision-trees';
-import { SANDBOX_STR_REPLACE_TOOL_ID } from '../sandbox_bash/str_replace_tool';
-import { SANDBOX_VIEW_FILE_TOOL_ID } from '../sandbox_bash/view_file_tool';
-import { SANDBOX_WRITE_FILE_TOOL_ID } from '../sandbox_bash/write_file_tool';
+import { SANDBOX_STR_REPLACE_TOOL_ID } from '../sandbox_bash/str_replace_tool_ids';
+import { SANDBOX_VIEW_FILE_TOOL_ID } from '../sandbox_bash/view_file_tool_ids';
+import { SANDBOX_WRITE_FILE_TOOL_ID } from '../sandbox_bash/write_file_tool_ids';
 import {
   RECORD_REMEDIATION_TOOL_ID,
   RECORD_SYSTEM_LEARNING_TOOL_ID,
   RECORD_TOOL_LEARNING_TOOL_ID,
-} from './learning_tools';
-import { DECISION_TREE_SUBMIT_TOOL_ID } from './submit_optimizer_result_tool';
+} from './learning_tools_ids';
+import { DECISION_TREE_SUBMIT_TOOL_ID } from './submit_optimizer_result_tool_ids';
 
 /** Tool ids the reinforcement prompts interpolate — the same strings Agent Builder registers. */
 export const DECISION_TREE_PROMPT_TOOLS: DecisionTreePromptTools = {

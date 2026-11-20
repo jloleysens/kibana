@@ -1,21 +1,21 @@
 {
   "extends": "@kbn/tsconfig-base/tsconfig.json",
   "compilerOptions": {
-    "outDir": "target/types",
+    "outDir": "target/types"
   },
-  "include": [
-    "**/*.js",
-    "**/*.ts",
-    "**/*.mjs",
-    "**/*.cjs",
-    "../../typings/**/*"
-  ],
-  "exclude": [
-    "target/**/*",
-    "packages/**/*",
-    "type_check_validation_loader.js"
-  ],
+  "include": ["**/*.js", "**/*.ts", "**/*.mjs", "**/*.cjs", "../../typings/**/*"],
+  "exclude": ["target/**/*", "packages/**/*", "type_check_validation_loader.js"],
   "kbn_references": [
+    "@kbn/actions-plugin",
+    "@kbn/cases-plugin",
+    "@kbn/context-engine-plugin",
+    "@kbn/inference-plugin",
+    "@kbn/inference-workflows-plugin",
+    "@kbn/workflows-execution-engine",
+    "@kbn/workflows-extensions",
+    "@kbn/stack-connectors-plugin",
+    "@kbn/connector-specs",
+    "@kbn/workflows-runtime",
     "@kbn/scout",
     "@kbn/core",
     "@kbn/screenshotting-plugin",
@@ -52,6 +52,6 @@
     "@kbn/sort-package-json",
     "@kbn/swc-register",
     "@kbn/dev-validation-runner",
-    "@kbn/test",
+    "@kbn/test"
   ]
 }

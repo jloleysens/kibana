@@ -8,7 +8,8 @@
 import { z } from '@kbn/zod/v4';
 import type { ExternalServiceIncidentResponse, PushToServiceResponse } from './types';
 import { SubActionConnector } from './sub_action_connector';
-import type { ServiceParams } from './types';
+import type { Services } from '../types';
+import type { ServiceParams, SubActionServices } from './types';
 import type { ConnectorUsageCollector } from '../usage';
 
 export interface CaseConnectorInterface<Incident, GetIncidentResponse> {
@@ -43,12 +44,18 @@ export interface CaseConnectorInterface<Incident, GetIncidentResponse> {
   ) => Promise<PushToServiceResponse>;
 }
 
-export abstract class CaseConnector<Config, Secrets, Incident, GetIncidentResponse>
-  extends SubActionConnector<Config, Secrets>
+export abstract class CaseConnector<
+    Config,
+    Secrets,
+    Incident,
+    GetIncidentResponse,
+    ExecutionServices extends SubActionServices = Services
+  >
+  extends SubActionConnector<Config, Secrets, ExecutionServices>
   implements CaseConnectorInterface<Incident, GetIncidentResponse>
 {
   constructor(
-    params: ServiceParams<Config, Secrets>,
+    params: ServiceParams<Config, Secrets, ExecutionServices>,
     pushToServiceIncidentParamsSchema: Record<string, z.ZodType<unknown>>
   ) {
     super(params);

@@ -9,7 +9,10 @@ import type { ConnectorRateLimiterConfig } from '../config';
 import { parseDuration } from './parse_date';
 
 export class ConnectorRateLimiter {
-  private logsByConnectors: Map<string, number[]>;
+  private logsByConnectors: Map<
+    string,
+    Array<{ readonly timestamp: number; readonly reservationId?: string }>
+  >;
   private readonly config?: ConnectorRateLimiterConfig;
 
   constructor({ config }: { config?: ConnectorRateLimiterConfig }) {
@@ -18,6 +21,31 @@ export class ConnectorRateLimiter {
   }
 
   log(connectorTypeId: string) {
+    this.logExecution(connectorTypeId);
+  }
+
+  reserve(connectorTypeId: string, executionId: string): void {
+    const type = this.trimLeadingDot(connectorTypeId);
+    this.cleanupOldLogs(type);
+    if (
+      this.logsByConnectors.get(type)?.some(({ reservationId }) => reservationId === executionId)
+    ) {
+      throw new Error('Connector execution already reserved');
+    }
+    this.logExecution(type, executionId);
+  }
+
+  refund(connectorTypeId: string, executionId: string): void {
+    const type = this.trimLeadingDot(connectorTypeId);
+    const entries = this.logsByConnectors.get(type);
+    if (!entries) return;
+    this.logsByConnectors.set(
+      type,
+      entries.filter(({ reservationId }) => reservationId !== executionId)
+    );
+  }
+
+  private logExecution(connectorTypeId: string, reservationId?: string): void {
     if (!this.config) {
       return;
     }
@@ -27,7 +55,7 @@ export class ConnectorRateLimiter {
       if (!this.logsByConnectors.has(trimmedConnectorTypeId)) {
         this.logsByConnectors.set(trimmedConnectorTypeId, []);
       }
-      this.logsByConnectors.get(trimmedConnectorTypeId)!.push(now);
+      this.logsByConnectors.get(trimmedConnectorTypeId)!.push({ timestamp: now, reservationId });
     }
   }
 
@@ -36,7 +64,7 @@ export class ConnectorRateLimiter {
       const trimmedConnectorTypeId = this.trimLeadingDot(connectorTypeId);
       this.cleanupOldLogs(trimmedConnectorTypeId);
       if (this.config[trimmedConnectorTypeId]) {
-        const count = this.getLogs(trimmedConnectorTypeId).length;
+        const count = this.logsByConnectors.get(trimmedConnectorTypeId)?.length ?? 0;
         return count > this.config[trimmedConnectorTypeId].limit;
       }
     }
@@ -44,7 +72,11 @@ export class ConnectorRateLimiter {
   }
 
   getLogs(connectorTypeId: string): number[] {
-    return this.logsByConnectors.get(this.trimLeadingDot(connectorTypeId)) || [];
+    return (
+      this.logsByConnectors
+        .get(this.trimLeadingDot(connectorTypeId))
+        ?.map(({ timestamp }) => timestamp) || []
+    );
   }
 
   private cleanupOldLogs(connectorTypeId: string) {
@@ -53,7 +85,9 @@ export class ConnectorRateLimiter {
       const now = Date.now();
       const cutoff = now - parseDuration(connectorConfig.lookbackWindow);
       const filtered =
-        this.logsByConnectors.get(connectorTypeId)?.filter((ts) => ts >= cutoff) || [];
+        this.logsByConnectors
+          .get(connectorTypeId)
+          ?.filter(({ timestamp }) => timestamp >= cutoff) || [];
       if (filtered.length > 0) {
         this.logsByConnectors.set(connectorTypeId, filtered);
       } else {

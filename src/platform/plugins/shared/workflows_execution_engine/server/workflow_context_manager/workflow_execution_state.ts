@@ -15,7 +15,7 @@ import type {
   WorkflowStepTokenUsage,
   WorkflowTokenUsage,
 } from '@kbn/workflows';
-import { isTerminalStatus } from '@kbn/workflows';
+import { isTerminalStatus } from '@kbn/workflows-runtime';
 import { areParallelBranchesCompatible, getParallelBranchScopes } from './parallel_branch_scope';
 import type { WorkflowExecutionRepository } from '../repositories/workflow_execution_repository';
 import { sumTokenUsage } from '../utils';

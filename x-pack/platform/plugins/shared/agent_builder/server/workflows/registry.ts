@@ -7,9 +7,13 @@
 
 import type { KibanaRequest } from '@kbn/core/server';
 import type { ServerStepDefinition } from '@kbn/workflows-extensions/server';
-import type { AgentExecutionService } from '@kbn/agent-builder-server/execution';
+import type {
+  AgentExecutionService,
+  MaybeExecuteAgentResult,
+} from '@kbn/agent-builder-server/execution';
+import type { AgentExecutionMode, ChatTriggerMode } from '@kbn/agent-builder-common';
 import type { ConversationClient } from '../services/conversation';
-import type { AgentRegistry } from '../services/agents';
+import type { ConversationAgentRegistry } from '../services/conversation/client/client';
 import { getConversationMetadataStepDefinition } from './steps/get_conversation_metadata';
 import { updateConversationMetadataStepDefinition } from './steps/update_conversation_metadata';
 import { createConversationStepDefinition } from './steps/create_conversation';
@@ -18,8 +22,32 @@ import { addUserMessageStepDefinition } from './steps/add_user_message';
 
 export interface ConversationStepDeps {
   getConversationClient: (request: KibanaRequest) => Promise<ConversationClient>;
-  getAgentRegistry: (request: KibanaRequest) => Promise<AgentRegistry>;
+  getAgentRegistry: (request: KibanaRequest) => Promise<ConversationAgentRegistry>;
   getExecutionService: () => AgentExecutionService;
+}
+
+export type ConversationClientStepDeps = Pick<ConversationStepDeps, 'getConversationClient'> &
+  Partial<Pick<ConversationStepDeps, 'getAgentRegistry' | 'getExecutionService'>>;
+export type ConversationAgentStepDeps = Pick<
+  ConversationStepDeps,
+  'getConversationClient' | 'getAgentRegistry'
+> &
+  Partial<Pick<ConversationStepDeps, 'getExecutionService'>>;
+
+export interface ConversationMessageStepDeps
+  extends Partial<Pick<ConversationStepDeps, 'getConversationClient' | 'getAgentRegistry'>> {
+  getExecutionService: () => {
+    maybeExecuteAgent(args: {
+      mode: AgentExecutionMode.conversation;
+      request: KibanaRequest;
+      params: {
+        conversationId: string;
+        nextInput: { message: string };
+        triggerMode: ChatTriggerMode.Never;
+        author?: { full_name: string };
+      };
+    }): Promise<MaybeExecuteAgentResult | void>;
+  };
 }
 
 type ConversationStepFactory = (deps: ConversationStepDeps) => ServerStepDefinition;

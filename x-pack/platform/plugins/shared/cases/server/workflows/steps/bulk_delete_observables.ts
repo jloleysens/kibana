@@ -6,9 +6,9 @@
  */
 
 import type { KibanaRequest } from '@kbn/core/server';
-import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
+import { createServerStepDefinition } from '@kbn/workflows-extensions/server/step_registry/types';
 import { bulkDeleteObservablesStepCommonDefinition } from '../../../common/workflows/steps/bulk_delete_observables';
-import type { CasesClient } from '../../client';
+import type { WorkflowCasesClient as CasesClient } from '../types';
 import { BULK_DELETE_OBSERVABLES_FAILED_MESSAGE } from './translations';
 import { getCasesClientFromStepsContext, getErrorMessage } from './utils';
 

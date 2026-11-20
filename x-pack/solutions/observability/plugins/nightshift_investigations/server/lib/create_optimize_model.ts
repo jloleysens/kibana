@@ -17,6 +17,7 @@ import {
   NIGHTSHIFT_USAGE_PRODUCT_FEATURE,
   NIGHTSHIFT_USAGE_PRODUCT_SOLUTION,
 } from '@kbn/nightshift-shared';
+import { loadOptimizeModel } from './load_optimize_model';
 
 /** Attributes Cortex and Semantic Memory optimize LLM calls to Nightshift investigation memory spend. */
 export const createInvestigationMemoryTelemetry = (
@@ -55,6 +56,40 @@ export const createOptimizeModel = async ({
   telemetryMetadata?: ConnectorTelemetryMetadata;
   logger: Logger;
 }): Promise<ScopedModel | undefined> => {
+  const connectorId = await resolveOptimizeConnector({
+    request,
+    requestedConnectorId,
+    roundConnectorId,
+    agentBuilder,
+    inference,
+    savedObjects,
+    uiSettings,
+    logger,
+  });
+  if (!connectorId || !agentBuilder) return undefined;
+
+  const modelProvider = agentBuilder.runtime.createModelProvider({
+    request,
+    defaultConnectorId: connectorId,
+    ...(telemetryMetadata ? { telemetryMetadata } : {}),
+  });
+
+  return loadOptimizeModel(modelProvider, connectorId, logger);
+};
+
+/** Resolves the original optimizer model policy without constructing an inference client. */
+export const resolveOptimizeConnector = async ({
+  request,
+  requestedConnectorId,
+  roundConnectorId,
+  agentBuilder,
+  inference,
+  savedObjects,
+  uiSettings,
+  logger,
+}: Omit<Parameters<typeof createOptimizeModel>[0], 'telemetryMetadata'>): Promise<
+  string | undefined
+> => {
   if (!agentBuilder || !inference || !savedObjects || !uiSettings) {
     logger.info('Optimize skipped — Agent Builder or model resolution unavailable');
     return undefined;
@@ -80,22 +115,5 @@ export const createOptimizeModel = async ({
     throw error;
   }
 
-  const modelProvider = agentBuilder.runtime.createModelProvider({
-    request,
-    defaultConnectorId: connectorId,
-    ...(telemetryMetadata ? { telemetryMetadata } : {}),
-  });
-
-  try {
-    const model = await modelProvider.getDefaultModel();
-    logger.debug(`Optimize connector=${model.connector.connectorId}`);
-    return model;
-  } catch (error) {
-    logger.error(
-      `Optimize model "${connectorId}" could not be loaded: ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
-    throw error;
-  }
+  return connectorId;
 };
