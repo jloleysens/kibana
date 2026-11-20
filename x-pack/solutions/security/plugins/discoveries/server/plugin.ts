@@ -209,7 +209,19 @@ export class DiscoveriesPlugin
 
     core.remote.bind(
       AttackDiscoveryOperationsToken,
-      (scopes) => new AttackDiscoveryOperations(scopes, { getStartServices, logger: this.logger })
+      (scopes) =>
+        new AttackDiscoveryOperations(scopes, {
+          getStartServices,
+          logger: this.logger,
+          connectorTimeout: this.config.connectorTimeout ?? DEFAULT_CONNECTOR_TIMEOUT_MS,
+          adhocAttackDiscoveryDataClient: this.adhocAttackDiscoveryDataClient,
+          langSmithApiKey: this.config.langSmithApiKey,
+          langSmithProject: this.config.langSmithProject,
+          analytics: core.analytics,
+          getEventLogIndex,
+          getEventLogger,
+          workflowsManagementApi: this.workflowsManagementApi,
+        })
     );
 
     // Get eventLog pattern

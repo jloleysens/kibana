@@ -12,6 +12,39 @@ import type { ScopeLookup } from '@kbn/core-remote-server';
 import { coreMock, elasticsearchServiceMock, httpServerMock } from '@kbn/core/server/mocks';
 import { loggerMock } from '@kbn/logging-mocks';
 import type { StepHandlerContext } from '@kbn/workflows-extensions/server';
+import { ruleRegistryMocks } from '@kbn/rule-registry-plugin/server/mocks';
+import { PersistDiscoveriesStep } from './persist_discoveries_step';
+import { createPersistDiscoveriesHandler } from '../workflows/steps/persist_discoveries_step/persist_discoveries_handler';
+import { createPersistDiscoveriesHandler as publicPersistHandler } from '../workflows/steps/persist_discoveries_step/get_persist_discoveries_step_definition';
+import { validateAttackDiscoveries } from '../routes/post/validate/helpers/validate_attack_discoveries';
+import { RunStep } from './run_step';
+import { createRunHandler } from '../workflows/steps/run_step/run_handler';
+import { createRunHandler as publicRunHandler } from '../workflows/steps/run_step/get_run_step_definition';
+import { executeGenerationWorkflow } from '@kbn/discoveries/impl/attack_discovery/generation/execute_generation_workflow';
+jest.mock('../routes/post/validate/helpers/validate_attack_discoveries', () => ({
+  validateAttackDiscoveries: jest.fn(),
+}));
+jest.mock('@kbn/discoveries/impl/attack_discovery/generation/execute_generation_workflow', () => ({
+  executeGenerationWorkflow: jest.fn(),
+}));
+jest.mock('../lib/is_workflows_enabled_for_space', () => ({
+  isWorkflowsEnabledForSpace: async () => true,
+}));
+const mockedValidateAttackDiscoveries = jest.mocked(validateAttackDiscoveries);
+const mockedExecuteGenerationWorkflow = jest.mocked(executeGenerationWorkflow);
+import { GenerateStep } from './generate_step';
+import {
+  createGenerateHandler,
+  type GenerationResult,
+} from '../workflows/steps/generate_step/generate_handler';
+import { createGenerateHandler as publicGenerateHandler } from '../workflows/steps/generate_step/get_generate_step_definition';
+import { invokeGenerationGraph } from '../workflows/steps/generate_step/helpers/invoke_generation_graph';
+
+jest.mock('../workflows/steps/generate_step/helpers/invoke_generation_graph', () => ({
+  invokeGenerationGraph: jest.fn(),
+}));
+const mockedInvokeGenerationGraph = jest.mocked(invokeGenerationGraph);
+
 import { DefaultValidationStep } from './default_validation_step';
 import { DefaultAlertRetrievalStep } from './default_alert_retrieval_step';
 import { createDefaultAlertRetrievalHandler } from '../workflows/steps/default_alert_retrieval_step/default_alert_retrieval_handler';
@@ -43,7 +76,9 @@ const input = {
 };
 const setup = () => {
   const controller = new AbortController();
-  const request = httpServerMock.createKibanaRequest();
+  const request = httpServerMock.createKibanaRequest({
+    headers: { authorization: 'ApiKey original-coordinator-run-credential' },
+  });
   const scopes: ScopeLookup = {
     get: jest.fn().mockReturnValue(request),
     getRunState: (scope) => {
@@ -92,12 +127,22 @@ const setup = () => {
     .mockResolvedValue({ actionTypeId: '.gen-ai', name: 'Original connector' });
   const pluginsStart = {
     actions: { getActionsClientWithRequest: jest.fn().mockResolvedValue({ get: getConnector }) },
+    security: { authz: {} },
   } as unknown as DiscoveriesPluginStartDeps;
   const logger = loggerMock.create();
   logger.isLevelEnabled.mockReturnValue(true);
   logger.get.mockReturnValue(logger);
   const getStartServices = jest.fn(async () => ({ coreStart, pluginsStart }));
-  const api = new AttackDiscoveryOperations(scopes, { getStartServices, logger });
+  const api = new AttackDiscoveryOperations(scopes, {
+    getStartServices,
+    logger,
+    connectorTimeout: 60000,
+    adhocAttackDiscoveryDataClient: ruleRegistryMocks.createRuleDataClient(),
+    getEventLogIndex: async () => 'fixture',
+    getEventLogger: async () => {
+      throw new Error('Unused event logger');
+    },
+  });
   const handlerContext = {
     input,
     config: {},
@@ -389,4 +434,382 @@ it('retains retrieval flag/missing-context refusal before logging or creating a 
   await expect(new DefaultAlertRetrievalStep(api).run('scope', {}, {})).rejects.toThrow(
     'executor-local'
   );
+});
+
+const generationInput = {
+  alerts: ['_id,alert-original\nmessage,Original'],
+  api_config: { connector_id: 'selected', action_type_id: '.gen-ai' },
+  replacements: { masked: 'Original' },
+  size: 1,
+};
+const prepareGenerationFixture = () => {
+  const fixture = setup();
+  jest.mocked(fixture.scopes.resolveStepType).mockReturnValue('security.attack-discovery.generate');
+  fixture.handlerContext.input = generationInput;
+  return fixture;
+};
+it('shares the original generation handler and uses coordinator execution identity and scoped clients', async () => {
+  expect(publicGenerateHandler).toBe(createGenerateHandler);
+  const { api, handlerContext, request, coreStart, esClient, pluginsStart } =
+    prepareGenerationFixture();
+  mockedInvokeGenerationGraph.mockResolvedValue({
+    discoveries: [
+      {
+        title: 'Original',
+        alertIds: ['alert-original'],
+        detailsMarkdown: 'Details',
+        summaryMarkdown: 'Summary',
+      },
+    ],
+    replacements: { masked: 'Original' },
+    alertsContextCount: 1,
+  });
+  const result = await new GenerateStep(api).run('scope', {}, { handlerContext });
+  expect(result).toEqual({
+    output: {
+      attack_discoveries: [
+        {
+          alert_ids: ['alert-original'],
+          details_markdown: 'Details',
+          entity_summary_markdown: undefined,
+          id: 'trusted-run-0',
+          mitre_attack_tactics: undefined,
+          summary_markdown: 'Summary',
+          timestamp: undefined,
+          title: 'Original',
+        },
+      ],
+      execution_uuid: 'trusted-run',
+      replacements: { masked: 'Original' },
+    },
+  });
+  expect(coreStart.savedObjects.getScopedClient).toHaveBeenCalledWith(request);
+  expect(pluginsStart.actions.getActionsClientWithRequest).toHaveBeenCalledWith(request);
+  expect(mockedInvokeGenerationGraph).toHaveBeenCalledWith(
+    expect.objectContaining({
+      sourceAlerts: generationInput.alerts,
+      apiConfig: generationInput.api_config,
+      esClient,
+      connectorTimeout: 60000,
+      abortSignal: expect.any(AbortSignal),
+    })
+  );
+});
+it('preserves empty generation preparation and null output without invoking the original graph', async () => {
+  const { api, handlerContext, pluginsStart } = prepareGenerationFixture();
+  handlerContext.input = { ...generationInput, alerts: [] };
+  mockedInvokeGenerationGraph.mockClear();
+  await expect(new GenerateStep(api).run('scope', {}, { handlerContext })).resolves.toEqual({
+    output: {
+      attack_discoveries: null,
+      execution_uuid: 'trusted-run',
+      replacements: generationInput.replacements,
+    },
+  });
+  expect(pluginsStart.actions.getActionsClientWithRequest).toHaveBeenCalled();
+  expect(mockedInvokeGenerationGraph).not.toHaveBeenCalled();
+});
+it('preserves original generation error output and workflow logger error', async () => {
+  const { api, handlerContext } = prepareGenerationFixture();
+  mockedInvokeGenerationGraph.mockRejectedValueOnce(new TypeError('Original generation failure'));
+  await expect(new GenerateStep(api).run('scope', {}, { handlerContext })).resolves.toEqual({
+    error: new Error('Original generation failure'),
+  });
+  expect(handlerContext.logger.error).toHaveBeenCalledWith(
+    'Generation failed: Original generation failure',
+    expect.any(TypeError)
+  );
+});
+it('rejects unknown scopes and wrong definition types before generation service acquisition', async () => {
+  const { api, scopes, getStartServices } = prepareGenerationFixture();
+  await expect(api.openGeneration('other', 'generate', generationInput.api_config)).rejects.toThrow(
+    'Foreign scope'
+  );
+  jest.mocked(scopes.resolveStepType).mockReturnValue('ai.agent');
+  await expect(api.openGeneration('scope', 'generate', generationInput.api_config)).rejects.toThrow(
+    'Not an attack discovery generation step'
+  );
+  expect(getStartServices).not.toHaveBeenCalled();
+});
+it('allows parallel/retry generations but refuses consumed and foreign references', async () => {
+  const { api, scopes } = prepareGenerationFixture();
+  jest.spyOn(scopes, 'getRunState').mockReturnValue({
+    workflowId: 'trusted',
+    workflowRunId: 'trusted-run',
+    workflowName: 'Trusted',
+    spaceId: 'trusted-space',
+    admittedChildren: new Set(),
+  });
+  const first = await api.openGeneration('scope', 'generate', generationInput.api_config);
+  const second = await api.openGeneration('scope', 'generate', generationInput.api_config);
+  await expect(api.generate('other', first.reference, { sourceAlerts: [] })).rejects.toThrow(
+    'Unknown generation reference'
+  );
+  await expect(api.closeGeneration('other', first.reference)).rejects.toThrow(
+    'Unknown generation reference'
+  );
+  let complete: ((value: GenerationResult) => void) | undefined;
+  mockedInvokeGenerationGraph.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        complete = resolve;
+      })
+  );
+  const pending = api.generate('scope', first.reference, { sourceAlerts: [] });
+  await expect(api.generate('scope', first.reference, { sourceAlerts: [] })).rejects.toThrow(
+    'Generation reference already consumed'
+  );
+  complete?.({ discoveries: [], replacements: {}, alertsContextCount: 0 });
+  await pending;
+  await expect(api.generate('scope', first.reference, { sourceAlerts: [] })).rejects.toThrow(
+    'Unknown generation reference'
+  );
+  await api.closeGeneration('scope', second.reference);
+  await expect(api.generate('scope', second.reference, { sourceAlerts: [] })).rejects.toThrow(
+    'Unknown generation reference'
+  );
+  const retry = await api.openGeneration('scope', 'generate', generationInput.api_config);
+  await api.closeGeneration('scope', retry.reference);
+});
+it('propagates step cancellation to the original graph and drains references/listeners', async () => {
+  const { api, handlerContext, controller } = prepareGenerationFixture();
+  const started = Promise.withResolvers<void>();
+  mockedInvokeGenerationGraph.mockImplementationOnce(
+    ({ abortSignal }) =>
+      new Promise((resolve, reject) => {
+        started.resolve();
+        abortSignal?.addEventListener('abort', () => reject(new Error('Original graph aborted')), {
+          once: true,
+        });
+      })
+  );
+  const pending = new GenerateStep(api).run('scope', {}, { handlerContext });
+  await started.promise;
+  controller.abort();
+  await expect(pending).rejects.toThrow();
+});
+it('keeps generation state private to its host even with one reused ScopeLookup', async () => {
+  const { api, scopes, getStartServices, logger } = prepareGenerationFixture();
+  const otherHost = new AttackDiscoveryOperations(scopes, {
+    getStartServices,
+    logger,
+    connectorTimeout: 60000,
+    getEventLogIndex: async () => 'fixture',
+    getEventLogger: async () => {
+      throw new Error('Unused event logger');
+    },
+  });
+  const { reference } = await api.openGeneration('scope', 'generate', generationInput.api_config);
+  await expect(otherHost.generate('scope', reference, { sourceAlerts: [] })).rejects.toThrow(
+    'Unknown generation reference'
+  );
+  await api.closeGeneration('scope', reference);
+});
+
+it('keeps original persistence early returns local, including scheduled handover', async () => {
+  expect(publicPersistHandler).toBe(createPersistDiscoveriesHandler);
+  const { api, handlerContext, getStartServices } = setup();
+  const persist = jest.spyOn(api, 'persist');
+  handlerContext.input = {
+    ...input,
+    alerts_context_count: 1,
+    anonymized_alerts: [],
+    source: 'scheduled',
+  };
+  await expect(
+    new PersistDiscoveriesStep(api).run('scope', {}, { handlerContext })
+  ).resolves.toEqual({
+    output: {
+      discoveries_to_persist: input.attack_discoveries,
+      duplicates_dropped_count: 0,
+      persisted_discoveries: [],
+    },
+  });
+  handlerContext.input = {
+    ...input,
+    alerts_context_count: 1,
+    anonymized_alerts: [],
+    source: undefined,
+    attack_discoveries: [],
+  };
+  await expect(
+    new PersistDiscoveriesStep(api).run('scope', {}, { handlerContext })
+  ).resolves.toEqual({
+    output: { discoveries_to_persist: [], duplicates_dropped_count: 0, persisted_discoveries: [] },
+  });
+  expect(persist).not.toHaveBeenCalled();
+  expect(getStartServices).toHaveBeenCalledTimes(2); // Only the live guard, once per invocation.
+});
+it('persists through the original scoped rule service with original user, space, and user-authored generation evidence', async () => {
+  const { api, handlerContext, esClient, request, pluginsStart } = setup();
+  handlerContext.input = {
+    ...input,
+    alerts_context_count: 1,
+    anonymized_alerts: [],
+    generation_source: 'explicit-user-producer',
+  };
+  mockedValidateAttackDiscoveries.mockResolvedValueOnce({
+    duplicates_dropped_count: 1,
+    validated_discoveries: [],
+  });
+  await expect(
+    new PersistDiscoveriesStep(api).run('scope', {}, { handlerContext })
+  ).resolves.toEqual({
+    output: {
+      discoveries_to_persist: input.attack_discoveries,
+      duplicates_dropped_count: 1,
+      persisted_discoveries: [],
+    },
+  });
+  expect(pluginsStart.actions.getActionsClientWithRequest).toHaveBeenCalledWith(request);
+  expect(mockedValidateAttackDiscoveries).toHaveBeenCalledWith(
+    expect.objectContaining({
+      esClient,
+      spaceId: 'trusted-space',
+      authenticatedUser: expect.objectContaining({ username: 'original-user' }),
+      generationSource: 'explicit-user-producer',
+      validateRequestBody: expect.objectContaining({
+        generation_uuid: 'user-evidence',
+        connector_name: 'Original connector',
+      }),
+    })
+  );
+});
+const noAlertsOutcome: Awaited<ReturnType<typeof executeGenerationWorkflow>> = {
+  outcome: 'no_alerts',
+  alertRetrievalResult: {
+    alerts: [],
+    alertsContextCount: 0,
+    anonymizedAlerts: [],
+    apiConfig: { action_type_id: '.gen-ai', connector_id: 'selected' },
+    connectorName: 'Original',
+    replacements: {},
+    workflowExecutions: [],
+    workflowId: 'original',
+    workflowRunId: 'original-run',
+  },
+};
+const runInput = {
+  connector_id: 'selected',
+  alerts: ['_id,alert-original'],
+  ground_truth_gate_enabled: false,
+  include_attack_discoveries: false,
+};
+const prepareRunFixture = () => {
+  const fixture = setup();
+  jest.mocked(fixture.scopes.resolveStepType).mockReturnValue('security.attack-discovery.run');
+  fixture.handlerContext.input = runInput;
+  return fixture;
+};
+it('shares original run defaults, configuration, omitted output fields and original request', async () => {
+  expect(publicRunHandler).toBe(createRunHandler);
+  const { api, handlerContext, request } = prepareRunFixture();
+  mockedExecuteGenerationWorkflow.mockResolvedValueOnce(noAlertsOutcome);
+  const result = await new RunStep(api).run('scope', {}, { handlerContext });
+  expect(result).toMatchObject({
+    output: { alerts_context_count: 0, discovery_count: 0, status: 'completed' },
+  });
+  expect(result).not.toHaveProperty('output.attack_discoveries');
+  expect(mockedExecuteGenerationWorkflow).toHaveBeenCalledWith(
+    expect.objectContaining({
+      request,
+      alerts: runInput.alerts,
+      size: 100,
+      trigger: 'workflow',
+      type: 'attack_discovery',
+      alertsIndexPattern: '.alerts-security.alerts-trusted-space',
+      workflowConfig: {
+        alert_retrieval_mode: 'custom_query',
+        alert_retrieval_workflow_ids: [],
+        alert_retrieval_workflows_enabled: false,
+        default_retrieval_enabled: false,
+        ground_truth_gate_enabled: false,
+        skill_enabled: false,
+        validation_workflow_id: '',
+      },
+    })
+  );
+});
+it('keeps original async connector lookup failures inside the handler catch before launching', async () => {
+  const { api, handlerContext, getConnector } = prepareRunFixture();
+  handlerContext.input = { ...runInput, mode: 'async' };
+  mockedExecuteGenerationWorkflow.mockClear();
+  getConnector.mockRejectedValueOnce(new Error('Original connector failure'));
+  const result = await new RunStep(api).run('scope', {}, { handlerContext });
+  expect(result).toMatchObject({
+    error: { message: expect.stringContaining('Original connector failure') },
+  });
+  expect(mockedExecuteGenerationWorkflow).not.toHaveBeenCalled();
+});
+it('propagates pending run cancellation but detaches after the async step returns, preserving credential lifetime', async () => {
+  const { api, handlerContext, scopes, request, esClient, controller } = prepareRunFixture();
+  handlerContext.input = { ...runInput, mode: 'async' };
+  const stepController = new AbortController();
+  handlerContext.abortSignal = stepController.signal;
+  const finish = Promise.withResolvers<void>();
+  const persisted = Promise.withResolvers<void>();
+  let stopProbe: (() => boolean) | undefined;
+  mockedExecuteGenerationWorkflow.mockImplementationOnce(async (params) => {
+    expect(params.request).toBe(request);
+    stopProbe = params.shouldStopExecution;
+    await finish.promise;
+    expect(params.shouldStopExecution?.()).toBe(false);
+    await esClient.index({
+      index: 'fixture-original',
+      document: { credential: params.request.headers.authorization },
+    });
+    persisted.resolve();
+    return noAlertsOutcome;
+  });
+  const ports = new MessageChannel();
+  openPortSession(ports.port1, expose(api));
+  const worker = openPortSession<AttackDiscoveryOperationsApi>(ports.port2);
+  try {
+    const output = await new RunStep(worker).run('scope', {}, { handlerContext });
+    expect(output).toMatchObject({ output: { status: 'pending' } });
+    expect(JSON.stringify(output)).not.toMatch(/credential|authorization|ApiKey/);
+    // Closing the transport models host disposal after the real scope/lease closes.
+    ports.port1.close();
+    ports.port2.close();
+    controller.abort(new Error('Scope and lease closed'));
+    jest.mocked(scopes.get).mockImplementation(() => {
+      throw new Error('Closed scope');
+    });
+    jest.spyOn(scopes, 'getRunState').mockImplementation(() => {
+      throw new Error('Closed scope');
+    });
+    stepController.abort(new Error('Later workflow cancel'));
+    await expect(api.cancelRun('scope', 'late-reference')).rejects.toThrow('Closed scope');
+    expect(stopProbe?.()).toBe(false);
+    finish.resolve();
+    await persisted.promise;
+    expect(esClient.index).toHaveBeenCalledWith({
+      index: 'fixture-original',
+      document: { credential: 'ApiKey original-coordinator-run-credential' },
+    });
+  } finally {
+    finish.resolve();
+    ports.port1.close();
+    ports.port2.close();
+    ports.port1.close();
+    ports.port2.close();
+  }
+});
+it('cancels original pipeline work while the sync step is still pending and releases all references', async () => {
+  const { api, handlerContext, controller } = prepareRunFixture();
+  const started = Promise.withResolvers<void>();
+  const finish = Promise.withResolvers<void>();
+  let stopProbe: (() => boolean) | undefined;
+  mockedExecuteGenerationWorkflow.mockImplementationOnce(async (params) => {
+    stopProbe = params.shouldStopExecution;
+    started.resolve();
+    await finish.promise;
+    return noAlertsOutcome;
+  });
+  const pending = new RunStep(api).run('scope', {}, { handlerContext });
+  await started.promise;
+  controller.abort();
+  expect(stopProbe?.()).toBe(true);
+  finish.resolve();
+  await expect(pending).rejects.toThrow();
 });

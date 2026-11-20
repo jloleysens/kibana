@@ -147,6 +147,26 @@ const main = async (): Promise<void> => {
     await esClient.info();
     const sdkHeap = sample() - sdkBefore;
     const api: AttackDiscoveryOperationsApi = {
+      openRun: async () => {
+        throw new Error('Unused run fixture');
+      },
+      startRun: async () => {
+        throw new Error('Unused run fixture');
+      },
+      finishRun: async () => {},
+      cancelRun: async () => {},
+      persist: async () => {
+        throw new Error('Unused persistence fixture');
+      },
+      openGeneration: async () => {
+        throw new Error('Unused generation fixture');
+      },
+      generate: async () => {
+        throw new Error('Unused generation fixture');
+      },
+      closeGeneration: async () => {
+        throw new Error('Unused generation fixture');
+      },
       checkEnabled: async () => ({
         all: false,
         trace: false,

@@ -14,7 +14,43 @@ export interface ValidationDiagnostic {
   context: string[];
   meta?: LogMeta;
 }
+import type {
+  GenerateContext,
+  GenerationInput,
+  GenerationResult,
+} from '../workflows/steps/generate_step/generate_handler';
+import type { PersistDiscoveriesContext } from '../workflows/steps/persist_discoveries_step/persist_discoveries_handler';
+import type { persistDiscoveries } from '../workflows/steps/persist_discoveries_step/persist_discoveries';
+import type {
+  PreparedRun,
+  RunExecutionInput,
+  RunOutcome,
+} from '../workflows/steps/run_step/prepare_run';
 export interface AttackDiscoveryOperationsApi {
+  openRun(
+    scopeId: string,
+    stepId: string,
+    input: { connectorId?: string; featureId?: string | string[] }
+  ): Promise<Pick<PreparedRun, 'executionUuid' | 'effectiveConnectorId'> & { reference: string }>;
+  startRun(
+    scopeId: string,
+    reference: string,
+    input: RunExecutionInput,
+    mode: 'sync' | 'async'
+  ): Promise<RunOutcome | undefined>;
+  finishRun(scopeId: string, reference: string): Promise<void>;
+  cancelRun(scopeId: string, reference: string): Promise<void>;
+  persist(
+    scopeId: string,
+    input: PersistDiscoveriesContext['input']
+  ): ReturnType<typeof persistDiscoveries>;
+  openGeneration(
+    scopeId: string,
+    stepId: string,
+    apiConfig: GenerateContext['input']['api_config']
+  ): Promise<{ reference: string; executionUuid: string }>;
+  generate(scopeId: string, reference: string, input: GenerationInput): Promise<GenerationResult>;
+  closeGeneration(scopeId: string, reference: string): Promise<void>;
   getRetrievalSpace(scopeId: string): Promise<string>;
   openRetrieval(scopeId: string): Promise<string>;
   resolveRetrievalConnector(

@@ -61,6 +61,56 @@ it('bounds original attack-discovery validation algorithms without loading coord
   }
 }, 60000);
 
+it('bounds remaining original attack-discovery thin handlers without loading oversized graph/persistence or live scoped services', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'attack-discovery-generation-budgets-'));
+  try {
+    const bundle = await buildRemoteBundle({
+      manifests: discoverRemoteManifests(resolve(__dirname, '../../..')),
+      graph: {
+        id: 'workflows',
+        root: 'workflows.executor',
+        dependencies: ['workflows.stepCatalog'],
+        contributions: ['workflows.step', 'workflows.connector'],
+      },
+      outdir: join(directory, 'bundle'),
+    });
+    for (const suffix of [
+      '/discoveries/server/remote/operations.ts',
+      '/discoveries/server/workflows/steps/generate_step/prepare_generation.ts',
+      '/discoveries/server/workflows/steps/persist_discoveries_step/persist_discoveries.ts',
+      '/discoveries/server/workflows/steps/run_step/prepare_run.ts',
+      '/discoveries/server/workflows/steps/generate_step/helpers/invoke_generation_graph.ts',
+      '/discoveries/server/workflows/steps/default_validation_step/helpers/authenticate_and_get_space.ts',
+    ])
+      expect(bundle.inputs.some((path) => path.endsWith(suffix))).toBe(false);
+    const probe = join(directory, 'probe.mjs');
+    await build({
+      entryPoints: [
+        resolve(
+          __dirname,
+          '../../../x-pack/solutions/security/plugins/discoveries/server/remote/fixtures/remaining_execution_probe.ts'
+        ),
+      ],
+      bundle: true,
+      platform: 'node',
+      format: 'esm',
+      outfile: probe,
+    });
+    for (const action of ['generate', 'persistDiscoveries', 'run'])
+      for (let index = 0; index < 3; index++) {
+        const result = JSON.parse(
+          execFileSync(process.execPath, ['--expose-gc', probe, dirname(bundle.entry), action], {
+            encoding: 'utf8',
+          })
+        ) as { heapIncrement: number };
+        process.stdout.write(JSON.stringify({ attackDiscoveryThinCurve: result }) + '\n');
+        expect(result.heapIncrement).toBeLessThanOrEqual(2 * 1024 * 1024);
+      }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}, 60000);
+
 // Inference references the parser in source, but its current emitted static closure excludes it.
 const esqlParser = {
   consumers: ['storage-adapter ES|QL', 'attack-discovery retrieval'],
