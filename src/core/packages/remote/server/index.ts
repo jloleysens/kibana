@@ -16,3 +16,10 @@ export type {
   ScopeLookup,
   RemoteRunState,
 } from './src/contracts';
+
+export {
+  registerRemoteLeaseParents,
+  withRemoteLeaseParent,
+  getRemoteLeaseParent,
+} from './src/lease_parent_context';
+export type { RemoteLeaseParent } from './src/lease_parent_context';

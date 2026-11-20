@@ -333,3 +333,80 @@ it.each([NaN, 0, -1, Infinity, 1.5])('rejects invalid RSS ceiling %s', (maxRssBy
       )
   ).toThrow('Invalid remote reuse policy');
 });
+
+it('gives a synchronous nested run a distinct bounded host without releasing its parent', async () => {
+  const { pool, create, closed } = setup();
+  const parent = await pool.acquire('settings', undefined, { runId: 'parent' });
+  for (let index = 0; index < 12; index++) {
+    const child = await pool.acquire('settings', undefined, {
+      runId: `child-${index}`,
+      parent: { token: parent.parentToken, runId: 'parent', isActive: () => true },
+    });
+    expect(child.value).not.toBe(parent.value);
+    await child.release();
+    await child.release();
+  }
+  expect(create).toHaveBeenCalledTimes(13);
+  expect(closed).toHaveLength(12);
+  await parent.release();
+  const ordinary = await pool.acquire('settings');
+  expect(ordinary.value).toBe(parent.value);
+  await ordinary.release();
+  await pool.stop();
+  expect(closed).toHaveLength(13);
+});
+
+it('fails immediately with parent/child names when the nesting allowance is exhausted', async () => {
+  const close = jest.fn(async () => {});
+  const create = jest.fn(async () => ({ value: {}, close, alive: () => true }));
+  const pool = new RemoteLeasePool(
+    create,
+    { maxAgeMs: 1000, maxRuns: 100 },
+    Date.now,
+    'workflow',
+    1
+  );
+  const parent = await pool.acquire('', undefined, { runId: 'parent' });
+  const child = await pool.acquire('', undefined, {
+    runId: 'child',
+    parent: { token: parent.parentToken, runId: 'parent', isActive: () => true },
+  });
+  await expect(
+    pool.acquire('', undefined, {
+      runId: 'grandchild',
+      parent: { token: child.parentToken, runId: 'child', isActive: () => true },
+    })
+  ).rejects.toThrow(
+    'nested run "grandchild" while parent run "child" holds a lease: nesting allowance (1) exhausted'
+  );
+  expect(create).toHaveBeenCalledTimes(2);
+  await child.release();
+  await parent.release();
+  await pool.stop();
+  expect(close).toHaveBeenCalledTimes(2);
+});
+
+it.each(['foreign', 'inactive', 'released'] as const)(
+  'never grants extra capacity to a %s parent token',
+  async (kind) => {
+    const { pool, create } = setup({ maxAgeMs: 1000, maxRuns: 100 });
+    const first = await pool.acquire('settings', undefined, { runId: 'first' });
+    if (kind === 'released') await first.release();
+    const held = kind === 'released' ? await pool.acquire('settings') : first;
+    const pending = pool.acquire('settings', undefined, {
+      runId: 'ordinary',
+      parent: {
+        token: kind === 'foreign' ? {} : first.parentToken,
+        runId: 'first',
+        isActive: () => kind !== 'inactive',
+      },
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(create).toHaveBeenCalledTimes(1);
+    await held.release();
+    const ordinary = await pending;
+    expect(ordinary.value).toBe(held.value);
+    await ordinary.release();
+    await pool.stop();
+  }
+);

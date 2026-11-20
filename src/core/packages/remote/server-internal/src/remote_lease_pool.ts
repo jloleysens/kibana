@@ -7,6 +7,9 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import type { RemoteLeaseParent } from '@kbn/core-remote-server';
+import { recordRemoteTiming } from '@kbn/core-remote-common';
+
 export interface LeaseHost<T> {
   readonly value: T;
   readonly close: () => Promise<void>;
@@ -32,9 +35,11 @@ interface Waiter {
   readonly onAbort: () => void;
 }
 
-/** One warm host per graph; leases serialize dispatch and retire incompatible or exhausted hosts. */
+/** One ordinary warm host per graph; leases serialize dispatch and retire incompatible or exhausted hosts. */
 export class RemoteLeasePool<T> {
   private host?: ManagedHost<T>;
+  private readonly activeLeases = new Map<object, { runId: string; depth: number }>();
+  private readonly nestedPools = new Set<RemoteLeasePool<T>>();
   private creating?: Promise<ManagedHost<T>>;
   private busy = false;
   private stopped = false;
@@ -46,9 +51,12 @@ export class RemoteLeasePool<T> {
     private readonly create: () => Promise<LeaseHost<T>>,
     private readonly policy: { maxAgeMs: number; maxRuns: number; maxRssBytes?: number },
     private readonly now: () => number = Date.now,
-    private readonly name: string = 'remote host'
+    private readonly name: string = 'remote host',
+    private readonly maxNestedHosts: number = 10
   ) {
     if (
+      !Number.isSafeInteger(maxNestedHosts) ||
+      maxNestedHosts < 0 ||
       !Number.isFinite(policy.maxAgeMs) ||
       policy.maxAgeMs <= 0 ||
       !Number.isInteger(policy.maxRuns) ||
@@ -87,12 +95,24 @@ export class RemoteLeasePool<T> {
 
   async acquire(
     settingsKey: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    identity?: { runId: string; parent?: RemoteLeaseParent }
   ): Promise<{
     value: T;
+    parentToken: object;
     release: (discard?: boolean) => Promise<void>;
   }> {
+    const parent = identity?.parent;
+    const held = parent?.isActive() ? this.activeLeases.get(parent.token) : undefined;
+    if (held && parent && identity)
+      return this.acquireNested(settingsKey, signal, identity.runId, parent, held.depth + 1);
+    recordRemoteTiming('remote_pool_acquire_requested', {
+      graphId: this.name,
+      poolBusy: this.busy,
+      poolWaiters: this.waiters.length,
+    });
     await this.takeSlot(signal);
+    recordRemoteTiming('remote_pool_slot_acquired', { graphId: this.name });
     try {
       const current = this.host;
       if (
@@ -109,12 +129,16 @@ export class RemoteLeasePool<T> {
       if (!managed) throw new Error('Remote host was not initialized');
       managed.settingsKey = settingsKey;
       managed.runs++;
+      const parentToken = {};
+      this.activeLeases.set(parentToken, { runId: identity?.runId ?? 'unknown', depth: 0 });
       let released = false;
       return {
         value: managed.host.value,
+        parentToken,
         release: async (discard = false) => {
           if (released) return;
           released = true;
+          this.activeLeases.delete(parentToken);
           try {
             if (discard || !managed.host.alive()) {
               await this.retire(managed);
@@ -142,6 +166,61 @@ export class RemoteLeasePool<T> {
     }
   }
 
+  private async acquireNested(
+    settingsKey: string,
+    signal: AbortSignal | undefined,
+    runId: string,
+    parent: RemoteLeaseParent,
+    depth: number
+  ): Promise<{ value: T; parentToken: object; release: (discard?: boolean) => Promise<void> }> {
+    if (this.stopped) throw new Error('Remote lease pool stopped');
+    signal?.throwIfAborted();
+    if (depth > this.maxNestedHosts || this.nestedPools.size >= this.maxNestedHosts)
+      throw new Error(
+        `Remote graph "${this.name}" cannot start nested run "${runId}" while parent run "${parent.runId}" holds a lease: nesting allowance (${this.maxNestedHosts}) exhausted`
+      );
+    // Separate hosts preserve one active run per process, including during synchronous coordinator callbacks.
+    const nested = new RemoteLeasePool(this.create, this.policy, this.now, this.name, 0);
+    this.nestedPools.add(nested);
+    try {
+      const acquired = await nested.acquire(settingsKey, signal);
+      if (!parent.isActive() || !this.activeLeases.has(parent.token)) {
+        await acquired.release();
+        await nested.stop();
+        this.nestedPools.delete(nested);
+        return this.acquire(settingsKey, signal, { runId });
+      }
+      const parentToken = {};
+      this.activeLeases.set(parentToken, { runId, depth });
+      let released = false;
+      return {
+        value: acquired.value,
+        parentToken,
+        release: async (discard) => {
+          if (released) return;
+          released = true;
+          this.activeLeases.delete(parentToken);
+          try {
+            await acquired.release(discard);
+          } finally {
+            try {
+              await nested.stop();
+            } finally {
+              this.nestedPools.delete(nested);
+            }
+          }
+        },
+      };
+    } catch (error) {
+      try {
+        await nested.stop();
+      } finally {
+        this.nestedPools.delete(nested);
+      }
+      throw error;
+    }
+  }
+
   /**
    * Lets an acquisition stop waiting when it is cancelled. The underlying retirement/creation
    * stays owned by the pool and keeps running; only this caller's wait ends.
@@ -165,11 +244,14 @@ export class RemoteLeasePool<T> {
   stop(): Promise<void> {
     if (this.stopping) return this.stopping;
     this.stopped = true;
+    this.activeLeases.clear();
     for (const waiter of this.waiters.splice(0)) {
       waiter.signal?.removeEventListener('abort', waiter.onAbort);
       waiter.reject(new Error('Remote lease pool stopped'));
     }
     const closing = (async () => {
+      await Promise.all([...this.nestedPools].map((pool) => pool.stop()));
+      this.nestedPools.clear();
       await this.creating?.catch(() => undefined);
       await this.retire();
       await Promise.all([...this.retirements]);
@@ -231,6 +313,10 @@ export class RemoteLeasePool<T> {
   }
 
   private giveSlot(): void {
+    recordRemoteTiming('remote_pool_slot_released', {
+      graphId: this.name,
+      poolWaiters: this.waiters.length,
+    });
     const next = this.waiters.shift();
     if (!next) {
       this.busy = false;

@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { registerRemoteLeaseParents, getRemoteLeaseParent } from '@kbn/core-remote-server';
 import { randomUUID } from 'node:crypto';
 import { fork, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
@@ -60,6 +61,7 @@ export class RemoteService implements RemoteSetup {
   >();
   private readonly stepTypes = new Map<string, ReadonlyMap<string, string>>();
   private readonly stepOutputLimits = new Map<string, ReadonlyMap<string, number>>();
+  private readonly leaseParentTokens = new Map<string, object>();
   private readonly scopeControllers = new Map<string, AbortController>();
   private readonly sessions = new Map<string, Promise<RemoteSession<unknown>>>();
   private readonly resolvers = new Map<string, (session: RemoteSession<unknown>) => void>();
@@ -105,7 +107,13 @@ export class RemoteService implements RemoteSetup {
     private readonly limits: { maxOldGenerationSizeMb: number; bundleDirectory?: string } = {
       maxOldGenerationSizeMb: 1024,
     }
-  ) {}
+  ) {
+    registerRemoteLeaseParents(this.lookup, (scopeId) => {
+      const token = this.leaseParentTokens.get(scopeId);
+      const controller = this.scopeControllers.get(scopeId);
+      return token && controller ? { token, signal: controller.signal } : undefined;
+    });
+  }
 
   public discover(pluginPaths: readonly string[]): void {
     for (const pluginPath of pluginPaths) {
@@ -162,7 +170,7 @@ export class RemoteService implements RemoteSetup {
 
   public async lease<T>(
     id: string,
-    options: { settingsKey?: string; signal?: AbortSignal } = {}
+    options: { settingsKey?: string; signal?: AbortSignal; runId?: string } = {}
   ): Promise<RemoteLease<T>> {
     let pool = this.pools.get(id);
     if (!pool) {
@@ -170,7 +178,10 @@ export class RemoteService implements RemoteSetup {
       pool = this.pools.get(id);
     }
     if (!pool) throw new Error('Remote graph lease pool is unavailable');
-    const acquired = await pool.acquire(options.settingsKey ?? '', options.signal);
+    const acquired = await pool.acquire(options.settingsKey ?? '', options.signal, {
+      runId: options.runId ?? 'unknown',
+      parent: getRemoteLeaseParent(),
+    });
     const session = acquired.value as RemoteSession<T>;
     const scopeIds = new Set<string>();
     let released = false;
@@ -196,6 +207,7 @@ export class RemoteService implements RemoteSetup {
         assertActive();
         const scopeId = session.openScope(state, runState, stepOutputLimits, stepTypes);
         scopeIds.add(scopeId);
+        this.leaseParentTokens.set(scopeId, acquired.parentToken);
         return scopeId;
       },
       closeScope: (scopeId) => {
@@ -393,6 +405,7 @@ export class RemoteService implements RemoteSetup {
       if (!scopeIds.delete(scopeId)) return;
       const controller = this.scopeControllers.get(scopeId);
       this.scopeControllers.delete(scopeId);
+      this.leaseParentTokens.delete(scopeId);
       this.scopes.delete(scopeId);
       this.runStates.delete(scopeId);
       this.stepOutputLimits.delete(scopeId);

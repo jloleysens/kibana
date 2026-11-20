@@ -15,6 +15,8 @@ export interface RemoteTimingContext {
   readonly taskId?: string;
   readonly scopeId?: string;
   readonly graphId?: string;
+  readonly poolBusy?: boolean;
+  readonly poolWaiters?: number;
   readonly stepId?: string;
   readonly stepType?: string;
   readonly durationMs?: number;
@@ -42,6 +44,8 @@ export const recordRemoteTiming = (event: string, context: RemoteTimingContext):
       taskId: context.taskId,
       scopeId: context.scopeId,
       graphId: context.graphId,
+      poolBusy: context.poolBusy,
+      poolWaiters: context.poolWaiters,
       stepId: context.stepId,
       stepType: context.stepType,
       durationMs: context.durationMs,
