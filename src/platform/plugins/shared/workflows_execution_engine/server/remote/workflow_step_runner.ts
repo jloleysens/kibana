@@ -9,7 +9,7 @@
 
 import { createHash } from 'node:crypto';
 import type { KibanaRequest, Logger } from '@kbn/core/server';
-import { remotable } from '@kbn/core-remote-common';
+import { recordRemoteTiming, remotable } from '@kbn/core-remote-common';
 import type { ScopeLookup } from '@kbn/core-remote-server';
 import { getElasticsearchConnectors, getKibanaRequestDefinition } from '@kbn/workflows';
 import type { AtomicGraphNode } from '@kbn/workflows/graph';
@@ -200,6 +200,21 @@ export class WorkflowStepRunner implements WorkflowStepRunnerApi {
       });
       if (runtime.node.stepType !== description.type)
         throw new Error('Workflow step reference mismatch');
+      if (process.env.KBN_REMOTE_TIMING_LOG) {
+        try {
+          const state = this.scopes.getRunState(request.scopeId);
+          const stepType = this.scopes.resolveStepType(request.scopeId, runtime.node.stepId);
+          recordRemoteTiming('generic_coordinator_handler', {
+            scopeId: request.scopeId,
+            executionId: state.workflowRunId,
+            stepType,
+          });
+        } catch (error) {
+          this.logger.warn(
+            `Could not record generic coordinator handler identity: ${error.message}`
+          );
+        }
+      }
       if (initialAbort.signal.aborted) runtime.abortController.abort(initialAbort.signal.reason);
       this.active.set(request.invocationId, runtime.abortController);
       if (request.phase !== 'onCancel' && request.phase !== 'nodeCancel')

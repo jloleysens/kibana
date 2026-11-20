@@ -32,15 +32,8 @@ export {
   RECORD_TOOL_LEARNING_TOOL_ID,
 };
 
-/**
- * Learning tools the reinforcement agent gets only on follow-up turns. An initial investigation
- * has had no human correction yet, so there is nothing durable to record.
- */
-export const DECISION_TREE_LEARNING_TOOL_IDS = [
-  RECORD_SYSTEM_LEARNING_TOOL_ID,
-  RECORD_TOOL_LEARNING_TOOL_ID,
-  RECORD_REMEDIATION_TOOL_ID,
-] as const;
+import { DECISION_TREE_LEARNING_TOOL_IDS } from './learning_tools_ids';
+export { DECISION_TREE_LEARNING_TOOL_IDS } from './learning_tools_ids';
 
 /** Every tool the reinforcement agent owns, in the order it is expected to reach for them. */
 export const DECISION_TREE_TOOL_IDS = [

@@ -461,6 +461,27 @@ const main = async (): Promise<void> => {
         'nightshift.memoryMaterializeToSandbox',
         { sandbox_id: 'default__fixture-conversation', agent_id: 'nightshift.investigation' },
       ],
+      [
+        'nightshift.decisionTreeReinforce',
+        {
+          prompt: 'Investigation',
+          response: 'Observed',
+          message: 'Reinforce',
+          turn_kind: 'feedback_reinforcement',
+          tool_calls: [
+            {
+              tool_id: 'fixture',
+              tool_call_id: 'fixture-call',
+              params: {},
+              results: [{ type: 'other', data: 'Observed result' }],
+            },
+          ],
+        },
+      ],
+      [
+        'nightshift.triggerInvestigation',
+        { subject_type: 'manual', message: 'Original investigation' },
+      ],
       ['nightshift.cortexHydrate', { sandbox_id: 'default__fixture-conversation' }],
       ['nightshift.obtainSandbox', { conversation_id: 'fixture-conversation' }],
       ['nightshift.ensureInvestigationAgent', {}],
@@ -559,15 +580,36 @@ const main = async (): Promise<void> => {
         'nightshift.decisionTreeHydrate',
       ].includes(type)
         ? sandboxWorkspaces
+        : type === 'nightshift.triggerInvestigation'
+        ? {
+            prepare: async () => 'dispatch-ref',
+            start: async () => ({ investigation_id: 'original-dispatch' }),
+          }
+        : type === 'nightshift.decisionTreeReinforce'
+        ? {
+            read: async () => ({ enabled: true, available: true }),
+            begin: async (
+              _scope: string,
+              _step: string,
+              reinforcementInput: { conversation: { rounds: Array<{ steps: object[] }> } }
+            ) => {
+              assert.equal(reinforcementInput.conversation.rounds[0].steps.length, 1);
+              return 'reinforcement-ref';
+            },
+            take: async () => ({ message: 'Reinforced' }),
+            cancel: async () => {},
+          }
         : type === 'nightshift.decisionTreePrepare'
         ? { read: registry.readTreePolicy }
         : registry;
       const result = (await new Ctor(
         operations,
-        type === 'nightshift.decisionTreeHydrate'
+        type === 'nightshift.decisionTreeReinforce'
+          ? registry
+          : type === 'nightshift.decisionTreeHydrate'
           ? { read: registry.readTreePolicy }
           : { internal: () => fakeClient },
-        attachments
+        type === 'nightshift.decisionTreeReinforce' ? { internal: () => fakeClient } : attachments
       ).run('scope', {}, { handlerContext: context })) as {
         output?: object;
         error?: Error;
@@ -603,6 +645,10 @@ const main = async (): Promise<void> => {
           conversation_id: 'fixture-conversation',
           notification: '',
         });
+      if (type === 'nightshift.decisionTreeReinforce')
+        assert.deepEqual(result.output, { message: 'Reinforced' });
+      if (type === 'nightshift.triggerInvestigation')
+        assert.deepEqual(result.output, { investigation_id: 'original-dispatch' });
       if (type === 'nightshift.obtainSandbox')
         assert.deepEqual(result.output, {
           sandbox_id: 'default__fixture-conversation',

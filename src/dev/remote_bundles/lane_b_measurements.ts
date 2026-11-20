@@ -8,6 +8,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { defaultInferenceEndpoints } from '@kbn/inference-common';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -29,6 +30,7 @@ import { buildRemoteBundle } from './build';
 import { discoverRemoteManifests } from './discover';
 import { nearestRank } from './load_statistics';
 import { startLaneBSandboxFixture } from './lane_b_sandbox_fixture';
+import { accountPendingChildGenerics } from './pending_child_generics';
 import { createLaneBWorkflow, type LaneBFamily } from './lane_b_workflows';
 
 interface Hit<T> {
@@ -54,6 +56,7 @@ interface Case {
   comments?: Array<{ id: string; comment?: string }>;
 }
 interface Output {
+  message?: string;
   text?: string;
   blocks?: Array<{ type: string; elements?: Array<{ url?: string }> }>;
   _id?: string;
@@ -135,7 +138,10 @@ const stop = async (child: ChildProcess): Promise<void> => {
   throw new Error(`Owned Kibana ${child.pid} did not stop; inspect before continuing`);
 };
 
-const memorySnapshot = async (directory: string, coordinatorPid: number): Promise<object> => {
+export const memorySnapshot = async (
+  directory: string,
+  coordinatorPid: number
+): Promise<object> => {
   const samples = readdirSync(directory)
     .filter((file) => /^process-\d+\.jsonl$/.test(file))
     .flatMap((file) => lines<ProcessSample>(join(directory, file)).slice(-1));
@@ -143,17 +149,50 @@ const memorySnapshot = async (directory: string, coordinatorPid: number): Promis
     ({ pid, ppid }) => pid === coordinatorPid || ppid === coordinatorPid
   );
   const after = Date.now();
-  for (const { pid } of owned) process.kill(pid, 'SIGUSR2');
+  const retired: ProcessSample[] = [];
+  const signalled = owned.filter((sample) => {
+    try {
+      process.kill(sample.pid, 'SIGUSR2');
+      return true;
+    } catch (error) {
+      if (
+        sample.pid !== coordinatorPid &&
+        error instanceof Error &&
+        'code' in error &&
+        error.code === 'ESRCH'
+      ) {
+        retired.push(sample);
+        return false;
+      }
+      throw error;
+    }
+  });
   const acknowledged: ProcessSample[] = [];
-  for (const { pid } of owned) {
+  for (const sample of signalled) {
+    const { pid } = sample;
     let latest: ProcessSample | undefined;
     for (let attempt = 0; attempt < 300; attempt++) {
       latest = lines<ProcessSample>(join(directory, `process-${pid}.jsonl`)).findLast(
-        (sample) => sample.event === 'gc' && sample.at >= after
+        (entry) => entry.event === 'gc' && entry.at >= after
       );
       if (latest) break;
+      try {
+        process.kill(pid, 0);
+      } catch (error) {
+        if (
+          pid !== coordinatorPid &&
+          error instanceof Error &&
+          'code' in error &&
+          error.code === 'ESRCH'
+        ) {
+          retired.push(sample);
+          break;
+        }
+        throw error;
+      }
       await delay(10);
     }
+    if (!latest && retired.some((entry) => entry.pid === pid)) continue;
     assert(latest, `Post-GC sample not acknowledged by owned PID ${pid}`);
     acknowledged.push(latest);
   }
@@ -163,6 +202,7 @@ const memorySnapshot = async (directory: string, coordinatorPid: number): Promis
   );
   return {
     at: after,
+    retiredLastSamples: retired,
     processes: acknowledged,
     combinedRss: acknowledged.reduce((total, sample) => total + sample.memory.rss, 0),
     combinedHeap: acknowledged.reduce((total, sample) => total + sample.memory.heapUsed, 0),
@@ -240,7 +280,27 @@ const execute = async (
     };
   }>(`${es}/lane-b-quiet-outcomes/_doc/${step('persist')._id}`);
   save(join(directory, `${workflowExecutionId}-business.json`), persisted);
-  if (family === 'nightshift_memory_hydrate') {
+  if (family === 'nightshift_trigger') {
+    const conversationId = persisted._source.conversationId;
+    assert(conversationId);
+    const accepted = await api<{ _source: { agent_id: string; space: string } }>(
+      `${es}/.chat-conversations/_doc/${conversationId}`
+    );
+    assert.equal(accepted._source.space, 'default');
+    assert.equal(accepted._source.agent_id, 'nightshift.investigation');
+    save(join(directory, `${workflowExecutionId}-accepted-investigation.json`), accepted);
+  } else if (family === 'nightshift_reinforce') {
+    assert.equal(persisted._source.message, 'Lane B verified response');
+    assert.equal(step('reinforce').message, 'Lane B verified response');
+    const providerRequests = readFileSync(
+      join(directory, '..', 'fake-provider-requests.jsonl'),
+      'utf8'
+    );
+    assert(
+      providerRequests.includes('Verified reinforcement evidence ' + id),
+      'Original reconstructed round/tool result missing from actual provider request'
+    );
+  } else if (family === 'nightshift_memory_hydrate') {
     assert.equal(persisted._source.sandboxId, 'default__' + workflowExecutionId);
     assert(persisted._source.firstNotification?.includes('/workspace/memories/' + id + '.md'));
     assert.equal(persisted._source.secondNotification, '');
@@ -504,6 +564,20 @@ export const runLaneBMeasurements = async (): Promise<void> => {
   const base: Record<string, object | string | number | boolean> = parse(
     readFileSync(resolve(option('--config')), 'utf8')
   );
+  if (args.includes('--nightshift-model-fixture')) {
+    const configured = base['xpack.actions.preconfigured'];
+    assert(
+      configured === undefined || typeof configured === 'object',
+      'Invalid existing preconfigured connector configuration'
+    );
+    if (configured) {
+      const id = defaultInferenceEndpoints.ANTHROPIC_CLAUDE_5_5_SONNET;
+      assert(
+        !(id in configured) && !(`[${id}]` in configured),
+        'Refusing to replace an existing Nightshift model alias'
+      );
+    }
+  }
   assert.equal(base['server.port'], 5635);
   assert.deepEqual(base['elasticsearch.hosts'], [es]);
   assert.equal(
@@ -625,6 +699,10 @@ export const runLaneBMeasurements = async (): Promise<void> => {
       texts?: string[];
       query?: string;
     } = JSON.parse(text || '{}');
+    appendFileSync(
+      join(output, 'fake-provider-requests.jsonl'),
+      `${JSON.stringify({ path: request.url, body })}\n`
+    );
     if (request.url === '/rerank') {
       assert(Array.isArray(body.texts));
       appendFileSync(join(output, 'rerank-fake-requests.jsonl'), `${JSON.stringify(body)}\n`);
@@ -701,6 +779,7 @@ export const runLaneBMeasurements = async (): Promise<void> => {
     ? await startLaneBSandboxFixture(join(output, 'sandbox-stat-requests.jsonl'))
     : undefined;
   let child: ChildProcess | undefined;
+  const nightshiftDefaultModel = defaultInferenceEndpoints.ANTHROPIC_CLAUDE_5_5_SONNET;
   let endpointCreated = false;
   let rerankEndpointCreated = false;
   const endpoint = `lane-b-quiet-${Date.now()}`;
@@ -721,6 +800,14 @@ export const runLaneBMeasurements = async (): Promise<void> => {
       'PUT'
     );
     endpointCreated = true;
+    if (args.includes('--nightshift-model-fixture')) {
+      const existing = await fetch(`${es}/_inference/${nightshiftDefaultModel}`, { headers });
+      assert.equal(
+        existing.status,
+        404,
+        'Refusing to shadow a real Nightshift default inference endpoint'
+      );
+    }
     await api(
       `${es}/_inference/rerank/${endpoint}-rerank`,
       {
@@ -747,7 +834,20 @@ export const runLaneBMeasurements = async (): Promise<void> => {
       cold: boolean;
       engineDurationMs?: number;
     }> = [];
-    for (const cell of smoke ? memoryCells : [...timingCells, ...memoryCells]) {
+    const backendFilter = args.includes('--backends') ? option('--backends').split(',') : undefined;
+    if (backendFilter) {
+      assert(smoke, '--backends requires --smoke');
+      assert(
+        backendFilter.length > 0 &&
+          backendFilter.every((backend) =>
+            ['baseline', 'child_process', 'in_process'].includes(backend)
+          ),
+        'Unknown backend'
+      );
+    }
+    for (const cell of (smoke ? memoryCells : [...timingCells, ...memoryCells]).filter(
+      (candidate) => !backendFilter || backendFilter.includes(candidate.backend)
+    )) {
       const families: LaneBFamily[] =
         cell.memory || cell.delayMs === 0
           ? [
@@ -768,6 +868,10 @@ export const runLaneBMeasurements = async (): Promise<void> => {
               'nightshift_tree_hydrate',
               'nightshift_cortex_hydrate',
               'nightshift_memory_hydrate',
+              'nightshift_reinforce',
+              ...(args.includes('--nightshift-model-fixture')
+                ? ['nightshift_trigger' as const]
+                : []),
             ]
           : ['extensions', 'cases'];
       const selectedFamilies = args.includes('--families')
@@ -801,6 +905,28 @@ export const runLaneBMeasurements = async (): Promise<void> => {
             configFile,
             stringify({
               ...base,
+              ...(args.includes('--nightshift-model-fixture')
+                ? {
+                    // Original .inference alias resolution maps the code-owned model id to our unique endpoint.
+                    'xpack.actions.preconfigured': {
+                      ...(typeof base['xpack.actions.preconfigured'] === 'object'
+                        ? base['xpack.actions.preconfigured']
+                        : {}),
+                      [`[${nightshiftDefaultModel}]`]: {
+                        name: 'Lane B Nightshift default model alias',
+                        exposeConfig: true,
+                        actionTypeId: '.inference',
+                        config: {
+                          provider: 'openai',
+                          taskType: 'chat_completion',
+                          inferenceId: endpoint,
+                          providerConfig: {},
+                        },
+                        secrets: { providerSecrets: {} },
+                      },
+                    },
+                  }
+                : {}),
               ...(args.includes('--sandbox-config-fixture')
                 ? {
                     // Prepare reads tree stores only. This config enables its original availability gate;
@@ -1115,17 +1241,49 @@ export const runLaneBMeasurements = async (): Promise<void> => {
                   requests.filter((request) => request.name === name).length,
                 ])
               );
+              const runTimings = lines<{
+                event: string;
+                pid: number;
+                stepType: string;
+                scopeId?: string;
+                executionId?: string;
+              }>(join(directory, 'timing.jsonl')).slice(timingBefore);
+              const genericCalls = runTimings.filter(
+                ({ event }) => event === 'generic_coordinator_handler'
+              );
+              let pendingChildGenericCalls: ReturnType<typeof accountPendingChildGenerics> = [];
+              if (cell.memory && cell.backend !== 'baseline') {
+                const invokeCount = requests.filter(({ name }) =>
+                  name.includes('WorkflowStepRunner.invoke')
+                ).length;
+                if (
+                  family === 'nightshift_trigger' &&
+                  args.includes('--allow-pending-child-generics')
+                ) {
+                  assert(
+                    args.includes('--coverage-ledger'),
+                    '--allow-pending-child-generics requires --coverage-ledger'
+                  );
+                  pendingChildGenericCalls = accountPendingChildGenerics(
+                    genericCalls,
+                    result.workflowExecutionId,
+                    invokeCount,
+                    readFileSync(resolve(option('--coverage-ledger')), 'utf8')
+                  );
+                } else assert.equal(invokeCount, 0, 'Unexpected generic coordinator handler');
+              }
+              const nativeMarkers = runTimings.filter(
+                ({ event }) => event === 'nightshift_native_handler'
+              );
+              const outerScopeId = runTimings.find(
+                ({ event, executionId }) =>
+                  event === 'dispatched' && executionId === result.workflowExecutionId
+              )?.scopeId;
               if (cell.memory && cell.backend !== 'baseline')
-                assert(
-                  !requests.some(({ name }) => name.includes('WorkflowStepRunner.invoke')),
-                  'Unexpected generic coordinator handler'
-                );
-              const nativeMarkers = lines<{ event: string; pid: number; stepType: string }>(
-                join(directory, 'timing.jsonl')
-              )
-                .slice(timingBefore)
-                .filter(({ event }) => event === 'nightshift_native_handler');
+                assert(outerScopeId, 'Missing coordinator dispatch identity for target run');
               const expectedMarkers = {
+                nightshift_trigger: ['trigger_investigation'],
+                nightshift_reinforce: ['ensure_investigation_agent', 'decision_tree_reinforce'],
                 nightshift_sandbox: ['obtain_sandbox'],
                 nightshift_tree_hydrate: ['obtain_sandbox', 'decision_tree_hydrate'],
                 nightshift_cortex_hydrate: ['obtain_sandbox', 'cortex_hydrate'],
@@ -1138,7 +1296,10 @@ export const runLaneBMeasurements = async (): Promise<void> => {
               if (cell.memory && family in expectedMarkers) {
                 const expected = expectedMarkers[family as keyof typeof expectedMarkers];
                 assert.deepEqual(
-                  nativeMarkers.map(({ stepType }) => stepType).sort(),
+                  nativeMarkers
+                    .filter(({ scopeId }) => !outerScopeId || scopeId === outerScopeId)
+                    .map(({ stepType }) => stepType)
+                    .sort(),
                   cell.backend === 'baseline' ? [] : [...expected].sort()
                 );
                 for (const { pid } of nativeMarkers) {
@@ -1152,6 +1313,7 @@ export const runLaneBMeasurements = async (): Promise<void> => {
                 profile,
                 cold: repeat === 0,
                 callbacks,
+                pendingChildGenericCalls,
                 nativeMarkers,
                 conversationAuthorizationReads: authorizationReads,
                 callbackPayloadBytes: requests.reduce((total, request) => total + request.bytes, 0),

@@ -24,11 +24,58 @@ export type LaneBFamily =
   | 'nightshift_sandbox'
   | 'nightshift_tree_hydrate'
   | 'nightshift_cortex_hydrate'
-  | 'nightshift_memory_hydrate';
+  | 'nightshift_memory_hydrate'
+  | 'nightshift_reinforce'
+  | 'nightshift_trigger';
 
 /** Uses the same original business steps for ordinary Kibana and each worker backend. */
 export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: string) => {
   const steps = {
+    nightshift_trigger: [
+      {
+        name: 'trigger',
+        type: 'nightshift.triggerInvestigation',
+        with: {
+          subject_type: 'manual',
+          subject_id: id,
+          message: 'lane-b-quiet-agent-' + id,
+          trigger_type: 'manual',
+        },
+      },
+    ],
+    nightshift_reinforce: [
+      {
+        name: 'ensure',
+        type: 'nightshift.ensureInvestigationAgent',
+        with: { agent_id: 'significant-events.decision-tree-reinforcement' },
+      },
+      {
+        name: 'reinforce',
+        type: 'nightshift.decisionTreeReinforce',
+        with: {
+          prompt: 'lane-b-quiet-agent-' + id,
+          response: 'Observed pool saturation.',
+          message: 'lane-b-quiet-agent-' + id + ': summarize the completed round without tools.',
+          turn_kind: 'feedback_reinforcement',
+          connector_id: endpoint,
+          tool_calls: [
+            {
+              tool_id: 'nightshift_sandbox_view_file',
+              tool_call_id: 'read',
+              params: { file_path: '/workspace/evidence.txt' },
+            },
+          ],
+          tool_results: [
+            {
+              tool_call_id: 'read',
+              results: [
+                { type: 'other', data: { stdout: 'Verified reinforcement evidence ' + id } },
+              ],
+            },
+          ],
+        },
+      },
+    ],
     nightshift_memory_hydrate: [
       {
         name: 'obtain',
@@ -411,6 +458,8 @@ export const createLaneBWorkflow = (family: LaneBFamily, id: string, endpoint: s
     ],
   }[family];
   const document = {
+    nightshift_trigger: { conversationId: '{{ steps.trigger.output.investigation_id }}' },
+    nightshift_reinforce: { message: '{{ steps.reinforce.output.message }}' },
     nightshift_memory_hydrate: {
       sandboxId: '{{ steps.hydrate.output.sandbox_id }}',
       firstNotification: '{{ steps.hydrate.output.notification }}',

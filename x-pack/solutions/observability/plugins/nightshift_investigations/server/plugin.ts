@@ -62,6 +62,11 @@ import { triggerInvestigationStepDefinition } from './step_definitions/trigger_i
 import { followUpRecoveredAlertStepDefinition } from './step_definitions/follow_up_recovered_alert';
 import { obtainSandboxStepDefinition } from './step_definitions/obtain_sandbox';
 import { composeHydrateNotificationsStepDefinition } from './step_definitions/compose_hydrate_notifications';
+import { InvestigationDispatchToken } from './remote/investigation_dispatch_tokens';
+import { InvestigationDispatch } from './remote/investigation_dispatch';
+import { createInvestigationDispatchOperations } from './remote/investigation_dispatch_operations';
+import { ReinforcementToken } from './remote/reinforcement_tokens';
+import { Reinforcement } from './remote/reinforcement';
 import { DecisionTreePolicyToken } from './remote/decision_tree_policy_tokens';
 import { DecisionTreePolicy } from './remote/decision_tree_policy';
 import { AgentInstallationToken } from './remote/agent_installation_tokens';
@@ -189,6 +194,21 @@ export class NightshiftInvestigationsPlugin
       new NightshiftSettingsLocatorDefinition()
     );
     core.remote.bind(
+      InvestigationDispatchToken,
+      (scopes) =>
+        new InvestigationDispatch(
+          scopes,
+          createInvestigationDispatchOperations({
+            getInvestigationsClient: this.getInvestigationsClient,
+            getAutomationsSoClient: this.getAutomationsSoClient,
+            getAlertsClient: this.getAlertsClient,
+            getEpisodeLookup: this.getEpisodeLookup,
+            getActions: () => this.actionsStart,
+            settingsLocator,
+          })
+        )
+    );
+    core.remote.bind(
       ModelSelectionToken,
       (scopes) =>
         new ModelSelection(
@@ -204,6 +224,15 @@ export class NightshiftInvestigationsPlugin
     core.remote.bind(
       InvestigationsToken,
       (scopes) => new Investigations(scopes, this.getInvestigationsClient, investigationLocator)
+    );
+    core.remote.bind(
+      ReinforcementToken,
+      (scopes) =>
+        new Reinforcement(
+          scopes,
+          () => this.agentBuilder,
+          () => this.decisionTreesEnabled
+        )
     );
     core.remote.bind(
       DecisionTreePolicyToken,

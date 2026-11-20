@@ -7,7 +7,7 @@
 
 import { z, isoDateTime } from '@kbn/zod/v4';
 import type { JsonValue } from '@kbn/utility-types';
-import { MAX_TEXT_LENGTH } from '@kbn/significant-events-schema';
+import { MAX_TEXT_LENGTH } from '@kbn/significant-events-runtime';
 import { INVESTIGATION_SUBJECT_TYPES } from './workflows/triggers';
 
 /**

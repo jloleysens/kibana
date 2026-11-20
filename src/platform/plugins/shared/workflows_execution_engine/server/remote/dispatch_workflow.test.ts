@@ -69,6 +69,7 @@ it('leases by non-secret settings and releases all state after success', async (
   expect(await dispatchWorkflow(params)).toEqual({ status: 'completed' });
   expect(params.remote.lease).toHaveBeenCalledWith('workflows', {
     settingsKey: JSON.stringify(params.facts),
+    runId: params.workflowRunId,
     signal: params.signal,
   });
   expect(lease.openScope).toHaveBeenCalledWith(

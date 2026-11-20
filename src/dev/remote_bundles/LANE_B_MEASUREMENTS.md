@@ -40,8 +40,27 @@ directory; retains failed attempts. Workflows, Cases, Notes, fingerprints and
 outcome docs remain for independent review; all identifiers have a lane-B prefix.
 
 `--smoke` runs only three instrumented profiles (ordinary Kibana, child_process,
-in_process), two runs per family: **102 real persisted runs** (17 labels).
-`--families name,name` scopes a smoke run. Not a timing claim.
+in_process), two runs per family: **108 real persisted runs** (18 labels; includes reinforcement).
+`--families name,name` scopes a smoke run. `--backends baseline,child_process,in_process`
+can scope diagnostic smoke profiles. Not a timing claim.
+
+`nightshift_reinforce` executes the original fixed agent and its synchronous beforeAgent
+hydration on a separate nested host. The TLS filesystem fixture still never runs untrusted code.
+`nightshift_trigger` additionally needs `--nightshift-model-fixture`: this installs only a
+process-local, public-config `.inference` alias from the original code-owned default ID to
+the unique fake-backed endpoint. Existing aliases/default endpoints are refused, never replaced.
+This label proves original successful manual dispatch and independently reads the accepted
+investigation conversation in ES; it does not claim every automatic-budget/alert branch.
+
+Strict whole-window zero-generic assertions remain the default. While other Nightshift steps
+are unfinished, a targeted trigger smoke can use
+`--allow-pending-child-generics --coverage-ledger <COVERAGE.md>`. Every invocation must have
+coordinator-resolved run/scope/type identity; target/outer generic calls fail. Other calls are
+reported by child run ID/type/count/owner and must be `unfinished` in the supplied ledger;
+native/typed/unknown/unassigned types fail. Remove this qualification after the merged families
+are complete. Both backends currently show pending `sendNotifications`, `cortexOptimize` and
+`memoryOptimize` child calls, not a fully native investigation child. Retired nested process
+last samples are reported separately from live post-GC totals; absence is not a zero sample.
 The full matrix intentionally runs serially and restarts Kibana many times.
 
 ## Fixed method / outputs

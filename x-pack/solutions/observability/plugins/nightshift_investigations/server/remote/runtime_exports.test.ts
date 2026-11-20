@@ -27,6 +27,10 @@ import {
   NIGHTSHIFT_INVESTIGATION_AGENT_ID,
   NIGHTSHIFT_ASSISTANT_AGENT_ID,
 } from '../../common/agent_ids';
+import { DECISION_TREE_LEARNING_TOOL_IDS as originalLearningTools } from '../tools/decision_tree';
+import { DECISION_TREE_LEARNING_TOOL_IDS } from '../tools/decision_tree/learning_tools_ids';
+import { toSlackThreadSubjectId as originalSlackSubject } from '../../common';
+import { toSlackThreadSubjectId } from '../../common/investigation_subject';
 import { DECISION_TREE_PROMPT_TOOLS } from '../tools/decision_tree/prompt_tools';
 import { SANDBOX_VIEW_FILE_TOOL_ID } from '../tools/sandbox_bash/view_file_tool';
 import { SANDBOX_STR_REPLACE_TOOL_ID } from '../tools/sandbox_bash/str_replace_tool';
@@ -39,6 +43,8 @@ import {
 import { DECISION_TREE_SUBMIT_TOOL_ID } from '../tools/decision_tree/submit_optimizer_result_tool';
 
 it('preserves original helper/schema/constants exports and registered prompt tool identities', () => {
+  expect(originalLearningTools).toBe(DECISION_TREE_LEARNING_TOOL_IDS);
+  expect(originalSlackSubject).toBe(toSlackThreadSubjectId);
   expect(originalMemoryHydrate).toBe(hydrateMemoryWorkspaceWithSessionState);
   expect(originalCortexHydrate).toBe(hydrateCortexWorkspaceWithTelemetry);
   expect(originalHydrate).toBe(hydrateDecisionTreeWorkspace);

@@ -7,6 +7,12 @@
 
 import { createToken } from '@kbn/core-di';
 import type { RemoteModule } from '@kbn/core-remote-common';
+import {
+  ConversationRegistryToken,
+  ConversationDataPlaneToken,
+} from '@kbn/agent-builder-plugin/server/remote/conversation_tokens';
+import { InvestigationDispatchToken } from './investigation_dispatch_tokens';
+import { ReinforcementToken } from './reinforcement_tokens';
 import { SandboxWorkspacesToken } from './sandbox_workspaces_tokens';
 import { AgentInstallationToken } from './agent_installation_tokens';
 import { InvestigationsToken } from './investigations_tokens';
@@ -15,6 +21,18 @@ import { ModelSelectionToken } from './model_selection_tokens';
 
 export const remoteModule: RemoteModule = {
   providers: [
+    {
+      token: InvestigationDispatchToken,
+      placement: 'coordinator',
+      modulePath: require.resolve('./investigation_dispatch'),
+      exportName: 'InvestigationDispatch',
+    },
+    {
+      token: ReinforcementToken,
+      placement: 'coordinator',
+      modulePath: require.resolve('./reinforcement'),
+      exportName: 'Reinforcement',
+    },
     {
       token: SandboxWorkspacesToken,
       placement: 'coordinator',
@@ -47,6 +65,20 @@ export const remoteModule: RemoteModule = {
     },
   ],
   contributions: [
+    {
+      kind: createToken('workflows.step'),
+      stepType: 'nightshift.triggerInvestigation',
+      needs: [InvestigationDispatchToken],
+      modulePath: require.resolve('./trigger_investigation_step'),
+      exportName: 'TriggerInvestigationStep',
+    },
+    {
+      kind: createToken('workflows.step'),
+      stepType: 'nightshift.decisionTreeReinforce',
+      needs: [ReinforcementToken, ConversationRegistryToken, ConversationDataPlaneToken],
+      modulePath: require.resolve('./decision_tree_reinforce_step'),
+      exportName: 'DecisionTreeReinforceStep',
+    },
     {
       kind: createToken('workflows.step'),
       stepType: 'nightshift.memoryMaterializeToSandbox',
