@@ -11,8 +11,9 @@ import type { QueryDslQueryContainer, SortOrder } from '@elastic/elasticsearch/l
 import type { Logger } from '@kbn/core/server';
 import type { DataStreamsStart } from '@kbn/core-data-streams-server';
 import type { ClientSearchRequest } from '@kbn/data-streams';
-import { initializeDataStreamClient, type WorkflowLogEvent } from './data_stream';
+import { createLogs } from './create_logs';
 import { retryTransientEsErrors } from '../../lib/retry_transient_es_errors';
+import { initializeDataStreamClient, type WorkflowLogEvent } from './data_stream';
 
 export interface LogSearchResult {
   total: number;
@@ -43,11 +44,11 @@ export class LogsRepository {
   ) {}
 
   public async createLogs(logEvents: WorkflowLogEvent[]): Promise<void> {
-    const dataStreamClient = await initializeDataStreamClient(this.coreDataStreams);
-
-    await retryTransientEsErrors(() => dataStreamClient.create({ documents: logEvents }), {
-      logger: this.logger,
-    });
+    await createLogs(
+      () => initializeDataStreamClient(this.coreDataStreams),
+      this.logger,
+      logEvents
+    );
   }
 
   public async getRecentLogs(limit: number = 100): Promise<LogSearchResult> {

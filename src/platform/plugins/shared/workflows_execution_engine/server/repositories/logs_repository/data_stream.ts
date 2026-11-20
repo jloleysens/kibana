@@ -15,13 +15,7 @@ import { WORKFLOWS_EXECUTION_LOGS_DATA_STREAM } from './constants';
 
 // Note: Bump the version when you make changes to the definition.
 export const initializeLogsRepositoryDataStream = (coreDataStreams: DataStreamsSetup) => {
-  return coreDataStreams.registerDataStream({
-    name: WORKFLOWS_EXECUTION_LOGS_DATA_STREAM,
-    version: 3,
-    template: {
-      mappings: logsRepositoryMappings,
-    },
-  });
+  return coreDataStreams.registerDataStream(logsRepositoryDataStreamDefinition);
 };
 
 // Note: Only define schema for fields that will be queries against in ES.
@@ -42,6 +36,12 @@ const logsRepositoryMappings = {
     }),
   },
 } satisfies MappingsDefinition;
+
+export const logsRepositoryDataStreamDefinition = {
+  name: WORKFLOWS_EXECUTION_LOGS_DATA_STREAM,
+  version: 3,
+  template: { mappings: logsRepositoryMappings },
+};
 
 // Note: Document all _source fields here.
 export interface WorkflowLogEvent extends GetFieldsOf<typeof logsRepositoryMappings> {

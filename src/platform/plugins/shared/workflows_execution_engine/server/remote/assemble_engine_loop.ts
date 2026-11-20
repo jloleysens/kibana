@@ -117,6 +117,7 @@ export async function runWorkflowEngineInWorker(
     workflowId: execution.workflowId,
     workflowName: execution.workflowDefinition?.name,
     executionId: execution.id,
+    // Coordinator-dispatched request space, not a worker-supplied step field.
     spaceId: request.spaceId,
   });
   const fakeRequest = {} as KibanaRequest;

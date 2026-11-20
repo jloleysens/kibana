@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { errors } from '@elastic/elasticsearch';
 import { elasticsearchServiceMock } from '@kbn/core-elasticsearch-server-mocks';
 import { ExecutorLog } from './executor_log';
 import type { WorkflowControlApi, WorkflowDataPlaneApi } from './tokens';
@@ -38,7 +39,8 @@ it('initializes coordinator-owned stream metadata once, then writes event bytes 
   expect(control.initializeLogs).toHaveBeenCalledTimes(1);
   expect(client.bulk).toHaveBeenCalledTimes(2);
   expect(client.bulk).toHaveBeenCalledWith({
-    operations: [{ create: { _index: '.workflows-execution-data-stream-logs' } }, event],
+    index: '.workflows-execution-data-stream-logs',
+    operations: [{ create: {} }, event],
   });
   expect(control.info).not.toHaveBeenCalled();
 });
@@ -55,9 +57,35 @@ it('retries failed metadata initialization on a later flush without caching its 
 
 it('reports write failure without forwarding tenant event payloads into coordinator diagnostics', async () => {
   const { client, control, log } = setup();
-  client.bulk.mockResolvedValue({ errors: true, took: 1, items: [] });
+  client.bulk.mockRejectedValue(new Error('bulk write failed: private tenant value'));
   await expect(log.write([{ message: 'private tenant value' }])).rejects.toThrow(
     'bulk write failed'
   );
-  expect(control.info).toHaveBeenCalledWith('Executor log bulk write failed');
+  expect(control.info).toHaveBeenCalledWith('Executor log persistence failed after retries');
+});
+
+it('preserves original DataStreamClient item-error semantics without inventing a retry', async () => {
+  const { client, control, log } = setup();
+  client.bulk.mockResolvedValue({ errors: true, took: 1, items: [] });
+  await log.write([{ message: 'tenant event' }]);
+  expect(client.bulk).toHaveBeenCalledTimes(1);
+  expect(control.info).not.toHaveBeenCalled();
+});
+
+it('uses the original bounded transient retry before reporting payload-free failure', async () => {
+  jest.useFakeTimers();
+  try {
+    const { client, control, log } = setup();
+    client.bulk.mockRejectedValue(new errors.ConnectionError('private tenant value'));
+    const failed = expect(log.write([{ message: 'private tenant value' }])).rejects.toThrow(
+      'private tenant value'
+    );
+    await jest.runAllTimersAsync();
+    await failed;
+    expect(client.bulk).toHaveBeenCalledTimes(4);
+    expect(control.info).toHaveBeenCalledTimes(1);
+    expect(control.info).toHaveBeenCalledWith('Executor log persistence failed after retries');
+  } finally {
+    jest.useRealTimers();
+  }
 });

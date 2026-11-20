@@ -16,12 +16,13 @@ import {
   WorkflowDataPlaneToken,
   type WorkflowLogApi,
 } from './tokens';
-import { WORKFLOWS_EXECUTION_LOGS_DATA_STREAM } from '../repositories/logs_repository/constants';
+import type { WorkflowLogEvent } from '../repositories/logs_repository/data_stream';
+import type { LogsRepository } from '../repositories/logs_repository/logs_repository';
 
 /** Persists execution events directly; tenant diagnostics stay on the coordinator, not fleet stdout. */
 @remotable()
 export class ExecutorLog implements WorkflowLogApi {
-  private initialized: Promise<void> | undefined;
+  private repository: Promise<Pick<LogsRepository, 'createLogs'>> | undefined;
   constructor(
     @inject(WorkflowDataPlaneToken) private readonly data: WorkflowDataPlaneApi,
     @inject(WorkflowControlToken) private readonly control: WorkflowControlApi
@@ -33,20 +34,25 @@ export class ExecutorLog implements WorkflowLogApi {
 
   async write(events: readonly object[]): Promise<void> {
     if (events.length === 0) return;
-    this.initialized ??= this.control.initializeLogs().catch((error: Error) => {
-      this.initialized = undefined;
+    this.repository ??= this.control
+      .initializeLogs()
+      .then(async () => {
+        const { createExecutorLogsRepository } = await import('./executor_logs_repository');
+        return createExecutorLogsRepository(this.data.internal());
+      })
+      .catch((error: Error) => {
+        this.repository = undefined;
+        throw error;
+      });
+    try {
+      const repository = await this.repository;
+      await repository.createLogs(events as WorkflowLogEvent[]);
+    } catch (error) {
+      // The original queue owns degradation; never forward tenant payloads or raw ES errors.
+      await Promise.resolve(
+        this.control.info('Executor log persistence failed after retries')
+      ).catch(() => {});
       throw error;
-    });
-    await this.initialized;
-    const result = await this.data.internal().bulk({
-      operations: events.flatMap((event) => [
-        { create: { _index: WORKFLOWS_EXECUTION_LOGS_DATA_STREAM } },
-        event,
-      ]),
-    });
-    if (result.errors) {
-      await this.control.info('Executor log bulk write failed');
-      throw new Error('Executor log bulk write failed');
     }
   }
 }
