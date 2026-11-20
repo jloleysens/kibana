@@ -44,8 +44,9 @@ it('keeps action schemas in their separate Zod-only load-time cost class', async
   ).toBe(false);
 });
 
-it('keeps significant-event runtime scalars free of every external input', async () => {
-  const entry = 'x-pack/platform/packages/shared/kbn-significant-events-runtime/index.ts';
+it('keeps significant-event runtime scalars and errors free of every external input', async () => {
+  const root = 'x-pack/platform/packages/shared/kbn-significant-events-runtime';
+  const entry = `${root}/index.ts`;
   const { metafile } = await build({
     entryPoints: [resolve(entry)],
     bundle: true,
@@ -53,5 +54,9 @@ it('keeps significant-event runtime scalars free of every external input', async
     write: false,
     metafile: true,
   });
-  expect(Object.keys(metafile?.inputs ?? {})).toEqual([entry]);
+  expect(Object.keys(metafile?.inputs ?? {}).sort()).toEqual([
+    entry,
+    `${root}/nightshift_model_blocked_error.ts`,
+    `${root}/nightshift_model_not_found_error.ts`,
+  ]);
 });
