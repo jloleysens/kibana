@@ -225,6 +225,7 @@ const readExecutionLogs = async (
     assert(next.logs.length > 0, 'Execution log pagination ended before total');
     logs.push(...next.logs);
   }
+  assert(result.total > 0, `No authorized durable logs for execution ${executionId}`);
   return { logs, total: result.total };
 };
 

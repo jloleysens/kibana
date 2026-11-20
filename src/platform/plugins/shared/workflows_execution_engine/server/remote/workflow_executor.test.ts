@@ -31,6 +31,29 @@ const GRAPH = 'security.buildAlertEntityGraph';
 const CASE = 'cases.createCase';
 
 describe('WorkflowExecutor', () => {
+  it('persists worker-assembled log events with the original execution Space context', async () => {
+    const store = createStore(execution([{ name: 'local', type: GRAPH, with: {} }]));
+    const events = { info: jest.fn(), write: jest.fn<void, [Array<{ spaceId?: string }>]>() };
+    const outcome = await new WorkflowExecutor(catalog([]), store.storage, events).run({
+      dependencyPlan: store.dependencyPlan,
+      scopeId: 'scope',
+      workflowRunId: 'run-1',
+      spaceId: 'default',
+    });
+    expect(outcome.status).toBe(ExecutionStatus.COMPLETED);
+    const persisted = events.write.mock.calls.flatMap(([batch]) => batch);
+    expect(persisted.length).toBeGreaterThan(0);
+    expect(persisted).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          spaceId: 'default',
+          workflow: expect.objectContaining({ execution_id: 'run-1' }),
+        }),
+      ])
+    );
+    expect(persisted.every(({ spaceId }) => spaceId === 'default')).toBe(true);
+  });
+
   it('retains the explicit original placement for an uncarved inference backing', async () => {
     const store = createStore(
       execution([{ name: 'infer', type: 'ai.prompt', with: { prompt: 'legacy' } }])
