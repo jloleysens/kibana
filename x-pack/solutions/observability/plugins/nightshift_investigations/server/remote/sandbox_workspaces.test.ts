@@ -23,6 +23,7 @@ const setup = (getSandboxStart: () => SandboxPluginStart | undefined = () => und
     getRunState: jest.fn().mockReturnValue({ spaceId: 'ops', workflowRunId: 'trusted-run' }),
     resolveStepType: jest.fn(),
     resolveStepOutputLimit: jest.fn(),
+    getRunDefinitionFacts: jest.fn(() => ({})),
     admitChild: jest.fn(),
     getAbortSignal: (scope) => {
       if (!['run', 'run2'].includes(scope)) throw new Error('Foreign run');

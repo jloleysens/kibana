@@ -142,7 +142,7 @@ export class ScopedAlertEventStorage implements AlertEventStorageApi {
     try {
       this.scopes.get<KibanaRequest>(scopeId);
       this.scopes.getAbortSignal(scopeId).throwIfAborted();
-      recordRemoteTiming('alerting_storage_operation', { scopeId, operation });
+      recordRemoteTiming(`alerting_storage_${operation}`, { scopeId });
       return await execute();
     } catch (error) {
       const source = error instanceof Error ? error : new Error(String(error));

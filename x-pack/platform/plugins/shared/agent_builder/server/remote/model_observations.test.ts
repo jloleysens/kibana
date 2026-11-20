@@ -26,6 +26,7 @@ const setup = () => {
     getRunState: jest.fn(),
     resolveStepType: jest.fn().mockReturnValue('nightshift.cortexOptimize'),
     resolveStepOutputLimit: jest.fn(),
+    getRunDefinitionFacts: jest.fn(() => ({})),
     admitChild: jest.fn(),
     getAbortSignal: (scopeId) => {
       if (scopeId !== 'run') throw new Error('Foreign scope');

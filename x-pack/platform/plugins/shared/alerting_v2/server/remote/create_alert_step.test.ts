@@ -121,7 +121,7 @@ describe('CreateAlertStep', () => {
       resolveStepType: () => 'alerting.create_alert',
       resolveStepOutputLimit: () => 1000,
       admitChild: () => {},
-      get: () => request,
+      get: <T>() => request as unknown as T,
       getAbortSignal: () => new AbortController().signal,
     };
     const api = new ScopedAlertEventStorage(scopes, {
@@ -171,7 +171,7 @@ describe('CreateAlertStep', () => {
       resolveStepType: () => 'alerting.create_alert',
       resolveStepOutputLimit: () => 1000,
       admitChild: () => {},
-      get: () => request,
+      get: <T>() => request as unknown as T,
       getAbortSignal: () => new AbortController().signal,
     };
     const api = new ScopedAlertEventStorage(scopes, {

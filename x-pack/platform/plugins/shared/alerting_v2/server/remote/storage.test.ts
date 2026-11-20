@@ -56,9 +56,9 @@ const createHarness = ({
     resolveStepType: () => 'alerting.create_alert',
     resolveStepOutputLimit: () => 1000,
     admitChild: () => {},
-    get: (scopeId) => {
+    get: <T>(scopeId: string) => {
       if (scopeId !== 'scope') throw new Error('unknown scope');
-      return lookup();
+      return lookup() as unknown as T;
     },
     getAbortSignal: (scopeId) => {
       if (scopeId !== 'scope') throw new Error('unknown scope');

@@ -97,6 +97,7 @@ const main = async (): Promise<void> => {
   assert.equal(persisted[0].group_hash, groupHash);
   assert.equal(persisted[0].status, 'breached');
   assert.equal(persisted[0].type, 'alert');
+  assert(persisted[0].alert);
   assert.equal(persisted[0].alert.status, 'active');
   assert.equal(persisted[0].alert.id, result.output.alert_id);
   process.stdout.write(

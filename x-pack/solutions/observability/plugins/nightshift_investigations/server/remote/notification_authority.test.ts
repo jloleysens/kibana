@@ -23,6 +23,7 @@ const setup = () => {
       .mockReturnValue({ spaceId: 'ops', workflowRunId: 'run', workflowId: 'managed' }),
     resolveStepType: jest.fn().mockReturnValue('nightshift.handleInvestigationFailure'),
     resolveStepOutputLimit: jest.fn(),
+    getRunDefinitionFacts: jest.fn(() => ({})),
     admitChild: jest.fn(),
     getAbortSignal: (scopeId) => {
       if (scopeId !== 'scope') throw new Error('Foreign scope');

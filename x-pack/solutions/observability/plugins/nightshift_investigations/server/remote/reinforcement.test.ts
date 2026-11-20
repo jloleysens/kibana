@@ -55,6 +55,7 @@ const setup = () => {
     },
     resolveStepType: jest.fn().mockReturnValue('nightshift.decisionTreeReinforce'),
     resolveStepOutputLimit: jest.fn().mockReturnValue(1024),
+    getRunDefinitionFacts: jest.fn(() => ({})),
     admitChild: jest.fn(),
   };
   const runAgent = jest

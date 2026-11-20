@@ -33,6 +33,7 @@ const setup = () => {
     },
     resolveStepType: jest.fn(),
     resolveStepOutputLimit: jest.fn(),
+    getRunDefinitionFacts: jest.fn(() => ({})),
     admitChild: jest.fn(),
   };
   const prepared = { client: { start: jest.fn() } };
