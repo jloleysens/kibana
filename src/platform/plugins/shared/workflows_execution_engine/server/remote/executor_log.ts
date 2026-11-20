@@ -17,12 +17,11 @@ import {
   type WorkflowLogApi,
 } from './tokens';
 import type { WorkflowLogEvent } from '../repositories/logs_repository/data_stream';
-import type { LogsRepository } from '../repositories/logs_repository/logs_repository';
 
 /** Persists execution events directly; tenant diagnostics stay on the coordinator, not fleet stdout. */
 @remotable()
 export class ExecutorLog implements WorkflowLogApi {
-  private repository: Promise<Pick<LogsRepository, 'createLogs'>> | undefined;
+  private initialized: Promise<void> | undefined;
   constructor(
     @inject(WorkflowDataPlaneToken) private readonly data: WorkflowDataPlaneApi,
     @inject(WorkflowControlToken) private readonly control: WorkflowControlApi
@@ -34,19 +33,16 @@ export class ExecutorLog implements WorkflowLogApi {
 
   async write(events: readonly object[]): Promise<void> {
     if (events.length === 0) return;
-    this.repository ??= this.control
-      .initializeLogs()
-      .then(async () => {
-        const { createExecutorLogsRepository } = await import('./executor_logs_repository');
-        return createExecutorLogsRepository(this.data.internal());
-      })
-      .catch((error: Error) => {
-        this.repository = undefined;
-        throw error;
-      });
+    this.initialized ??= this.control.initializeLogs().catch((error: Error) => {
+      this.initialized = undefined;
+      throw error;
+    });
     try {
-      const repository = await this.repository;
-      await repository.createLogs(events as WorkflowLogEvent[]);
+      await this.initialized;
+      const { createExecutorLogsRepository } = await import('./executor_logs_repository');
+      await createExecutorLogsRepository(this.data.internal()).createLogs(
+        events as WorkflowLogEvent[]
+      );
     } catch (error) {
       // The original queue owns degradation; never forward tenant payloads or raw ES errors.
       await Promise.resolve(
