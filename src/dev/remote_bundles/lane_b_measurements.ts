@@ -241,11 +241,9 @@ const execute = async (
   });
   save(join(directory, `${workflowExecutionId}-steps.json`), result);
   await delay(1500);
-  const logs = await api<Search<object>>(es + '/.workflows-execution-data-stream-logs/_search', {
-    size: 1000,
-    query: { term: { 'workflow.execution_id': workflowExecutionId } },
-    sort: [{ '@timestamp': 'asc' }],
-  });
+  const logs = await api(
+    `/api/workflows/executions/${workflowExecutionId}/logs?size=1000&sortOrder=asc`
+  );
   save(join(directory, workflowExecutionId + '-logs.json'), logs);
 
   const step = (name: string): Output => {
@@ -367,13 +365,8 @@ const execute = async (
       assert.equal(ownAttempts.length, 2);
       assert(ownAttempts.every(({ status }) => status === 'sent'));
       await delay(1500);
-      const childLogs = await api<Search<object>>(
-        es + '/.workflows-execution-data-stream-logs/_search',
-        {
-          size: 1000,
-          query: { term: { 'workflow.execution_id': childId } },
-          sort: [{ '@timestamp': 'asc' }],
-        }
+      const childLogs = await api(
+        `/api/workflows/executions/${childId}/logs?size=1000&sortOrder=asc`
       );
       save(join(directory, workflowExecutionId + '-child-logs.json'), childLogs);
       save(join(directory, workflowExecutionId + '-notification-proof.json'), {
