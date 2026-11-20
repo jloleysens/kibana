@@ -56,6 +56,7 @@ export const dispatchWorkflow = async ({
   recordRemoteTiming('lease_requested', { executionId: workflowRunId });
   const lease = await remote.lease<WorkflowExecutorApi>('workflows', {
     settingsKey: JSON.stringify(facts),
+    runId: workflowRunId,
     signal,
   });
   recordRemoteTiming('lease_acquired', { executionId: workflowRunId });
@@ -165,6 +166,7 @@ export const dispatchWorkflow = async ({
       lease.closeScope(scopeId);
     }
     await lease.release();
+    recordRemoteTiming('lease_released', { executionId: workflowRunId });
     recordRemoteHeap('MAIN_HEAP', `after-remote-${phase}`);
   }
 };

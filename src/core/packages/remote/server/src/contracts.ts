@@ -90,6 +90,6 @@ export interface RemoteSetup {
   /** Acquires exclusive use of a warm graph; changed settings retire the previous host. */
   lease<T>(
     id: string,
-    options?: { settingsKey?: string; signal?: AbortSignal }
+    options?: { settingsKey?: string; signal?: AbortSignal; runId?: string }
   ): Promise<RemoteLease<T>>;
 }
