@@ -20,7 +20,17 @@ import {
   DemoValueToken,
 } from './__fixtures__/demo_plugin/server/remote/tokens';
 
-const logger: Logger = { get: () => logger, log() {}, trace() {}, debug() {}, info() {}, warn() {}, error() {}, fatal() {}, isLevelEnabled: () => false };
+const logger: Logger = {
+  get: () => logger,
+  log() {},
+  trace() {},
+  debug() {},
+  info() {},
+  warn() {},
+  error() {},
+  fatal() {},
+  isLevelEnabled: () => false,
+};
 
 const createService = () => {
   const service = new RemoteService(logger, { maxOldGenerationSizeMb: 256 });
