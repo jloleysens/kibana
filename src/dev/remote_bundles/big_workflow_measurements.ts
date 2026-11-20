@@ -30,8 +30,6 @@ import { buildRemoteBundle } from './build';
 import { discoverRemoteManifests } from './discover';
 import {
   BIG_WORKFLOW_ALERTS_INDEX,
-  BIG_WORKFLOW_FINDINGS_INDEX,
-  BIG_WORKFLOW_OUTCOMES_INDEX,
   bigWorkflowAlerts,
   createBigWorkflow,
   createBigWorkflowChild,
@@ -105,7 +103,7 @@ const note = (output: string, message: string) => {
   const scratch = resolve('.scratch/big-workflow/LOG.md');
   mkdirSync(resolve('.scratch/big-workflow'), { recursive: true });
   appendFileSync(scratch, line);
-  console.log(message);
+  process.stdout.write(`${message}\n`);
 };
 
 const percentile = (values: number[], quantile: number): number | null =>
@@ -123,7 +121,9 @@ const normalize = (value: unknown): unknown => {
     return value;
   }
   const result: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(value).sort(([left], [right]) => left.localeCompare(right))) {
+  for (const [key, entry] of Object.entries(value).sort(([left], [right]) =>
+    left.localeCompare(right)
+  )) {
     if (
       key.endsWith('_millis') ||
       key.endsWith('_nanos') ||
@@ -159,7 +159,15 @@ const normalize = (value: unknown): unknown => {
   return result;
 };
 
-const signature = (steps: Array<{ stepId: string; stepType?: string; output?: unknown; error?: unknown; status: string }>) =>
+const signature = (
+  steps: Array<{
+    stepId: string;
+    stepType?: string;
+    output?: unknown;
+    error?: unknown;
+    status: string;
+  }>
+) =>
   JSON.stringify(
     steps
       .map((step) => ({
@@ -389,7 +397,10 @@ const bootKibana = async ({
     })
   );
   const hook = join(directory, 'preload.cjs');
-  writeFileSync(hook, `require(${JSON.stringify(metrics)}).installLaneBMetrics(${JSON.stringify(directory)});\n`);
+  writeFileSync(
+    hook,
+    `require(${JSON.stringify(metrics)}).installLaneBMetrics(${JSON.stringify(directory)});\n`
+  );
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     KBN_REMOTE_BUNDLE_DIR: bundleDirectory,
@@ -423,15 +434,31 @@ const bootKibana = async ({
   const started = Date.now();
   const child = spawn(
     process.execPath,
-    [...(instrument ? ['--expose-gc'] : []), 'scripts/kibana', '--no-base-path', '--no-watch', '--config', configFile],
+    [
+      ...(instrument ? ['--expose-gc'] : []),
+      'scripts/kibana',
+      '--no-base-path',
+      '--no-watch',
+      '--config',
+      configFile,
+    ],
     { env, stdio: ['ignore', log, log] }
   );
   closeSync(log);
   assert(child.pid);
-  save(join(directory, 'owner.json'), { pid: child.pid, backend, delayMs, instrument, machine: machine() });
+  save(join(directory, 'owner.json'), {
+    pid: child.pid,
+    backend,
+    delayMs,
+    instrument,
+    machine: machine(),
+  });
   let ready = false;
   for (let attempt = 0; attempt < 300; attempt++) {
-    assert(child.exitCode === null && child.signalCode === null, `Kibana exited before ready; see ${join(directory, 'kibana.log')}`);
+    assert(
+      child.exitCode === null && child.signalCode === null,
+      `Kibana exited before ready; see ${join(directory, 'kibana.log')}`
+    );
     try {
       const status = await api<{ status: { overall: { level: string } } }>('/api/status');
       ready = status.status.overall.level === 'available';
@@ -525,9 +552,13 @@ const runWorkflow = async ({
   dispatchToFirstStepMs?: number;
 }> => {
   const seamsBefore = lines<{ name: string }>(join(directory, 'seams.jsonl')).length;
-  const timingBefore = lines<{ event: string; at: number; pid: number; executionId?: string; durationMs?: number }>(
-    join(directory, 'timing.jsonl')
-  ).length;
+  const timingBefore = lines<{
+    event: string;
+    at: number;
+    pid: number;
+    executionId?: string;
+    durationMs?: number;
+  }>(join(directory, 'timing.jsonl')).length;
   const startedAt = Date.now();
   const started = performance.now();
   const { workflowExecutionId } = await api<{ workflowExecutionId: string }>(
@@ -571,7 +602,9 @@ const runWorkflow = async ({
         .filter((sample) => sample.at >= startedAt)
         .at(-1)
     )
-    .filter((sample): sample is { pid: number; ppid: number; argv: string[]; at: number } => Boolean(sample))
+    .filter((sample): sample is { pid: number; ppid: number; argv: string[]; at: number } =>
+      Boolean(sample)
+    )
     .filter((sample) => sample.argv.some((arg) => arg.includes('graph.mjs')))
     .map((sample) => sample.pid);
   return {
@@ -583,8 +616,7 @@ const runWorkflow = async ({
     callbackDurationMs,
     genericInvocations,
     pids: pids.filter((pid) => pid !== coordinatorPid),
-    dispatchToFirstStepMs:
-      dispatched && firstStep ? firstStep.at - dispatched.at : undefined,
+    dispatchToFirstStepMs: dispatched && firstStep ? firstStep.at - dispatched.at : undefined,
   };
 };
 
@@ -612,9 +644,12 @@ const assertPid = (backend: Backend, coordinatorPid: number, pids: number[], ste
 
 const writeSummary = (output: string) => {
   const runs = lines<RunRecord>(join(output, 'runs.jsonl'));
-  const startup = lines<{ backend: Backend; readyMs: number; instrument: boolean; machine: ReturnType<typeof machine> }>(
-    join(output, 'startup.jsonl')
-  );
+  const startup = lines<{
+    backend: Backend;
+    readyMs: number;
+    instrument: boolean;
+    machine: ReturnType<typeof machine>;
+  }>(join(output, 'startup.jsonl'));
   const idle = existsSync(join(output, 'idle-worker.json'))
     ? JSON.parse(readFileSync(join(output, 'idle-worker.json'), 'utf8'))
     : undefined;
@@ -623,13 +658,18 @@ const writeSummary = (output: string) => {
     phase: string;
     combinedRss: number;
     combinedHeap: number;
+    processes?: Array<{ argv?: string[]; memory: { rss: number; heapUsed: number } }>;
   }>(join(output, 'memory.jsonl'));
   const scenario = (name: 'A' | 'B', backend: Backend) =>
     runs.filter((run) => run.scenario === name && run.backend === backend);
   const cell = (rows: RunRecord[], cold: boolean) => {
-    const selected = rows.filter((run) => run.cold === cold && !run.instrument && run.status === 'completed');
+    const selected = rows.filter(
+      (run) => run.cold === cold && !run.instrument && run.status === 'completed'
+    );
     const wall = selected.map((run) => run.wallMs);
-    const engine = selected.map((run) => run.engineDurationMs).filter((value): value is number => Number.isFinite(value));
+    const engine = selected
+      .map((run) => run.engineDurationMs)
+      .filter((value): value is number => Number.isFinite(value));
     return {
       count: selected.length,
       wallMedian: percentile(wall, 0.5),
@@ -648,6 +688,8 @@ const writeSummary = (output: string) => {
     idle: memory.find((row) => row.backend === backend && row.phase === 'idle'),
     peak: memory.find((row) => row.backend === backend && row.phase === 'peak'),
     settled: memory.find((row) => row.backend === backend && row.phase === 'settled'),
+    warmPeak: memory.find((row) => row.backend === backend && row.phase === 'warm_peak'),
+    warmSettled: memory.find((row) => row.backend === backend && row.phase === 'warm_settled'),
   });
   const latency = [0, 1, 5, 30].map((delayMs) => {
     const rows = runs.filter(
@@ -662,18 +704,21 @@ const writeSummary = (output: string) => {
     return {
       delayMs,
       count: rows.length,
-      wallMedian: percentile(rows.map((run) => run.wallMs), 0.5),
+      wallMedian: percentile(
+        rows.map((run) => run.wallMs),
+        0.5
+      ),
       engineMedian: percentile(
-        rows.map((run) => run.engineDurationMs).filter((value): value is number => Number.isFinite(value)),
+        rows
+          .map((run) => run.engineDurationMs)
+          .filter((value): value is number => Number.isFinite(value)),
         0.5
       ),
     };
   });
   const green = runs.filter((run) => run.scenario === 'A' && run.instrument);
   const drivers = Object.entries(
-    green.find((run) => run.backend === 'baseline')?.stepTypes ??
-      green[0]?.stepTypes ??
-      {}
+    green.find((run) => run.backend === 'baseline')?.stepTypes ?? green[0]?.stepTypes ?? {}
   )
     .sort((left, right) => right[1].durationMs - left[1].durationMs)
     .slice(0, 3);
@@ -721,35 +766,86 @@ const renderSummary = (summary: {
   headline: string;
   endToEnd: { A: Record<string, string>; B: Record<string, string> };
   startup: Array<{ backend: string; instrument: boolean; readyMs: number; loadavg: number[] }>;
-  idleWorker?: { samples?: Array<{ ready: number; requested: number; memory: { rss: number; usage: { rss: number; heapUsed: number } } }> };
+  idleWorker?: {
+    samples?: Array<{
+      ready: number;
+      requested: number;
+      memory: { rss: number; usage: { rss: number; heapUsed: number } };
+    }>;
+  };
   memory: Array<{
     backend: string;
-    idle?: { combinedRss: number; combinedHeap: number };
+    idle?: {
+      combinedRss: number;
+      combinedHeap: number;
+      processes?: Array<{ argv?: string[]; memory: { rss: number; heapUsed: number } }>;
+    };
     peak?: { combinedRss: number; combinedHeap: number };
-    settled?: { combinedRss: number; combinedHeap: number };
+    settled?: {
+      combinedRss: number;
+      combinedHeap: number;
+      processes?: Array<{ argv?: string[]; memory: { rss: number; heapUsed: number } }>;
+    };
+    warmPeak?: { combinedRss: number; combinedHeap: number };
+    warmSettled?: {
+      combinedRss: number;
+      combinedHeap: number;
+      processes?: Array<{ argv?: string[]; memory: { rss: number; heapUsed: number } }>;
+    };
   }>;
   duration: Array<{
     backend: string;
     cold: { count: number; wallMedian: number | null; engineMedian: number | null };
-    warm: { count: number; wallMedian: number | null; wallP95: number | null; engineMedian: number | null; engineP95: number | null };
+    warm: {
+      count: number;
+      wallMedian: number | null;
+      wallP95: number | null;
+      engineMedian: number | null;
+      engineP95: number | null;
+    };
   }>;
-  latency: Array<{ delayMs: number; count: number; wallMedian: number | null; engineMedian: number | null }>;
+  latency: Array<{
+    delayMs: number;
+    count: number;
+    wallMedian: number | null;
+    engineMedian: number | null;
+  }>;
   topStepDrivers: Array<[string, { count: number; durationMs: number }]>;
   runs: RunRecord[];
 }): string => {
   const mib = (bytes?: number) => (bytes == null ? '' : (bytes / 1024 / 1024).toFixed(0));
-  const ms = (value: number | null | undefined) => (value == null ? '' : Math.round(value).toString());
+  const ms = (value: number | null | undefined) =>
+    value == null ? '' : Math.round(value).toString();
   const startupLine = (backend: string) => {
     const row = summary.startup.find((entry) => entry.backend === backend && entry.instrument);
-    return row ? `${row.readyMs} ms (load ${row.loadavg.map((value) => value.toFixed(2)).join(' ')})` : '';
+    return row
+      ? `${row.readyMs} ms (load ${row.loadavg.map((value) => value.toFixed(2)).join(' ')})`
+      : '';
   };
-  const mem = (backend: string, phase: 'idle' | 'peak' | 'settled') => {
+  const mem = (
+    backend: string,
+    phase: 'idle' | 'peak' | 'settled' | 'warmPeak' | 'warmSettled'
+  ) => {
     const row = summary.memory.find((entry) => entry.backend === backend)?.[phase];
     return row ? `${mib(row.combinedRss)} / ${mib(row.combinedHeap)}` : '';
   };
+  const workerOnlyMem = (phase: 'idle' | 'settled' | 'warmSettled') => {
+    const row = summary.memory.find((entry) => entry.backend === 'child_process')?.[phase];
+    const workers = row?.processes?.filter((proc) =>
+      proc.argv?.some((arg) => arg.endsWith('graph.mjs'))
+    );
+    if (!workers?.length) return '';
+    const rss = workers.reduce((total, proc) => total + proc.memory.rss, 0);
+    const heap = workers.reduce((total, proc) => total + proc.memory.heapUsed, 0);
+    return `${mib(rss)} / ${mib(heap)} MiB (${workers.length} worker${
+      workers.length === 1 ? '' : 's'
+    })`;
+  };
   const dur = (backend: string) => summary.duration.find((entry) => entry.backend === backend);
   const instrumented = (backend: string) =>
-    summary.runs.filter((run) => run.scenario === 'A' && run.instrument && run.backend === backend).at(-1);
+    summary.runs
+      .filter((run) => run.scenario === 'A' && run.instrument && run.backend === backend)
+      .at(-1);
   const delta = (field: 'wallMedian' | 'engineMedian', warm: boolean) => {
     const base = dur('baseline');
     const worker = dur('child_process');
@@ -769,14 +865,20 @@ ${summary.headline} CPU count ${cpus().length}. The earlier idle-worker referenc
 
 | Scenario | runner off | in_process | worker |
 | --- | --- | --- | --- |
-| A kitchen sink | ${summary.endToEnd.A.baseline} | ${summary.endToEnd.A.in_process} | ${summary.endToEnd.A.child_process} |
-| B Nightshift trigger → investigation → sendNotifications | ${summary.endToEnd.B.baseline} | ${summary.endToEnd.B.in_process} | ${summary.endToEnd.B.child_process} |
+| A kitchen sink | ${summary.endToEnd.A.baseline} | ${summary.endToEnd.A.in_process} | ${
+    summary.endToEnd.A.child_process
+  } |
+| B Nightshift trigger → investigation → sendNotifications | ${summary.endToEnd.B.baseline} | ${
+    summary.endToEnd.B.in_process
+  } | ${summary.endToEnd.B.child_process} |
 
 ## Startup
 
 | | runner off | in_process | worker |
 | --- | --- | --- | --- |
-| Kibana boot to available | ${startupLine('baseline')} | ${startupLine('in_process')} | ${startupLine('child_process')} |
+| Kibana boot to available | ${startupLine('baseline')} | ${startupLine(
+    'in_process'
+  )} | ${startupLine('child_process')} |
 
 Idle worker spawn-to-ready (bundled graph, no Kibana): ${
     idleReady.length
@@ -795,9 +897,32 @@ First dispatch to first step (instrumented cold run): ${summary.runs
 
 | | runner off | in_process | worker |
 | --- | --- | --- | --- |
-| Idle after boot | ${mem('baseline', 'idle')} | ${mem('in_process', 'idle')} | ${mem('child_process', 'idle')} |
-| Peak during scenario A | ${mem('baseline', 'peak')} | ${mem('in_process', 'peak')} | ${mem('child_process', 'peak')} |
-| Settled after scenario A | ${mem('baseline', 'settled')} | ${mem('in_process', 'settled')} | ${mem('child_process', 'settled')} |
+| Idle after boot | ${mem('baseline', 'idle')} | ${mem('in_process', 'idle')} | ${mem(
+    'child_process',
+    'idle'
+  )} |
+| Peak during scenario A | ${mem('baseline', 'peak')} | ${mem('in_process', 'peak')} | ${mem(
+    'child_process',
+    'peak'
+  )} |
+| Settled after scenario A | ${mem('baseline', 'settled')} | ${mem(
+    'in_process',
+    'settled'
+  )} | ${mem('child_process', 'settled')} |
+| Peak during 3 warm runs | ${mem('baseline', 'warmPeak')} | ${mem(
+    'in_process',
+    'warmPeak'
+  )} | ${mem('child_process', 'warmPeak')} |
+| Settled after 3 warm runs | ${mem('baseline', 'warmSettled')} | ${mem(
+    'in_process',
+    'warmSettled'
+  )} | ${mem('child_process', 'warmSettled')} |
+
+Worker process only (graph.mjs, RSS / heapUsed): idle ${workerOnlyMem(
+    'idle'
+  )}; settled after cold ${workerOnlyMem('settled')}; settled after 3 warm runs ${workerOnlyMem(
+    'warmSettled'
+  )}.
 
 ## Duration
 
@@ -805,9 +930,21 @@ Uninstrumented wall-clock median. Cold is the first run after boot. Warm is the 
 
 | | runner off | in_process | worker | worker − off |
 | --- | --- | --- | --- | --- |
-| Cold wall ms | ${ms(dur('baseline')?.cold.wallMedian)} | ${ms(dur('in_process')?.cold.wallMedian)} | ${ms(dur('child_process')?.cold.wallMedian)} | ${delta('wallMedian', false)} |
-| Warm wall ms | ${ms(dur('baseline')?.warm.wallMedian)} (${ms(dur('baseline')?.warm.wallP95)}) | ${ms(dur('in_process')?.warm.wallMedian)} (${ms(dur('in_process')?.warm.wallP95)}) | ${ms(dur('child_process')?.warm.wallMedian)} (${ms(dur('child_process')?.warm.wallP95)}) | ${delta('wallMedian', true)} |
-| Warm engine ms | ${ms(dur('baseline')?.warm.engineMedian)} (${ms(dur('baseline')?.warm.engineP95)}) | ${ms(dur('in_process')?.warm.engineMedian)} (${ms(dur('in_process')?.warm.engineP95)}) | ${ms(dur('child_process')?.warm.engineMedian)} (${ms(dur('child_process')?.warm.engineP95)}) | ${delta('engineMedian', true)} |
+| Cold wall ms | ${ms(dur('baseline')?.cold.wallMedian)} | ${ms(
+    dur('in_process')?.cold.wallMedian
+  )} | ${ms(dur('child_process')?.cold.wallMedian)} | ${delta('wallMedian', false)} |
+| Warm wall ms | ${ms(dur('baseline')?.warm.wallMedian)} (${ms(
+    dur('baseline')?.warm.wallP95
+  )}) | ${ms(dur('in_process')?.warm.wallMedian)} (${ms(dur('in_process')?.warm.wallP95)}) | ${ms(
+    dur('child_process')?.warm.wallMedian
+  )} (${ms(dur('child_process')?.warm.wallP95)}) | ${delta('wallMedian', true)} |
+| Warm engine ms | ${ms(dur('baseline')?.warm.engineMedian)} (${ms(
+    dur('baseline')?.warm.engineP95
+  )}) | ${ms(dur('in_process')?.warm.engineMedian)} (${ms(
+    dur('in_process')?.warm.engineP95
+  )}) | ${ms(dur('child_process')?.warm.engineMedian)} (${ms(
+    dur('child_process')?.warm.engineP95
+  )}) | ${delta('engineMedian', true)} |
 
 ## Coordinator callbacks (instrumented scenario A)
 
@@ -815,8 +952,12 @@ Count is remote seam requests other than \`WorkflowExecutor.run\`. Time is the s
 
 | | runner off | in_process | worker |
 | --- | --- | --- | --- |
-| Callbacks | ${instrumented('baseline')?.callbackCount ?? ''} | ${instrumented('in_process')?.callbackCount ?? ''} | ${instrumented('child_process')?.callbackCount ?? ''} |
-| Callback time ms | ${ms(instrumented('baseline')?.callbackDurationMs)} | ${ms(instrumented('in_process')?.callbackDurationMs)} | ${ms(instrumented('child_process')?.callbackDurationMs)} |
+| Callbacks | ${instrumented('baseline')?.callbackCount ?? ''} | ${
+    instrumented('in_process')?.callbackCount ?? ''
+  } | ${instrumented('child_process')?.callbackCount ?? ''} |
+| Callback time ms | ${ms(instrumented('baseline')?.callbackDurationMs)} | ${ms(
+    instrumented('in_process')?.callbackDurationMs
+  )} | ${ms(instrumented('child_process')?.callbackDurationMs)} |
 
 ## Latency curve (worker, warm scenario A)
 
@@ -840,7 +981,9 @@ ${
     ? summary.topStepDrivers
         .map(
           ([type, stats], index) =>
-            `${index + 1}. \`${type}\` — ${stats.count} executions, ${Math.round(stats.durationMs)} ms`
+            `${index + 1}. \`${type}\` — ${stats.count} executions, ${Math.round(
+              stats.durationMs
+            )} ms`
         )
         .join('\n')
     : 'Not measured yet.'
@@ -851,7 +994,12 @@ ${
 ${
   broken.length
     ? broken
-        .map((run) => `- ${run.scenario} ${run.backend} delay ${run.delayMs}: ${run.status}${run.note ? ` (${run.note})` : ''}`)
+        .map(
+          (run) =>
+            `- ${run.scenario} ${run.backend} delay ${run.delayMs}: ${run.status}${
+              run.note ? ` (${run.note})` : ''
+            }`
+        )
         .join('\n')
     : 'No failed runs recorded in the files written so far.'
 }
@@ -879,14 +1027,16 @@ const installWorkflows = async (id: string, endpoint: string) => {
   return { id, childId };
 };
 
-const recordRun = (
-  output: string,
-  run: RunRecord
-) => {
+const recordRun = (output: string, run: RunRecord) => {
   appendFileSync(join(output, 'runs.jsonl'), `${JSON.stringify(run)}\n`);
 };
 
-const combinedDuring = async (directory: string, coordinatorPid: number, from: number, to: number) => {
+const combinedDuring = async (
+  directory: string,
+  coordinatorPid: number,
+  from: number,
+  to: number
+) => {
   const files = readdirSync(directory).filter((file) => /^process-\d+\.jsonl$/.test(file));
   const latest = new Map<string, { rss: number; heap: number }>();
   for (const file of files) {
@@ -899,7 +1049,10 @@ const combinedDuring = async (directory: string, coordinatorPid: number, from: n
       if (sample.at < from || sample.at > to) continue;
       if (sample.pid !== coordinatorPid && sample.ppid !== coordinatorPid) continue;
       const bucket = Math.floor(sample.at / 500);
-      latest.set(`${bucket}:${sample.pid}`, { rss: sample.memory.rss, heap: sample.memory.heapUsed });
+      latest.set(`${bucket}:${sample.pid}`, {
+        rss: sample.memory.rss,
+        heap: sample.memory.heapUsed,
+      });
     }
   }
   const buckets = new Map<number, { rss: number; heap: number }>();
@@ -933,7 +1086,12 @@ export const runBigWorkflowMeasurements = async (): Promise<void> => {
     mkdirSync(output, { recursive: true });
   } else mkdirSync(output, { recursive: true });
   await api(`${es}/_cluster/health`);
-  note(output, `phase ${phase} starting; load ${loadavg().map((value) => value.toFixed(2)).join(' ')}`);
+  note(
+    output,
+    `phase ${phase} starting; load ${loadavg()
+      .map((value) => value.toFixed(2))
+      .join(' ')}`
+  );
   const bundleDirectory = join(output, 'bundles');
   if (!existsSync(join(output, 'bundle.json'))) {
     const bundle = await buildRemoteBundle({
@@ -963,7 +1121,10 @@ export const runBigWorkflowMeasurements = async (): Promise<void> => {
     const idleProbe = join(output, 'idle-probe.cjs');
     await build({
       entryPoints: [
-        resolve(__dirname, '../../core/packages/remote/server-internal/src/__fixtures__/probe_bundle.ts'),
+        resolve(
+          __dirname,
+          '../../core/packages/remote/server-internal/src/__fixtures__/probe_bundle.ts'
+        ),
       ],
       bundle: true,
       platform: 'node',
@@ -980,7 +1141,9 @@ export const runBigWorkflowMeasurements = async (): Promise<void> => {
     note(
       output,
       `idle worker ready ${idle.samples
-        .map((sample: { ready: number; requested: number }) => Math.round(sample.ready - sample.requested))
+        .map((sample: { ready: number; requested: number }) =>
+          Math.round(sample.ready - sample.requested)
+        )
         .join('/')} ms`
     );
   }
@@ -991,7 +1154,8 @@ export const runBigWorkflowMeasurements = async (): Promise<void> => {
   const endpoint = `big-workflow-${Date.now()}`;
   let endpointCreated = false;
   let child: ChildProcess | undefined;
-  const phases = phase === 'all' ? (['green', 'duration', 'latency', 'nightshift'] as const) : [phase];
+  const phases =
+    phase === 'all' ? (['green', 'duration', 'latency', 'nightshift'] as const) : [phase];
   try {
     await api(
       `${es}/_inference/chat_completion/${endpoint}`,
@@ -1009,7 +1173,11 @@ export const runBigWorkflowMeasurements = async (): Promise<void> => {
     if (phases.includes('nightshift')) {
       const model = defaultInferenceEndpoints.ANTHROPIC_CLAUDE_5_5_SONNET;
       const existing = await fetch(`${es}/_inference/${model}`, { headers });
-      assert.equal(existing.status, 404, 'Refusing to shadow a real Nightshift default inference endpoint');
+      assert.equal(
+        existing.status,
+        404,
+        'Refusing to shadow a real Nightshift default inference endpoint'
+      );
     }
     await seedAlerts();
     const done = new Set(
@@ -1038,7 +1206,13 @@ export const runBigWorkflowMeasurements = async (): Promise<void> => {
           child = boot.child;
           appendFileSync(
             join(output, 'startup.jsonl'),
-            `${JSON.stringify({ backend, instrument: true, readyMs: boot.readyMs, label, machine: machine() })}\n`
+            `${JSON.stringify({
+              backend,
+              instrument: true,
+              readyMs: boot.readyMs,
+              label,
+              machine: machine(),
+            })}\n`
           );
           const id = `big-workflow-${backendSlug(backend)}-${Date.now()}`;
           const installed = await installWorkflows(id, endpoint);
@@ -1060,7 +1234,11 @@ export const runBigWorkflowMeasurements = async (): Promise<void> => {
               execution: result.execution,
               steps: result.steps,
             });
-            assert.equal(result.execution.status, 'completed', JSON.stringify(result.execution.error));
+            assert.equal(
+              result.execution.status,
+              'completed',
+              JSON.stringify(result.execution.error)
+            );
             assert(result.steps.length >= 150, `Expected >=150 steps, got ${result.steps.length}`);
             assert.equal(result.genericInvocations, 0);
             const confirmations = lines<{ body?: { text?: string }; fail?: boolean }>(
@@ -1082,7 +1260,13 @@ export const runBigWorkflowMeasurements = async (): Promise<void> => {
             const settled = await memorySnapshot(boot.directory, child.pid!);
             appendFileSync(
               join(output, 'memory.jsonl'),
-              `${JSON.stringify({ backend, phase: 'settled', label, ...settled, machine: machine() })}\n`
+              `${JSON.stringify({
+                backend,
+                phase: 'settled',
+                label,
+                ...settled,
+                machine: machine(),
+              })}\n`
             );
             const record: RunRecord = {
               scenario: 'A',
@@ -1096,7 +1280,10 @@ export const runBigWorkflowMeasurements = async (): Promise<void> => {
               stepCount: result.steps.length,
               stepTypes: stepBreakdown(result.steps),
               callbacks: result.callbacks,
-              callbackCount: Object.values(result.callbacks).reduce((total, count) => total + count, 0),
+              callbackCount: Object.values(result.callbacks).reduce(
+                (total, count) => total + count,
+                0
+              ),
               callbackDurationMs: result.callbackDurationMs,
               genericInvocations: result.genericInvocations,
               pids: result.pids,
@@ -1108,7 +1295,55 @@ export const runBigWorkflowMeasurements = async (): Promise<void> => {
             };
             save(join(boot.directory, `${result.executionId}-steps.json`), result.steps);
             recordRun(output, record);
-            note(output, `${label} completed steps=${result.steps.length} wall=${Math.round(result.wallMs)}ms`);
+            note(
+              output,
+              `${label} completed steps=${result.steps.length} wall=${Math.round(result.wallMs)}ms`
+            );
+            const warmBefore = Date.now();
+            for (let warmIndex = 0; warmIndex < 3; warmIndex++) {
+              const warmResult = await runWorkflow({
+                directory: boot.directory,
+                workflowId: installed.id,
+                coordinatorPid: child.pid!,
+                instrument: true,
+                attempts: 2400,
+              });
+              assert.equal(
+                warmResult.execution.status,
+                'completed',
+                JSON.stringify(warmResult.execution.error)
+              );
+              assert.equal(warmResult.genericInvocations, 0);
+            }
+            const warmAfter = Date.now();
+            const warmPeak = await combinedDuring(
+              boot.directory,
+              child.pid!,
+              warmBefore,
+              warmAfter
+            );
+            appendFileSync(
+              join(output, 'memory.jsonl'),
+              `${JSON.stringify({
+                backend,
+                phase: 'warm_peak',
+                label,
+                ...warmPeak,
+                machine: machine(),
+              })}\n`
+            );
+            const warmSettled = await memorySnapshot(boot.directory, child.pid!);
+            appendFileSync(
+              join(output, 'memory.jsonl'),
+              `${JSON.stringify({
+                backend,
+                phase: 'warm_settled',
+                label,
+                ...warmSettled,
+                machine: machine(),
+              })}\n`
+            );
+            note(output, `${label} warm memory plateau sampled`);
           }
           if (current === 'nightshift') {
             const nightId = `big-nightshift-${backendSlug(backend)}-${Date.now()}`;
@@ -1127,9 +1362,8 @@ export const runBigWorkflowMeasurements = async (): Promise<void> => {
             let extra = '';
             if (status === 'completed') {
               try {
-                const conversation = result.steps.find((step) => step.stepId === 'persist')?.output as
-                  | { _id?: string }
-                  | undefined;
+                const conversation = result.steps.find((step) => step.stepId === 'persist')
+                  ?.output as { _id?: string } | undefined;
                 const outcome = await api<{ _source: { conversationId?: string } }>(
                   `${es}/lane-b-quiet-outcomes/_doc/${conversation?._id}`
                 );
@@ -1143,13 +1377,16 @@ export const runBigWorkflowMeasurements = async (): Promise<void> => {
                 const investigation = await waitForExecution(childId, 1800);
                 if (!['completed', 'failed'].includes(investigation.status)) {
                   status = 'deadlocked';
-                  extra = 'scheduled investigation child did not finish; dropped from the passing claim';
+                  extra =
+                    'scheduled investigation child did not finish; dropped from the passing claim';
                 } else {
                   assert.equal(investigation.status, 'completed');
                   const childSteps = await readSteps(childId);
                   assert(
                     childSteps.some(
-                      (step) => step.stepType === 'nightshift.sendNotifications' && step.status === 'completed'
+                      (step) =>
+                        step.stepType === 'nightshift.sendNotifications' &&
+                        step.status === 'completed'
                     )
                   );
                 }
@@ -1173,7 +1410,10 @@ export const runBigWorkflowMeasurements = async (): Promise<void> => {
               stepCount: result.steps.length,
               stepTypes: stepBreakdown(result.steps),
               callbacks: result.callbacks,
-              callbackCount: Object.values(result.callbacks).reduce((total, count) => total + count, 0),
+              callbackCount: Object.values(result.callbacks).reduce(
+                (total, count) => total + count,
+                0
+              ),
               callbackDurationMs: result.callbackDurationMs,
               genericInvocations: result.genericInvocations,
               pids: result.pids,
@@ -1226,7 +1466,13 @@ export const runBigWorkflowMeasurements = async (): Promise<void> => {
           child = boot.child;
           appendFileSync(
             join(output, 'startup.jsonl'),
-            `${JSON.stringify({ backend: cell.backend, instrument: false, readyMs: boot.readyMs, delayMs: cell.delayMs, machine: machine() })}\n`
+            `${JSON.stringify({
+              backend: cell.backend,
+              instrument: false,
+              readyMs: boot.readyMs,
+              delayMs: cell.delayMs,
+              machine: machine(),
+            })}\n`
           );
           const installed = await installWorkflows(
             `big-workflow-${backendSlug(cell.backend)}-${cell.delayMs}-${Date.now()}`,
@@ -1242,7 +1488,11 @@ export const runBigWorkflowMeasurements = async (): Promise<void> => {
               instrument: false,
               attempts: 2400,
             });
-            assert.equal(result.execution.status, 'completed', JSON.stringify(result.execution.error));
+            assert.equal(
+              result.execution.status,
+              'completed',
+              JSON.stringify(result.execution.error)
+            );
             recordRun(output, {
               scenario: 'A',
               backend: cell.backend,
@@ -1265,7 +1515,9 @@ export const runBigWorkflowMeasurements = async (): Promise<void> => {
             });
             note(
               output,
-              `${label} ${cold ? 'cold' : 'warm'} wall=${Math.round(result.wallMs)}ms engine=${result.execution.duration}`
+              `${label} ${cold ? 'cold' : 'warm'} wall=${Math.round(result.wallMs)}ms engine=${
+                result.execution.duration
+              }`
             );
           }
           await stop(child);
@@ -1284,6 +1536,8 @@ export const runBigWorkflowMeasurements = async (): Promise<void> => {
     inference.closeAllConnections();
     await new Promise<void>((done) => inference.close(() => done()));
     if (endpointCreated)
-      await api(`${es}/_inference/${endpoint}?force=true`, undefined, 'DELETE').catch(() => undefined);
+      await api(`${es}/_inference/${endpoint}?force=true`, undefined, 'DELETE').catch(
+        () => undefined
+      );
   }
 };
