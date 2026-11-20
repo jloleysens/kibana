@@ -89,3 +89,23 @@ it('uses the original bounded transient retry before reporting payload-free fail
     jest.useRealTimers();
   }
 });
+
+it('resolves the active run client again when a reused host flushes another run', async () => {
+  const first = elasticsearchServiceMock.createElasticsearchClient();
+  const second = elasticsearchServiceMock.createElasticsearchClient();
+  const internal = jest.fn().mockReturnValueOnce(first).mockReturnValueOnce(second);
+  const { control } = setup();
+  const data: WorkflowDataPlaneApi = {
+    open: jest.fn(),
+    close: jest.fn(),
+    internal,
+    user: () => second,
+  };
+  const log = new ExecutorLog(data, control);
+  const event = { '@timestamp': '2026-11-20T00:00:00Z', message: 'run-local client' };
+  await log.write([event]);
+  await log.write([event]);
+  expect(first.bulk).toHaveBeenCalledTimes(1);
+  expect(second.bulk).toHaveBeenCalledTimes(1);
+  expect(control.initializeLogs).toHaveBeenCalledTimes(1);
+});

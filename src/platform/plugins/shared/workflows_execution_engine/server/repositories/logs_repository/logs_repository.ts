@@ -12,8 +12,8 @@ import type { Logger } from '@kbn/core/server';
 import type { DataStreamsStart } from '@kbn/core-data-streams-server';
 import type { ClientSearchRequest } from '@kbn/data-streams';
 import { createLogs } from './create_logs';
-import { retryTransientEsErrors } from '../../lib/retry_transient_es_errors';
 import { initializeDataStreamClient, type WorkflowLogEvent } from './data_stream';
+import { retryTransientEsErrors } from '../../lib/retry_transient_es_errors';
 
 export interface LogSearchResult {
   total: number;
