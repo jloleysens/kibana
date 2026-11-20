@@ -240,7 +240,7 @@ const execute = async (
     query: { term: { workflowRunId: workflowExecutionId } },
   });
   save(join(directory, `${workflowExecutionId}-steps.json`), result);
-  await api(es + '/.workflows-execution-data-stream-logs/_refresh', undefined, 'POST');
+  await delay(1500);
   const logs = await api<Search<object>>(es + '/.workflows-execution-data-stream-logs/_search', {
     size: 1000,
     query: { term: { 'workflow.execution_id': workflowExecutionId } },
@@ -366,7 +366,7 @@ const execute = async (
       const ownAttempts = original.attempts.filter(({ execution_id }) => execution_id === childId);
       assert.equal(ownAttempts.length, 2);
       assert(ownAttempts.every(({ status }) => status === 'sent'));
-      await api(es + '/.workflows-execution-data-stream-logs/_refresh', undefined, 'POST');
+      await delay(1500);
       const childLogs = await api<Search<object>>(
         es + '/.workflows-execution-data-stream-logs/_search',
         {
