@@ -24,6 +24,11 @@ export interface RemoteRunDefinitionFacts {
   readonly workflowVersion?: number;
   readonly metadata?: Readonly<Record<string, unknown>>;
   readonly parent?: { readonly workflowId: string; readonly executionId: string };
+  /**
+   * Coordinator copy of the persisted execution input that selects the
+   * attack-discovery index. Absent means ad-hoc. Workers cannot set it.
+   */
+  readonly attackDiscoveryPersistence?: 'scheduled';
 }
 
 export interface ScopeLookup {

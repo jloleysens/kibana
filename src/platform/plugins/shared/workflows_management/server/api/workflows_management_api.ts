@@ -18,7 +18,11 @@ import type {
 } from '@kbn/agent-builder-sml-plugin/server';
 import type { AlertingApiRequestHandlerContext } from '@kbn/alerting-plugin/server';
 import type { CustomRequestHandlerContext, KibanaRequest, Logger } from '@kbn/core/server';
-import { associateRemoteLeaseChild } from '@kbn/core-remote-server';
+import {
+  bindRemoteLeaseChild,
+  releaseRemoteLeaseReservation,
+  reserveRemoteLeaseChild,
+} from '@kbn/core-remote-server';
 import type { AccessControlInput } from '@kbn/entity-access-control';
 import { i18n } from '@kbn/i18n';
 import {
@@ -957,12 +961,19 @@ export class WorkflowsManagementApi {
       context.metadata = metadata;
     }
     const workflowsExecutionEngine = await this.getWorkflowsExecutionEngine();
-    const scheduleResponse = await workflowsExecutionEngine.scheduleWorkflow(
-      workflow,
-      context,
-      request
-    );
-    associateRemoteLeaseChild(scheduleResponse.workflowExecutionId);
+    const reservation = reserveRemoteLeaseChild();
+    let scheduleResponse: { workflowExecutionId: string };
+    try {
+      scheduleResponse = await workflowsExecutionEngine.scheduleWorkflow(
+        workflow,
+        context,
+        request
+      );
+    } catch (error) {
+      if (reservation) releaseRemoteLeaseReservation(reservation);
+      throw error;
+    }
+    if (reservation) bindRemoteLeaseChild(reservation, scheduleResponse.workflowExecutionId);
     return scheduleResponse.workflowExecutionId;
   }
 

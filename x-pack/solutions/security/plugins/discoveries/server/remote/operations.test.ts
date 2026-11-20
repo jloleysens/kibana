@@ -8,7 +8,13 @@
 import { MessageChannel } from 'node:worker_threads';
 import { of } from 'rxjs';
 import { expose, openPortSession } from '@kbn/core-remote-common';
-import type { ScopeLookup } from '@kbn/core-remote-server';
+import {
+  bindRemoteLeaseChild,
+  getRemoteLeaseParent,
+  registerRemoteLeaseParents,
+  reserveRemoteLeaseChild,
+  type ScopeLookup,
+} from '@kbn/core-remote-server';
 import { coreMock, elasticsearchServiceMock, httpServerMock } from '@kbn/core/server/mocks';
 import { loggerMock } from '@kbn/logging-mocks';
 import type { StepHandlerContext } from '@kbn/workflows-extensions/server';
@@ -92,7 +98,7 @@ const setup = () => {
       };
     },
     getAbortSignal: () => controller.signal,
-    getRunDefinitionFacts: jest.fn(),
+    getRunDefinitionFacts: jest.fn().mockReturnValue({}),
     resolveStepType: jest.fn(),
     resolveStepOutputLimit: jest.fn(),
     admitChild: jest.fn(),
@@ -640,6 +646,34 @@ it('keeps original persistence early returns local, including scheduled handover
   expect(persist).not.toHaveBeenCalled();
   expect(getStartServices).toHaveBeenCalledTimes(2); // Only the live guard, once per invocation.
 });
+it('chooses the scheduled index from coordinator run facts and ignores the worker source', async () => {
+  const { api, scopes } = setup();
+  jest.mocked(scopes.getRunDefinitionFacts).mockReturnValue({
+    attackDiscoveryPersistence: 'scheduled',
+  });
+  await expect(
+    api.persist('scope', {
+      ...input,
+      alerts_context_count: 1,
+      anonymized_alerts: [],
+      source: undefined,
+    })
+  ).resolves.toEqual({ duplicates_dropped_count: 0, validated_discoveries: [] });
+  expect(mockedValidateAttackDiscoveries).not.toHaveBeenCalled();
+
+  jest.mocked(scopes.getRunDefinitionFacts).mockReturnValue({});
+  mockedValidateAttackDiscoveries.mockResolvedValueOnce({
+    duplicates_dropped_count: 0,
+    validated_discoveries: [],
+  });
+  await api.persist('scope', {
+    ...input,
+    alerts_context_count: 1,
+    anonymized_alerts: [],
+    source: 'scheduled',
+  });
+  expect(mockedValidateAttackDiscoveries).toHaveBeenCalledTimes(1);
+});
 it('persists through the original scoped rule service with original user, space, and user-authored generation evidence', async () => {
   const { api, handlerContext, esClient, request, pluginsStart } = setup();
   handlerContext.input = {
@@ -729,6 +763,37 @@ it('shares original run defaults, configuration, omitted output fields and origi
       },
     })
   );
+});
+it('keeps the scheduled-child bridge for work scheduled after async launch returns', async () => {
+  const { api, handlerContext, scopes } = prepareRunFixture();
+  const signal = new AbortController().signal;
+  const reserved: string[] = [];
+  registerRemoteLeaseParents(scopes, () => ({
+    token: {},
+    signal,
+    reserveChild: () => {
+      reserved.push('slot');
+      return 'slot';
+    },
+    bindChild: (slot, childExecutionId) => {
+      reserved.push(`${slot}:${childExecutionId}`);
+    },
+  }));
+  handlerContext.input = { ...runInput, mode: 'async' };
+  const scheduled = Promise.withResolvers<void>();
+  mockedExecuteGenerationWorkflow.mockImplementation(async () => {
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(getRemoteLeaseParent()).toBeUndefined();
+    const slot = reserveRemoteLeaseChild();
+    expect(slot).toBe('slot');
+    if (!slot) throw new Error('Expected a reserved slot');
+    bindRemoteLeaseChild(slot, 'child-execution');
+    scheduled.resolve();
+    return noAlertsOutcome;
+  });
+  await new RunStep(api).run('scope', {}, { handlerContext });
+  await scheduled.promise;
+  expect(reserved).toEqual(['slot', 'slot:child-execution']);
 });
 it('keeps original async connector lookup failures inside the handler catch before launching', async () => {
   const { api, handlerContext, getConnector } = prepareRunFixture();

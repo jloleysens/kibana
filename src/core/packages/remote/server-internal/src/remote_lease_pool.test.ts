@@ -340,7 +340,12 @@ it('gives a synchronous nested run a distinct bounded host without releasing its
   for (let index = 0; index < 12; index++) {
     const child = await pool.acquire('settings', undefined, {
       runId: `child-${index}`,
-      parent: { token: parent.parentToken, runId: 'parent', isActive: () => true },
+      parent: {
+        token: parent.parentToken,
+        runId: 'parent',
+        signal: new AbortController().signal,
+        isActive: () => true,
+      },
     });
     expect(child.value).not.toBe(parent.value);
     await child.release();
@@ -369,12 +374,22 @@ it('fails immediately with parent/child names when the nesting allowance is exha
   const parent = await pool.acquire('', undefined, { runId: 'parent' });
   const child = await pool.acquire('', undefined, {
     runId: 'child',
-    parent: { token: parent.parentToken, runId: 'parent', isActive: () => true },
+    parent: {
+      token: parent.parentToken,
+      runId: 'parent',
+      signal: new AbortController().signal,
+      isActive: () => true,
+    },
   });
   await expect(
     pool.acquire('', undefined, {
       runId: 'grandchild',
-      parent: { token: child.parentToken, runId: 'child', isActive: () => true },
+      parent: {
+        token: child.parentToken,
+        runId: 'child',
+        signal: new AbortController().signal,
+        isActive: () => true,
+      },
     })
   ).rejects.toThrow(
     'nested run "grandchild" while parent run "child" holds a lease: nesting allowance (1) exhausted'
@@ -398,6 +413,7 @@ it.each(['foreign', 'inactive', 'released'] as const)(
       parent: {
         token: kind === 'foreign' ? {} : first.parentToken,
         runId: 'first',
+        signal: new AbortController().signal,
         isActive: () => kind !== 'inactive',
       },
     });
@@ -416,7 +432,12 @@ it('consumes coordinator-associated scheduled children once and clears reservati
   try {
     for (let index = 0; index < 12; index++) {
       const parent = await pool.acquire('', undefined, { runId: 'parent' });
-      const ancestry = { token: parent.parentToken, runId: 'parent', isActive: () => true };
+      const ancestry = {
+        token: parent.parentToken,
+        runId: 'parent',
+        signal: new AbortController().signal,
+        isActive: () => true,
+      };
       pool.associateScheduledChild('scheduled-child', ancestry);
       expect(Reflect.get(pool, 'scheduledParents').size).toBe(1);
       const child = await pool.acquire('', undefined, { runId: 'scheduled-child' });
@@ -443,9 +464,12 @@ it.each(['unknown', 'forged', 'released', 'inactive'] as const)(
   async (kind) => {
     const { pool, create } = setup({ maxAgeMs: 1000, maxRuns: 100 });
     const parent = await pool.acquire('', undefined, { runId: 'parent' });
+    const inactive = new AbortController();
+    if (kind === 'inactive') inactive.abort();
     const ancestry = {
       token: kind === 'forged' ? {} : parent.parentToken,
       runId: 'parent',
+      signal: inactive.signal,
       isActive: () => kind !== 'inactive',
     };
     pool.associateScheduledChild('scheduled-child', ancestry);
@@ -467,6 +491,45 @@ it.each(['unknown', 'forged', 'released', 'inactive'] as const)(
     }
   }
 );
+it('clears a grandchild reservation when the nested lease is released', async () => {
+  const create = jest.fn(async () => ({ value: {}, close: async () => {}, alive: () => true }));
+  const pool = new RemoteLeasePool(
+    create,
+    { maxAgeMs: 1000, maxRuns: 100 },
+    Date.now,
+    'workflow',
+    2
+  );
+  const parent = await pool.acquire('', undefined, { runId: 'parent' });
+  const parentSignal = new AbortController().signal;
+  const parentAncestry = {
+    token: parent.parentToken,
+    runId: 'parent',
+    signal: parentSignal,
+    isActive: () => true,
+  };
+  const child = await pool.acquire('', undefined, { runId: 'child', parent: parentAncestry });
+  pool.associateScheduledChild('grandchild', {
+    token: child.parentToken,
+    runId: 'child',
+    signal: new AbortController().signal,
+    isActive: () => true,
+  });
+  expect(Reflect.get(pool, 'scheduledParents').size).toBe(1);
+  try {
+    await child.release();
+    expect(Reflect.get(pool, 'scheduledParents').size).toBe(0);
+    pool.associateScheduledChild('next-a', parentAncestry);
+    pool.associateScheduledChild('next-b', parentAncestry);
+    expect(() => pool.associateScheduledChild('next-c', parentAncestry)).toThrow(
+      'nesting allowance (2) exhausted'
+    );
+  } finally {
+    await parent.release();
+    await pool.stop();
+  }
+});
+
 it('counts scheduled reservations and live nested hosts against the same existing nesting allowance', async () => {
   const create = jest.fn(async () => ({ value: {}, close: async () => {}, alive: () => true }));
   const pool = new RemoteLeasePool(
@@ -477,7 +540,12 @@ it('counts scheduled reservations and live nested hosts against the same existin
     1
   );
   const parent = await pool.acquire('', undefined, { runId: 'parent' });
-  const ancestry = { token: parent.parentToken, runId: 'parent', isActive: () => true };
+  const ancestry = {
+    token: parent.parentToken,
+    runId: 'parent',
+    signal: new AbortController().signal,
+    isActive: () => true,
+  };
   try {
     pool.associateScheduledChild('scheduled-child', ancestry);
     expect(() => pool.associateScheduledChild('extra-child', ancestry)).toThrow(

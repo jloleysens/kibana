@@ -7,7 +7,12 @@
 
 import { randomUUID } from 'node:crypto';
 import type { CoreStart, KibanaRequest, Logger } from '@kbn/core/server';
-import { withRemoteLeaseParent, type ScopeLookup } from '@kbn/core-remote-server';
+import {
+  captureRemoteLeaseParent,
+  runWithCapturedLeaseParent,
+  withRemoteLeaseParent,
+  type ScopeLookup,
+} from '@kbn/core-remote-server';
 import { remotable, recordRemoteTiming } from '@kbn/core-remote-common';
 import { isWorkflowsEnabled } from '@kbn/discoveries/impl/lib/helpers/is_workflows_enabled';
 import type { DiscoveriesPluginStartDeps } from '../types';
@@ -110,8 +115,13 @@ export class AttackDiscoveryOperations implements AttackDiscoveryOperationsApi {
         workflowConfig: input.workflowConfig,
       };
       if (mode === 'async') {
+        const binding = captureRemoteLeaseParent(this.scopes, scopeId);
         await withRemoteLeaseParent(this.scopes, scopeId, () =>
-          state.prepared.launch(params, state.release)
+          state.prepared.launch(
+            params,
+            state.release,
+            binding ? (work) => runWithCapturedLeaseParent(binding, work) : undefined
+          )
         );
         return;
       }
@@ -150,6 +160,10 @@ export class AttackDiscoveryOperations implements AttackDiscoveryOperationsApi {
       const { coreStart } = await this.dependencies.getStartServices();
       if (!(await isWorkflowsEnabled(coreStart.featureFlags)))
         throw new Error('Attack Discovery workflows are not enabled');
+      const facts = this.scopes.getRunDefinitionFacts(scopeId);
+      if (facts.attackDiscoveryPersistence === 'scheduled') {
+        return { duplicates_dropped_count: 0, validated_discoveries: [] };
+      }
       const { adhocAttackDiscoveryDataClient } = this.dependencies;
       if (!adhocAttackDiscoveryDataClient)
         throw new Error('Attack discovery rule data client is unavailable');
@@ -164,7 +178,6 @@ export class AttackDiscoveryOperations implements AttackDiscoveryOperationsApi {
           generation_source: input.generation_source,
           generation_uuid: input.generation_uuid,
           replacements: input.replacements,
-          source: input.source,
           with_replacements: input.with_replacements,
         },
         this.scopes.get<KibanaRequest>(scopeId),

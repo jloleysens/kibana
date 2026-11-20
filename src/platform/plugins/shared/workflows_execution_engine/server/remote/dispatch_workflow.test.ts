@@ -69,6 +69,7 @@ it('leases by non-secret settings and releases all state after success', async (
   expect(await dispatchWorkflow(params)).toEqual({ status: 'completed' });
   expect(params.remote.lease).toHaveBeenCalledWith('workflows', {
     settingsKey: JSON.stringify(params.facts),
+    runId: 'run-1',
     signal: params.signal,
   });
   expect(lease.openScope).toHaveBeenCalledWith(
@@ -178,6 +179,27 @@ it('captures original persisted provenance and ancestry only in coordinator scop
   for (const field of ['metadata', 'parent', 'workflowVersion']) {
     expect(lease.stub.run.mock.calls[0]).not.toHaveProperty(`0.${field}`);
   }
+});
+
+it('stamps scheduled attack-discovery persistence from persisted execution inputs only', async () => {
+  const { lease, params } = setup();
+  const execution =
+    await params.repositories.workflowExecutionRepository.getWorkflowExecutionById();
+  params.repositories.workflowExecutionRepository.getWorkflowExecutionById.mockResolvedValue({
+    ...execution,
+    context: { inputs: { source: 'scheduled', forged: true } },
+  });
+  await dispatchWorkflow(params);
+  expect(lease.openScope.mock.calls[0][4]).toEqual(
+    expect.objectContaining({ attackDiscoveryPersistence: 'scheduled' })
+  );
+
+  params.repositories.workflowExecutionRepository.getWorkflowExecutionById.mockResolvedValue({
+    ...execution,
+    context: { inputs: { source: 'manual' } },
+  });
+  await dispatchWorkflow(params);
+  expect(lease.openScope.mock.calls[1][4]).not.toHaveProperty('attackDiscoveryPersistence');
 });
 
 it('retains original legacy metadata fallback and omits invalid workflow versions', async () => {

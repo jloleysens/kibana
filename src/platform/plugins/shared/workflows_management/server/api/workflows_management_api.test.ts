@@ -11,7 +11,11 @@ import { WORKFLOW_KI_TYPE } from '@kbn/agent-builder-elastic-ai-index-ki-types';
 import type { KibanaRequest, Logger } from '@kbn/core/server';
 import { coreMock, loggingSystemMock, securityServiceMock } from '@kbn/core/server/mocks';
 import { httpServerMock } from '@kbn/core-http-server-mocks';
-import { associateRemoteLeaseChild } from '@kbn/core-remote-server';
+import {
+  bindRemoteLeaseChild,
+  releaseRemoteLeaseReservation,
+  reserveRemoteLeaseChild,
+} from '@kbn/core-remote-server';
 import { securityMock } from '@kbn/security-plugin/server/mocks';
 import {
   ExecutionStatus,
@@ -42,7 +46,12 @@ import type { WorkflowsService } from './workflows_management_service';
 import { WorkflowAccessControlService } from '../services/workflow_access_control';
 import { WorkflowAccessDeniedError } from '../services/workflow_access_denied_error';
 
-jest.mock('@kbn/core-remote-server', () => ({ associateRemoteLeaseChild: jest.fn() }));
+jest.mock('@kbn/core-remote-server', () => ({
+  associateRemoteLeaseChild: jest.fn(),
+  reserveRemoteLeaseChild: jest.fn(),
+  bindRemoteLeaseChild: jest.fn(),
+  releaseRemoteLeaseReservation: jest.fn(),
+}));
 
 jest.mock('./external_resume/external_resume_service', () => ({
   ...jest.requireActual('./external_resume/external_resume_service'),
@@ -2528,7 +2537,8 @@ steps:
       );
 
       const engine = await mockWorkflowsService.getWorkflowsExecutionEngine();
-      expect(associateRemoteLeaseChild).toHaveBeenCalledWith(result);
+      expect(reserveRemoteLeaseChild).toHaveBeenCalled();
+      expect(bindRemoteLeaseChild).not.toHaveBeenCalled();
       expect(engine.scheduleWorkflow).toHaveBeenCalledTimes(1);
       const [passedWorkflow, passedContext, passedRequest] = (engine.scheduleWorkflow as jest.Mock)
         .mock.calls[0];
@@ -2538,6 +2548,51 @@ steps:
       expect(passedContext.event).toEqual(eventPayload);
       expect(passedRequest).toBe(mockRequest);
       expect(result).toBe('sched-exec-id');
+    });
+
+    it('fails nesting exhaustion before the execution engine creates a workflow', async () => {
+      jest.mocked(reserveRemoteLeaseChild).mockImplementationOnce(() => {
+        throw new Error('nesting allowance (10) exhausted');
+      });
+      const workflow = {
+        id: 'wf-1',
+        name: 'Test Workflow',
+        enabled: true,
+        definition: { triggers: [{ type: 'manual' }], steps: [] },
+        yaml: 'name: Test Workflow\nsteps: []',
+      };
+      await expect(
+        api.scheduleWorkflow(workflow as never, 'default', {}, mockRequest, 'manual')
+      ).rejects.toThrow('exhausted');
+      const engine = await mockWorkflowsService.getWorkflowsExecutionEngine();
+      expect(engine.scheduleWorkflow).not.toHaveBeenCalled();
+    });
+
+    it('releases a reserved slot when scheduling throws and binds the id after success', async () => {
+      const workflow = {
+        id: 'wf-1',
+        name: 'Test Workflow',
+        enabled: true,
+        definition: { triggers: [{ type: 'manual' }], steps: [] },
+        yaml: 'name: Test Workflow\nsteps: []',
+      };
+      jest.mocked(reserveRemoteLeaseChild).mockReturnValueOnce('slot');
+      const engine = await mockWorkflowsService.getWorkflowsExecutionEngine();
+      jest.mocked(engine.scheduleWorkflow).mockRejectedValueOnce(new Error('engine failed'));
+      await expect(
+        api.scheduleWorkflow(workflow as never, 'default', {}, mockRequest, 'manual')
+      ).rejects.toThrow('engine failed');
+      expect(releaseRemoteLeaseReservation).toHaveBeenCalledWith('slot');
+      expect(bindRemoteLeaseChild).not.toHaveBeenCalled();
+
+      jest.mocked(reserveRemoteLeaseChild).mockReturnValueOnce('slot');
+      jest
+        .mocked(engine.scheduleWorkflow)
+        .mockResolvedValueOnce({ workflowExecutionId: 'created' });
+      await expect(
+        api.scheduleWorkflow(workflow as never, 'default', {}, mockRequest, 'manual')
+      ).resolves.toBe('created');
+      expect(bindRemoteLeaseChild).toHaveBeenCalledWith('slot', 'created');
     });
 
     it('passes schedule metadata through to the execution engine context', async () => {

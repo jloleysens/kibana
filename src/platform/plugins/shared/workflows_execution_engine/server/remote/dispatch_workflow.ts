@@ -111,6 +111,8 @@ export const dispatchWorkflow = async ({
       }
     );
     const { workflow, metadata, parent } = buildInputDefaultRenderContext(execution, coreStart);
+    const inputs = execution.context?.inputs as { source?: unknown } | undefined;
+    const attackDiscoveryPersistence = inputs?.source === 'scheduled' ? 'scheduled' : undefined;
     scopeId = lease.openScope(
       request,
       {
@@ -126,6 +128,7 @@ export const dispatchWorkflow = async ({
         workflowVersion: workflow.version,
         metadata,
         parent: parent && { workflowId: parent.workflowId, executionId: parent.executionId },
+        ...(attackDiscoveryPersistence ? { attackDiscoveryPersistence } : {}),
       }
     );
     const activeScope = scopeId;

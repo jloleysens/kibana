@@ -66,7 +66,13 @@ export class RemoteService implements RemoteSetup {
   private readonly stepOutputLimits = new Map<string, ReadonlyMap<string, number>>();
   private readonly leaseParentTokens = new Map<
     string,
-    { token: object; associateChild: (childExecutionId: string, parent: RemoteLeaseParent) => void }
+    {
+      token: object;
+      associateChild: (childExecutionId: string, parent: RemoteLeaseParent) => void;
+      reserveChild: (parent: RemoteLeaseParent) => string;
+      bindChild: (slot: string, childExecutionId: string) => void;
+      releaseChild: (slot: string) => void;
+    }
   >();
   private readonly scopeControllers = new Map<string, AbortController>();
   private readonly sessions = new Map<string, Promise<RemoteSession<unknown>>>();
@@ -123,7 +129,14 @@ export class RemoteService implements RemoteSetup {
       const token = this.leaseParentTokens.get(scopeId);
       const controller = this.scopeControllers.get(scopeId);
       return token && controller
-        ? { token: token.token, signal: controller.signal, associateChild: token.associateChild }
+        ? {
+            token: token.token,
+            signal: controller.signal,
+            associateChild: token.associateChild,
+            reserveChild: token.reserveChild,
+            bindChild: token.bindChild,
+            releaseChild: token.releaseChild,
+          }
         : undefined;
     });
   }
@@ -230,6 +243,9 @@ export class RemoteService implements RemoteSetup {
           token: acquired.parentToken,
           associateChild: (childExecutionId, parent) =>
             pool.associateScheduledChild(childExecutionId, parent),
+          reserveChild: (parent) => pool.reserveScheduledChild(parent),
+          bindChild: (slot, childExecutionId) => pool.bindScheduledChild(slot, childExecutionId),
+          releaseChild: (slot) => pool.releaseScheduledReservation(slot),
         });
         return scopeId;
       },

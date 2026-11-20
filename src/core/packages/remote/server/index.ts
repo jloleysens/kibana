@@ -21,7 +21,12 @@ export type {
 export {
   registerRemoteLeaseParents,
   withRemoteLeaseParent,
+  captureRemoteLeaseParent,
+  runWithCapturedLeaseParent,
   getRemoteLeaseParent,
   associateRemoteLeaseChild,
+  reserveRemoteLeaseChild,
+  bindRemoteLeaseChild,
+  releaseRemoteLeaseReservation,
 } from './src/lease_parent_context';
 export type { RemoteLeaseParent } from './src/lease_parent_context';

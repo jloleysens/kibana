@@ -28,7 +28,11 @@ export interface PreparedRun {
   executionUuid: string;
   effectiveConnectorId: string;
   execute(input: RunExecutionInput): Promise<RunOutcome>;
-  launch(input: RunExecutionInput, onSettled?: () => void): Promise<void>;
+  launch(
+    input: RunExecutionInput,
+    onSettled?: () => void,
+    adopt?: <T>(work: () => Promise<T>) => Promise<T>
+  ): Promise<void>;
 }
 export interface RunDependencies {
   analytics?: AnalyticsServiceSetup;
@@ -159,9 +163,12 @@ export const prepareRun = async (
     executionUuid,
     effectiveConnectorId,
     execute: async (input) => executeGenerationWorkflow(await getExecuteParams(input)),
-    launch: async (input, onSettled) => {
+    launch: async (input, onSettled, adopt) => {
       const executeParams = await getExecuteParams(input);
-      executeGenerationWorkflow(executeParams)
+      const pipeline = adopt
+        ? adopt(() => executeGenerationWorkflow(executeParams))
+        : executeGenerationWorkflow(executeParams);
+      void pipeline
         .catch((err) => {
           logger.error(
             `Async Attack Discovery run failed (execution=${executionUuid}): ${
