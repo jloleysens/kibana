@@ -16,6 +16,21 @@ it('reads the original live template guard on every scoped call and refuses clos
       return {};
     }),
     getAbortSignal: () => controller.signal,
+    getRunState: () => {
+      throw new Error('not used in this test');
+    },
+    getRunDefinitionFacts: () => {
+      throw new Error('not used in this test');
+    },
+    resolveStepType: () => {
+      throw new Error('not used in this test');
+    },
+    resolveStepOutputLimit: () => {
+      throw new Error('not used in this test');
+    },
+    admitChild: () => {
+      throw new Error('not used in this test');
+    },
   });
   try {
     let installed = false;
