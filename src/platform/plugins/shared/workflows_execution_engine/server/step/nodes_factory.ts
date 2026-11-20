@@ -69,7 +69,10 @@ export class NodesFactory {
   public async create(stepExecutionRuntime: StepExecutionRuntime): Promise<NodeImplementation> {
     const { node } = stepExecutionRuntime;
     const remoteNode = this.dependencies.remoteNode?.(stepExecutionRuntime);
-    if (remoteNode) return remoteNode;
+    if (remoteNode) {
+      if (node.stepType?.startsWith('kibana.')) this.logKibanaActionCreation(node.stepType);
+      return remoteNode;
+    }
 
     // Built-in steps - checked first before workflows_extensions
     // Note: Some built-in steps (like data.set) are also registered in workflows_extensions
@@ -92,10 +95,7 @@ export class NodesFactory {
     }
 
     if (node.stepType && node.stepType.startsWith('kibana.')) {
-      this.workflowLogger.logDebug(`Creating Kibana action step: ${node.stepType}`, {
-        event: { action: 'internal-action-creation', outcome: 'success' },
-        tags: ['step-factory', 'kibana', 'internal-action'],
-      });
+      this.logKibanaActionCreation(node.stepType);
       return new (await import('./kibana_action_step')).KibanaActionStepImpl(
         node as KibanaGraphNode,
         stepExecutionRuntime,
@@ -141,6 +141,13 @@ export class NodesFactory {
     }
 
     return this.createGenericStepNode(stepExecutionRuntime);
+  }
+
+  private logKibanaActionCreation(stepType: string): void {
+    this.workflowLogger.logDebug(`Creating Kibana action step: ${stepType}`, {
+      event: { action: 'internal-action-creation', outcome: 'success' },
+      tags: ['step-factory', 'kibana', 'internal-action'],
+    });
   }
 
   // eslint-disable-next-line complexity
