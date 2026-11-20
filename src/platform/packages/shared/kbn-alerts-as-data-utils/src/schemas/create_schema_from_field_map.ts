@@ -10,7 +10,7 @@
 import fs from 'fs';
 import path from 'path';
 import { set } from '@kbn/safer-lodash-set';
-import { get } from 'lodash';
+import get from 'lodash/get';
 import type { FieldMap } from '../..';
 import type { LineWriter } from './lib/line_writer';
 import { createLineWriter } from './lib/line_writer';

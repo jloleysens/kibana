@@ -6,90 +6,33 @@
  */
 
 import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
-import { ExecutionError } from '@kbn/workflows/server';
-import { IMPROVEMENT_ACTIONS } from '../../common/http_api/improvement_actions';
 import { recordImprovementsStepCommonDefinition } from '../../common/step_types/record_improvements';
-import { AiIndexNotFoundError } from '../ai_indices/errors';
-import { recordImprovements } from '../feedback_analysis/record_improvements';
-import { improvementAuditEvent } from '../audit/audit_events';
+import { assertContextEngineEnabled } from './step_guards';
 import type { FeedbackAnalysisStepDependencies } from './helpers';
-import { assertContextEngineEnabled, assertFeedbackLoopEnabled } from './helpers';
+import { createRecordImprovementsHandler } from './record_improvements_handler';
+import { recordImprovementsForIndex } from './record_improvements_operation';
 
 /** Records what an analysis run proposed. */
-export const getRecordImprovementsStepDefinition = ({
-  getAiIndexService,
-  getImprovementsService,
-  getAuditLogger,
-  isContextEngineEnabled,
-  isFeedbackLoopEnabled,
-  checkWritePrivilege,
-  logger,
-}: FeedbackAnalysisStepDependencies) =>
+export const getRecordImprovementsStepDefinition = (
+  dependencies: FeedbackAnalysisStepDependencies
+) =>
   createServerStepDefinition({
     ...recordImprovementsStepCommonDefinition,
-    handler: async (context) => {
+    handler: (context) => {
       const request = context.contextManager.getFakeRequest();
       const spaceId = context.contextManager.getContext().workflow.spaceId;
-      await assertContextEngineEnabled(isContextEngineEnabled, spaceId);
-      await assertFeedbackLoopEnabled(isFeedbackLoopEnabled);
-
-      if (!(await checkWritePrivilege(request, spaceId))) {
-        throw new ExecutionError({
-          type: 'PermissionError',
-          message: 'Insufficient privileges to record Context Engine improvements',
-        });
-      }
-
-      const {
-        ai_index_id: aiIndexId,
-        agent_run_id: agentRunId,
-        signal_window: signalWindow,
-        signal_spaces: signalSpaces,
-        improvements,
-      } = context.input;
-
-      const esClient = context.contextManager.getScopedEsClient();
-      const auditLogger = await getAuditLogger(request);
-
-      try {
-        const { feedback_analysis: feedbackAnalysis } = await getAiIndexService().get(
-          aiIndexId,
-          spaceId
-        );
-        const allowedActions = feedbackAnalysis?.allowed_actions ?? [...IMPROVEMENT_ACTIONS];
-
-        const result = await recordImprovements({
-          aiIndexId,
-          spaceId,
-          agentRunId,
-          signalWindow,
-          signalSpaces,
-          allowedActions,
-          proposals: improvements,
-          improvementsService: getImprovementsService(esClient, spaceId),
-        });
-
-        auditLogger?.log(improvementAuditEvent({ aiIndexId, recorded: result.recorded.length }));
-        logger.debug(
-          () =>
-            `Analysis run '${agentRunId}' on AI index '${aiIndexId}': recorded ${result.recorded.length}, skipped ${result.skipped.length}`
-        );
-
-        return { output: result };
-      } catch (error) {
-        auditLogger?.log(
-          improvementAuditEvent({
-            aiIndexId,
-            error: error instanceof Error ? error : new Error(String(error)),
-          })
-        );
-        if (error instanceof AiIndexNotFoundError) {
-          throw new ExecutionError({
-            type: 'NotFoundError',
-            message: `AI index '${aiIndexId}' not found`,
-          });
-        }
-        throw error;
-      }
+      return createRecordImprovementsHandler({
+        assertEnabled: () =>
+          assertContextEngineEnabled(dependencies.isContextEngineEnabled, spaceId),
+        isFeedbackLoopEnabled: dependencies.isFeedbackLoopEnabled,
+        checkWritePrivilege: () => dependencies.checkWritePrivilege(request, spaceId),
+        record: (params) =>
+          recordImprovementsForIndex(params, {
+            ...dependencies,
+            request,
+            spaceId,
+            esClient: context.contextManager.getScopedEsClient(),
+          }),
+      })(context);
     },
   });

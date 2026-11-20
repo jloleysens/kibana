@@ -8,7 +8,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { Logger } from '@kbn/core/server';
 import type { ActionsClient } from '@kbn/actions-plugin/server';
-import { get } from 'lodash/fp';
+import get from 'lodash/fp/get';
 import type { TelemetryMetadata } from '@kbn/actions-plugin/server/lib';
 import type { OpenAIClient } from '@langchain/openai';
 import { ChatOpenAICompletions } from '@langchain/openai';

@@ -71,6 +71,7 @@ const setup = () => {
         if (scopeId !== 'run') throw new Error('Foreign scope');
         return controller.signal;
       },
+      getRunDefinitionFacts: jest.fn(),
       resolveStepType: jest.fn(),
       resolveStepOutputLimit: jest.fn(),
       admitChild: jest.fn(),

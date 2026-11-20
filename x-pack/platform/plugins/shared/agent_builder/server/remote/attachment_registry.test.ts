@@ -37,6 +37,7 @@ const setup = () => {
       return request;
     }),
     getRunState: jest.fn(),
+    getRunDefinitionFacts: jest.fn(),
     resolveStepType: jest.fn(),
     resolveStepOutputLimit: jest.fn(),
     admitChild: jest.fn(),

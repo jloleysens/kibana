@@ -28,7 +28,7 @@ import {
   EVENT_KIND,
   SPACE_IDS,
 } from '@kbn/rule-data-utils';
-import { isEmpty } from 'lodash/fp';
+import isEmpty from 'lodash/fp/isEmpty';
 import type { PostValidateRequestBody } from '@kbn/discoveries-schemas';
 
 import {

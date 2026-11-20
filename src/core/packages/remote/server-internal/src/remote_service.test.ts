@@ -676,6 +676,9 @@ it('owns run sidecars and admissions only on coordinator, and clears them when a
   try {
     if (!scopes) throw new Error('Coordinator binding missing');
     expect(() => scopes?.getRunState('unknown')).toThrow('scope');
+    const unconfiguredScope = lease.openScope({ request: true });
+    expect(() => scopes?.getRunDefinitionFacts(unconfiguredScope)).toThrow('definition facts');
+    lease.closeScope(unconfiguredScope);
     const admittedChildren = new Set(['restored']);
     const state = {
       workflowRunId: 'run',
@@ -686,7 +689,28 @@ it('owns run sidecars and admissions only on coordinator, and clears them when a
     };
     const limits = new Map([['agent', 1024]]);
     const types = new Map([['agent', 'ai.agent']]);
-    const scopeId = lease.openScope({ request: true }, state, limits, types);
+    const definitionFacts = {
+      workflowVersion: 7,
+      metadata: { ki_verifier_chain: ['ancestor'], nested: { original: true } },
+      parent: { workflowId: 'parent', executionId: 'parent-run' },
+    };
+    const scopeId = lease.openScope({ request: true }, state, limits, types, definitionFacts);
+    definitionFacts.workflowVersion = 999;
+    definitionFacts.metadata.ki_verifier_chain.push('forged');
+    definitionFacts.metadata.nested.original = false;
+    definitionFacts.parent.executionId = 'forged';
+    const expectedDefinitionFacts = {
+      workflowVersion: 7,
+      metadata: { ki_verifier_chain: ['ancestor'], nested: { original: true } },
+      parent: { workflowId: 'parent', executionId: 'parent-run' },
+    };
+    expect(scopes.getRunDefinitionFacts(scopeId)).toEqual(expectedDefinitionFacts);
+    const returnedFacts = scopes.getRunDefinitionFacts(scopeId);
+    Object.assign(returnedFacts.metadata ?? {}, { ki_verifier_chain: ['mutated'] });
+    expect(scopes.getRunDefinitionFacts(scopeId)).toEqual(expectedDefinitionFacts);
+    expect(() => scopes?.getRunDefinitionFacts('unknown')).toThrow('definition facts');
+    expect(Object.keys(lease)).not.toContain('getRunDefinitionFacts');
+    expect(Object.keys(lease.stub as object)).not.toContain('getRunDefinitionFacts');
     types.set('agent', 'forged');
     expect(scopes.resolveStepType(scopeId, 'agent')).toBe('ai.agent');
     expect(() => scopes?.resolveStepType(scopeId, 'foreign')).toThrow('definition');
@@ -705,6 +729,10 @@ it('owns run sidecars and admissions only on coordinator, and clears them when a
     expect(() => scopes?.getRunState(scopeId)).toThrow('scope');
     expect(() => scopes?.resolveStepOutputLimit(scopeId, 'agent')).toThrow('policy');
     expect(() => scopes?.resolveStepType(scopeId, 'agent')).toThrow('definition');
+    expect(() => scopes?.getRunDefinitionFacts(scopeId)).toThrow('definition facts');
+    const releasedScope = lease.openScope({}, state, limits, types, expectedDefinitionFacts);
+    await lease.release();
+    expect(() => scopes?.getRunDefinitionFacts(releasedScope)).toThrow('definition facts');
   } finally {
     await lease.release();
     await service.stop();

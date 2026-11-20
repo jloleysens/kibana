@@ -13,6 +13,10 @@
   ],
   "kbn_references": [
     "@kbn/agent-builder-common",
+    "@kbn/core-di",
+    "@kbn/core-remote-common",
+    "@kbn/core-remote-server",
+    "@kbn/logging",
     "@kbn/agent-builder-plugin",
     "@kbn/agent-builder-server",
     "@kbn/alerting-plugin",
@@ -30,6 +34,7 @@
     "@kbn/security-solution-test-api-clients",
     "@kbn/securitysolution-es-utils",
     "@kbn/securitysolution-utils",
+    "@kbn/securitysolution-esql-runtime",
     "@kbn/spaces-plugin",
     "@kbn/task-manager-plugin",
     "@kbn/workflows",

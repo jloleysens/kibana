@@ -6,45 +6,25 @@
  */
 
 import type { CoreSetup } from '@kbn/core/server';
-import { ExecutionError } from '@kbn/workflows/server';
 import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
-import { CONTEXT_ENGINE_ENABLED_SETTING_ID } from '@kbn/management-settings-ids';
 import { VerifyKiStepCommonDefinition } from '../../common/step_types/verify_ki_step';
-import { omitNullKiAttributes } from '../../common/step_types/ki';
 import { isContextEngineEnabledInSpace } from '../utils/is_context_engine_enabled_in_space';
 import type { VerifyKi } from './verify_ki';
+import { createVerifyKiHandler } from './verify_ki_handler';
 
 export const createVerifyKiStepDefinition = (coreSetup: CoreSetup, verifyKi: VerifyKi) =>
   createServerStepDefinition({
     ...VerifyKiStepCommonDefinition,
-    handler: async (context) => {
-      const [coreStart] = await coreSetup.getStartServices();
-      const { spaceId } = context.contextManager.getContext().workflow;
-      const isEnabled = await isContextEngineEnabledInSpace({
-        savedObjects: coreStart.savedObjects,
-        uiSettings: coreStart.uiSettings,
-        spaceId,
-      });
-      if (!isEnabled) {
-        throw new ExecutionError({
-          type: 'FeatureDisabledError',
-          message: `Context Engine is disabled. Enable the ${CONTEXT_ENGINE_ENABLED_SETTING_ID} advanced setting to verify knowledge indicators.`,
-        });
-      }
-
-      const {
-        ki,
-        verifiers,
-        ai_index_id: aiIndexId,
-        total_timeout_sec: totalTimeoutSec,
-      } = context.input;
-      const summary = await verifyKi({
-        context,
-        ki: omitNullKiAttributes(ki),
-        verifiers,
-        aiIndexId,
-        totalTimeoutSec,
-      });
-      return { output: summary };
-    },
+    handler: (context) =>
+      createVerifyKiHandler(
+        async () => {
+          const [coreStart] = await coreSetup.getStartServices();
+          return isContextEngineEnabledInSpace({
+            savedObjects: coreStart.savedObjects,
+            uiSettings: coreStart.uiSettings,
+            spaceId: context.contextManager.getContext().workflow.spaceId,
+          });
+        },
+        (params) => verifyKi({ ...params, context })
+      )(context),
   });

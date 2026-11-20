@@ -13,7 +13,7 @@ import {
 import type { Replacements } from '@kbn/elastic-assistant-common';
 import type { AnonymizationFieldResponse } from '@kbn/elastic-assistant-common/impl/schemas';
 import type { ElasticsearchClient } from '@kbn/core/server';
-import { injectMetadataId } from '@kbn/securitysolution-utils';
+import { injectMetadataId } from '@kbn/securitysolution-esql-runtime';
 
 /**
  * Converts an ES|QL result row (array of values) to the raw data format

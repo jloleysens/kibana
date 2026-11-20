@@ -14,8 +14,7 @@ import {
 import type { AiIndexDest, AiIndexType } from './http_api/ai_indices';
 import { validateAiIndexId as validateAiIndexIdFormat } from './validation';
 
-export const isIndexPattern = (destValue: string): boolean =>
-  destValue.includes('*') || destValue.includes(',');
+export { isIndexPattern } from './is_index_pattern';
 
 const PREFIX_BY_TYPE: Record<AiIndexType, string> = {
   data_stream: AI_INDEX_DATA_STREAM_PREFIX,

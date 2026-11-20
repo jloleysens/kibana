@@ -6,7 +6,7 @@
  */
 
 import { z, isoDateTime, lazySchema } from '@kbn/zod/v4';
-import { ALERT_EPISODE_STATUS } from './alert_action_schema';
+import { ALERT_EPISODE_STATUS } from './alert_episode_status';
 import {
   ID_MAX_LENGTH,
   MAX_ALERT_EVENT_DATA_KEYS,

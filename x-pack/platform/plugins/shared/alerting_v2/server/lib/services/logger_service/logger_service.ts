@@ -5,7 +5,11 @@
  * 2.0.
  */
 
-import { isEmpty, isError, isFunction, isObject, isString } from 'lodash';
+import isEmpty from 'lodash/isEmpty';
+import isError from 'lodash/isError';
+import isFunction from 'lodash/isFunction';
+import isObject from 'lodash/isObject';
+import isString from 'lodash/isString';
 import { inject, injectable } from 'inversify';
 import type { Logger, LogMessageSource } from '@kbn/logging';
 import { createToken, Logger as BaseLogger } from '@kbn/core-di';

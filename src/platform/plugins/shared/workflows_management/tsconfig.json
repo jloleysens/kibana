@@ -15,6 +15,7 @@
     "server/**/*.json"
   ],
   "kbn_references": [
+    "@kbn/core-remote-server",
     "@kbn/security-plugin",
     "@kbn/ui-callout",
     "@kbn/entity-access-control-ui",

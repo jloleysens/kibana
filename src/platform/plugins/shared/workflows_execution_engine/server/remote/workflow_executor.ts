@@ -190,6 +190,7 @@ export class WorkflowExecutor implements WorkflowExecutorApi {
         dependencyPlan: request.dependencyPlan,
         signal,
         scopeId: request.scopeId,
+        spaceId: request.spaceId,
         steps: this.steps,
         storage: this.storage,
         log: this.log,

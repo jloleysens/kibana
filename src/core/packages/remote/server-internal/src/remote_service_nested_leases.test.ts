@@ -7,8 +7,13 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { AsyncResource } from 'node:async_hooks';
 import { join } from 'node:path';
-import { withRemoteLeaseParent } from '@kbn/core-remote-server';
+import {
+  withRemoteLeaseParent,
+  associateRemoteLeaseChild,
+  getRemoteLeaseParent,
+} from '@kbn/core-remote-server';
 import type { Logger } from '@kbn/logging';
 import { RemoteService } from './remote_service';
 import { Echo } from './__fixtures__/demo_plugin/server/remote/echo';
@@ -46,73 +51,90 @@ const createService = () => {
   return service;
 };
 
-it('completes repeated synchronous coordinator-hook nested runs on separate in-process hosts without leaking leases or scopes', async () => {
-  const service = createService();
-  let hosts = 0;
-  service.bindInProcess(DemoValueToken, () => {
-    const hostId = ++hosts;
-    return { label: () => String(hostId) };
-  });
-  interface DemoExecutor {
-    run(request: { scopeId: string }): Promise<{ coordinator: { marker: string } }>;
-    bindingLabel(): Promise<string>;
-  }
-  service.bind(
-    EchoToken,
-    (scopes) =>
-      new (class NestedEcho {
-        async where(scopeId: string) {
-          if (scopes.get<{ nested?: boolean }>(scopeId).nested)
-            return { threadId: 0, isMainThread: true, marker: 'nested-completed' };
-          return withRemoteLeaseParent(scopes, scopeId, async () => {
-            const child = await service.lease<DemoExecutor>('demo', { runId: 'child' });
-            try {
-              const childScope = child.openScope(
-                { nested: true },
-                {
-                  workflowRunId: 'child',
-                  workflowId: 'workflow',
-                  workflowName: 'Child',
-                  spaceId: 'default',
-                  admittedChildren: new Set(),
-                }
-              );
-              expect(await child.stub.bindingLabel()).not.toBe('1');
-              const result = await child.stub.run({ scopeId: childScope });
-              return { threadId: 0, isMainThread: true, marker: result.coordinator.marker };
-            } finally {
-              await child.release();
-            }
-          });
-        }
-      })()
-  );
-  try {
-    await service.start('in_process');
-    for (let index = 0; index < 12; index++) {
-      const parent = await service.lease<DemoExecutor>('demo', { runId: 'parent' });
-      try {
-        expect(await parent.stub.bindingLabel()).toBe('1');
-        const scopeId = parent.openScope(
-          {},
-          {
-            workflowRunId: 'parent',
-            workflowId: 'workflow',
-            workflowName: 'Parent',
-            spaceId: 'default',
-            admittedChildren: new Set(),
-          }
-        );
-        expect((await parent.stub.run({ scopeId })).coordinator.marker).toBe('nested-completed');
-      } finally {
-        await parent.release();
-      }
-      expect(Reflect.get(service, 'scopes').size).toBe(0);
-      expect(Reflect.get(service, 'scopeControllers').size).toBe(0);
-      expect(Reflect.get(service, 'leaseParentTokens').size).toBe(0);
+it.each(['inline', 'scheduled'] as const)(
+  'completes repeated %s coordinator-hook nested runs on separate in-process hosts without leaking leases or scopes',
+  async (mode) => {
+    const service = createService();
+    let hosts = 0;
+    service.bindInProcess(DemoValueToken, () => {
+      const hostId = ++hosts;
+      return { label: () => String(hostId) };
+    });
+    interface DemoExecutor {
+      run(request: { scopeId: string }): Promise<{ coordinator: { marker: string } }>;
+      bindingLabel(): Promise<string>;
     }
-    expect(hosts).toBe(13);
-  } finally {
-    await service.stop();
-  }
-}, 15_000);
+    service.bind(
+      EchoToken,
+      (scopes) =>
+        new (class NestedEcho {
+          async where(scopeId: string) {
+            if (scopes.get<{ nested?: boolean }>(scopeId).nested)
+              return { threadId: 0, isMainThread: true, marker: 'nested-completed' };
+            const scheduledTask = new AsyncResource('scheduled-child');
+            return withRemoteLeaseParent(scopes, scopeId, async () => {
+              const runChild = async () => {
+                if (mode === 'scheduled') expect(getRemoteLeaseParent()).toBeUndefined();
+                const child = await service.lease<DemoExecutor>('demo', { runId: 'child' });
+                try {
+                  const childScope = child.openScope(
+                    { nested: true },
+                    {
+                      workflowRunId: 'child',
+                      workflowId: 'workflow',
+                      workflowName: 'Child',
+                      spaceId: 'default',
+                      admittedChildren: new Set(),
+                    }
+                  );
+                  expect(await child.stub.bindingLabel()).not.toBe('1');
+                  const result = await child.stub.run({ scopeId: childScope });
+                  return { threadId: 0, isMainThread: true, marker: result.coordinator.marker };
+                } finally {
+                  await child.release();
+                }
+              };
+              try {
+                if (mode === 'scheduled') {
+                  associateRemoteLeaseChild('child');
+                  return await scheduledTask.runInAsyncScope(runChild);
+                }
+                return await runChild();
+              } finally {
+                scheduledTask.emitDestroy();
+              }
+            });
+          }
+        })()
+    );
+    try {
+      await service.start('in_process');
+      for (let index = 0; index < 12; index++) {
+        const parent = await service.lease<DemoExecutor>('demo', { runId: 'parent' });
+        try {
+          expect(await parent.stub.bindingLabel()).toBe('1');
+          const scopeId = parent.openScope(
+            {},
+            {
+              workflowRunId: 'parent',
+              workflowId: 'workflow',
+              workflowName: 'Parent',
+              spaceId: 'default',
+              admittedChildren: new Set(),
+            }
+          );
+          expect((await parent.stub.run({ scopeId })).coordinator.marker).toBe('nested-completed');
+        } finally {
+          await parent.release();
+        }
+        expect(Reflect.get(service, 'scopes').size).toBe(0);
+        expect(Reflect.get(service, 'scopeControllers').size).toBe(0);
+        expect(Reflect.get(service, 'leaseParentTokens').size).toBe(0);
+      }
+      expect(hosts).toBe(13);
+    } finally {
+      await service.stop();
+    }
+  },
+  15_000
+);

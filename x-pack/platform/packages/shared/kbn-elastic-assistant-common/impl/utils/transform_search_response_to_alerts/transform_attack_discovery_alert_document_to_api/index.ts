@@ -19,7 +19,7 @@ import {
   ALERT_WORKFLOW_TAGS,
 } from '@kbn/rule-data-utils';
 import moment from 'moment';
-import { pipe } from 'lodash/fp';
+import pipe from 'lodash/fp/pipe';
 
 import type { AttackDiscoveryApiAlert } from '../../../schemas';
 import { transformInternalReplacements } from '../../attack_discovery_helpers';

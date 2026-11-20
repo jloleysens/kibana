@@ -7,6 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
+import { randomUUID } from 'node:crypto';
 import type { RemoteLeaseParent } from '@kbn/core-remote-server';
 import { recordRemoteTiming } from '@kbn/core-remote-common';
 
@@ -26,6 +27,13 @@ interface ManagedHost<T> {
   settingsKey?: string;
   closing?: Promise<void>;
   onTermination?: () => void;
+  parentToken?: object;
+}
+
+interface ScheduledReservation {
+  readonly token: object;
+  readonly runId: string;
+  readonly signal: AbortSignal;
 }
 
 interface Waiter {
@@ -39,6 +47,7 @@ interface Waiter {
 export class RemoteLeasePool<T> {
   private host?: ManagedHost<T>;
   private readonly activeLeases = new Map<object, { runId: string; depth: number }>();
+  private readonly scheduledParents = new Map<string, ScheduledReservation>();
   private readonly nestedPools = new Set<RemoteLeasePool<T>>();
   private creating?: Promise<ManagedHost<T>>;
   private busy = false;
@@ -102,10 +111,34 @@ export class RemoteLeasePool<T> {
     parentToken: object;
     release: (discard?: boolean) => Promise<void>;
   }> {
+    const reservation = identity ? this.scheduledParents.get(identity.runId) : undefined;
+    if (
+      reservation &&
+      identity &&
+      this.activeLeases.has(reservation.token) &&
+      !reservation.signal.aborted
+    ) {
+      const reservedLease = this.activeLeases.get(reservation.token);
+      if (reservedLease) {
+        return this.acquireNested(
+          settingsKey,
+          signal,
+          identity.runId,
+          {
+            token: reservation.token,
+            runId: reservation.runId,
+            signal: reservation.signal,
+            isActive: () => this.activeLeases.has(reservation.token) && !reservation.signal.aborted,
+          },
+          reservedLease.depth + 1,
+          true
+        );
+      }
+    }
     const parent = identity?.parent;
     const held = parent?.isActive() ? this.activeLeases.get(parent.token) : undefined;
     if (held && parent && identity)
-      return this.acquireNested(settingsKey, signal, identity.runId, parent, held.depth + 1);
+      return this.acquireNested(settingsKey, signal, identity.runId, parent, held.depth + 1, false);
     recordRemoteTiming('remote_pool_acquire_requested', {
       graphId: this.name,
       poolBusy: this.busy,
@@ -130,6 +163,7 @@ export class RemoteLeasePool<T> {
       managed.settingsKey = settingsKey;
       managed.runs++;
       const parentToken = {};
+      managed.parentToken = parentToken;
       this.activeLeases.set(parentToken, { runId: identity?.runId ?? 'unknown', depth: 0 });
       let released = false;
       return {
@@ -138,7 +172,7 @@ export class RemoteLeasePool<T> {
         release: async (discard = false) => {
           if (released) return;
           released = true;
-          this.activeLeases.delete(parentToken);
+          this.releaseParent(parentToken);
           try {
             if (discard || !managed.host.alive()) {
               await this.retire(managed);
@@ -166,19 +200,74 @@ export class RemoteLeasePool<T> {
     }
   }
 
+  associateScheduledChild(childExecutionId: string, parent: RemoteLeaseParent): void {
+    if (!this.rememberReservation(childExecutionId, parent)) return;
+  }
+
+  /** Occupies allowance before an execution id exists. Returns '' when the parent lease is not held. */
+  reserveScheduledChild(parent: RemoteLeaseParent): string {
+    const slot = `\0${randomUUID()}`;
+    return this.rememberReservation(slot, parent) ? slot : '';
+  }
+
+  /** Renames a reserved slot to the coordinator-authored execution id. Never throws. */
+  bindScheduledChild(slot: string, childExecutionId: string): void {
+    const reservation = this.scheduledParents.get(slot);
+    if (!reservation) return;
+    this.scheduledParents.delete(slot);
+    this.scheduledParents.set(childExecutionId, reservation);
+  }
+
+  releaseScheduledReservation(slot: string): void {
+    this.scheduledParents.delete(slot);
+  }
+
+  private rememberReservation(key: string, parent: RemoteLeaseParent): boolean {
+    if (this.stopped || parent.signal.aborted || !this.activeLeases.has(parent.token)) return false;
+    const held = this.activeLeases.get(parent.token);
+    if (!held) return false;
+    this.checkNestedAllowance(key, parent, held.depth + 1);
+    this.scheduledParents.set(key, {
+      token: parent.token,
+      runId: parent.runId,
+      signal: parent.signal,
+    });
+    return true;
+  }
+
+  private releaseParent(token: object): void {
+    this.activeLeases.delete(token);
+    for (const [childExecutionId, parent] of this.scheduledParents) {
+      if (parent.token === token) this.scheduledParents.delete(childExecutionId);
+    }
+  }
+
+  private checkNestedAllowance(
+    runId: string,
+    parent: { runId: string },
+    depth: number,
+    ignoreRunId?: string
+  ): void {
+    const reserved =
+      this.scheduledParents.size -
+      (ignoreRunId !== undefined && this.scheduledParents.has(ignoreRunId) ? 1 : 0);
+    if (depth > this.maxNestedHosts || this.nestedPools.size + reserved >= this.maxNestedHosts)
+      throw new Error(
+        `Remote graph "${this.name}" cannot start nested run "${runId}" while parent run "${parent.runId}" holds a lease: nesting allowance (${this.maxNestedHosts}) exhausted`
+      );
+  }
+
   private async acquireNested(
     settingsKey: string,
     signal: AbortSignal | undefined,
     runId: string,
     parent: RemoteLeaseParent,
-    depth: number
+    depth: number,
+    consumeReservation: boolean
   ): Promise<{ value: T; parentToken: object; release: (discard?: boolean) => Promise<void> }> {
     if (this.stopped) throw new Error('Remote lease pool stopped');
     signal?.throwIfAborted();
-    if (depth > this.maxNestedHosts || this.nestedPools.size >= this.maxNestedHosts)
-      throw new Error(
-        `Remote graph "${this.name}" cannot start nested run "${runId}" while parent run "${parent.runId}" holds a lease: nesting allowance (${this.maxNestedHosts}) exhausted`
-      );
+    this.checkNestedAllowance(runId, parent, depth, consumeReservation ? runId : undefined);
     // Separate hosts preserve one active run per process, including during synchronous coordinator callbacks.
     const nested = new RemoteLeasePool(this.create, this.policy, this.now, this.name, 0);
     this.nestedPools.add(nested);
@@ -190,6 +279,7 @@ export class RemoteLeasePool<T> {
         this.nestedPools.delete(nested);
         return this.acquire(settingsKey, signal, { runId });
       }
+      if (consumeReservation) this.scheduledParents.delete(runId);
       const parentToken = {};
       this.activeLeases.set(parentToken, { runId, depth });
       let released = false;
@@ -199,7 +289,7 @@ export class RemoteLeasePool<T> {
         release: async (discard) => {
           if (released) return;
           released = true;
-          this.activeLeases.delete(parentToken);
+          this.releaseParent(parentToken);
           try {
             await acquired.release(discard);
           } finally {
@@ -245,6 +335,7 @@ export class RemoteLeasePool<T> {
     if (this.stopping) return this.stopping;
     this.stopped = true;
     this.activeLeases.clear();
+    this.scheduledParents.clear();
     for (const waiter of this.waiters.splice(0)) {
       waiter.signal?.removeEventListener('abort', waiter.onAbort);
       waiter.reject(new Error('Remote lease pool stopped'));
@@ -273,6 +364,7 @@ export class RemoteLeasePool<T> {
     if (!previous) return Promise.resolve();
     if (previous.closing) return previous.closing;
     if (this.host === previous) this.host = undefined;
+    if (previous.parentToken) this.releaseParent(previous.parentToken);
     if (previous.onTermination) {
       previous.host.terminated?.removeEventListener('abort', previous.onTermination);
     }

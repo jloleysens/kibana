@@ -100,6 +100,7 @@ it('binds coordinator storage reads, writes and scheduling to the dispatch-owned
       spaceId: 'default',
       admittedChildren: new Set<string>(),
     }),
+    getRunDefinitionFacts: jest.fn(),
     resolveStepType: jest.fn(),
     resolveStepOutputLimit: jest.fn(),
     admitChild: jest.fn(),

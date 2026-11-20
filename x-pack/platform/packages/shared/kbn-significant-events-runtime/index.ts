@@ -23,3 +23,7 @@ export const MAX_ARRAY_LENGTH = 100;
  */
 export const SIGNIFICANT_EVENTS_ALERT_SOURCE = 'elastic.significant_events' as const;
 export const MAX_TIMESTAMP_LENGTH = 64;
+
+export { NightshiftModelBlockedError } from './nightshift_model_blocked_error';
+
+export { NightshiftModelNotFoundError } from './nightshift_model_not_found_error';

@@ -5,12 +5,12 @@
  * 2.0.
  */
 
-import { ExecutionError } from '@kbn/workflows/server';
 import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
 import type { KibanaRequest } from '@kbn/core/server';
-import { createAlertEventDataSchema } from '@kbn/alerting-v2-schemas';
+import { createAlertEventDataSchema } from '@kbn/alerting-v2-schemas/src/create_alert_event_data_schema';
 import { createAlertEventStepCommonDefinition } from '../../../../common/workflows/steps/create_alert_event_step_common';
 import type { AlertEventsClientApi } from '../../../types';
+import { createAlertEventHandler } from './create_alert_event_handler';
 
 export function getCreateAlertEventStepDefinition(
   getAlertEventsClient: (request: KibanaRequest) => Promise<AlertEventsClientApi>,
@@ -20,39 +20,11 @@ export function getCreateAlertEventStepDefinition(
     ...createAlertEventStepCommonDefinition,
     handler: async (context) => {
       const request = context.contextManager.getFakeRequest();
-
-      const canWrite = await checkAlertWritePrivilege(request);
-      if (!canWrite) {
-        throw new ExecutionError({
-          type: 'PermissionError',
-          message: 'Insufficient privileges to create alert events',
-        });
-      }
-
-      const client = await getAlertEventsClient(request);
-
-      try {
-        const parsed = createAlertEventDataSchema.parse(context.input);
-        const result = await client.createAlertEvent(parsed, {
-          abortSignal: context.abortSignal,
-        });
-        return { output: result };
-      } catch (error) {
-        if (error instanceof ExecutionError) throw error;
-        if (context.abortSignal.aborted) throw error;
-        if (error instanceof Error && error.name === 'ZodError') {
-          throw new ExecutionError({
-            type: 'ValidationError',
-            message: error.message,
-            details: { name: error.name, message: error.message },
-          });
-        }
-        throw new ExecutionError({
-          type: 'ApiError',
-          message: error instanceof Error ? error.message : 'Failed to create alert event',
-          details: error instanceof Error ? { name: error.name, message: error.message } : {},
-        });
-      }
+      return createAlertEventHandler(
+        () => getAlertEventsClient(request),
+        () => checkAlertWritePrivilege(request),
+        (input) => createAlertEventDataSchema.parse(input)
+      )(context);
     },
   });
 }

@@ -30,6 +30,9 @@ import {
   ACTION_POLICY_EVENT_PROVIDER,
 } from '../lib/dispatcher/steps/constants';
 import { registerAlertingAdvancedSettings } from '../settings/advanced_settings';
+import { AlertEventStorage } from '../lib/alert_events_client/alert_event_storage';
+import { ScopedAlertEventStorage } from '../remote/storage';
+import { AlertEventStorageToken } from '../remote/tokens';
 import { registerTelemetryEvents } from '../lib/telemetry/register_ebt_events';
 
 /**
@@ -91,6 +94,15 @@ export function bindOnSetup({ bind }: ContainerModuleLoadOptions) {
         request,
         PrivilegeChecker
       ).canWrite('alerts');
+    container.get(CoreSetup('remote')).bind(
+      AlertEventStorageToken,
+      (scopes) =>
+        new ScopedAlertEventStorage(scopes, {
+          canWrite: checkAlertWritePrivilege,
+          getStorage: (request) =>
+            resolveRequestScoped(container.get(CoreStart('injection')), request, AlertEventStorage),
+        })
+    );
     registerCreateAlertEventStep(
       workflowsExtensionsSetup,
       getAlertEventsClient,

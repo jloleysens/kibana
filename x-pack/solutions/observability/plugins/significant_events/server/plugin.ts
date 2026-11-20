@@ -96,6 +96,8 @@ import { deleteLegacyEventsDataStream } from './lib/significant_events/events';
 import { registerStreamsAgentBuilder } from './agent_builder/register';
 import { registerSignificantEventsSkills } from './agent_builder/skills/register_skills';
 import { registerAgentBuilderSmlTypes } from './agent_builder/sml/register_sml_types';
+import { SignificantEventsOperations } from './remote/operations';
+import { SignificantEventsOperationsToken } from './remote/tokens';
 import { classifyDetectionsStepDefinition } from './step_definitions/classify_detections';
 import { resolveModelStepDefinition } from './step_definitions/resolve_model';
 import {
@@ -448,6 +450,21 @@ export class SignificantEventsPlugin
 
     plugins.workflowsExtensions?.registerManagedWorkflowOwner(
       SIGNIFICANT_EVENTS_MANAGED_WORKFLOW_OWNER
+    );
+    core.remote.bind(
+      SignificantEventsOperationsToken,
+      (scopes) =>
+        new SignificantEventsOperations(scopes, {
+          getInference: () => this.server?.inference,
+          getSavedObjects: () => this.server?.core?.savedObjects,
+          getUiSettings: () => this.server?.core?.uiSettings,
+          logger: this.logger.get('resolve_model'),
+          classificationLogger: this.logger.get('classify_detections'),
+          getScopedEsClient: async (request) => {
+            const [coreStart] = await core.getStartServices();
+            return coreStart.elasticsearch.client.asScoped(request).asCurrentUser;
+          },
+        })
     );
     plugins.workflowsExtensions?.registerStepDefinition(
       resolveModelStepDefinition({

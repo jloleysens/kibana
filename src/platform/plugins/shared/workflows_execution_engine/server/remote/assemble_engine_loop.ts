@@ -65,6 +65,7 @@ interface EngineLoopRequest {
   execution: EsWorkflowExecution;
   dependencyPlan: StepDependencyPlan;
   scopeId: string;
+  spaceId: string;
   steps: WorkflowStepCatalogApi;
   storage: WorkflowStorageApi;
   log: WorkflowLogApi;
@@ -114,9 +115,10 @@ export async function runWorkflowEngineInWorker(
   const loggerFactory = new WorkflowEventLoggerFactory(logger, eventQueue, false);
   const workflowLogger = loggerFactory.createLogger({
     workflowId: execution.workflowId,
-    executionId: execution.id,
     workflowName: execution.workflowDefinition?.name,
-    spaceId: execution.spaceId,
+    executionId: execution.id,
+    // Coordinator-dispatched request space, not a worker-supplied step field.
+    spaceId: request.spaceId,
   });
   const fakeRequest = {} as KibanaRequest;
   const coreStart = {

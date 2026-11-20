@@ -11,10 +11,8 @@ import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
 
 import { GenerateStepCommonDefinition } from '../../../../common/step_types/generate_step';
 import type { DiscoveriesPluginStartDeps } from '../../../types';
-import { asNonEmpty } from '../../../lib/non_empty_string';
-import { resolveConnectorDetails } from '../../helpers/resolve_connector_details';
-import { invokeGenerationGraph } from './helpers/invoke_generation_graph';
-import { transformDiscoveriesOutput } from './helpers/transform_discoveries_output';
+import { prepareGeneration } from './prepare_generation';
+import { createGenerateHandler } from './generate_handler';
 
 /**
  * Server-side implementation of the generate step.
@@ -42,108 +40,17 @@ export const getGenerateStepDefinition = ({
 }) =>
   createServerStepDefinition({
     ...GenerateStepCommonDefinition,
-    handler: async (context) => {
-      let executionUuid: string | undefined;
-
-      try {
-        const workflowContext = context.contextManager.getContext();
-
-        const {
-          additional_context: additionalContext,
-          api_config: apiConfig,
-          replacements,
-          size,
-        } = context.input;
-        const alerts = context.input.alerts ?? [];
-
-        context.logger.info(
-          `Starting attack discovery generation from ${alerts.length} pre-retrieved alerts`
-        );
-
-        const { coreStart, pluginsStart } = await getStartServices();
-        const request = context.contextManager.getFakeRequest();
-        executionUuid = workflowContext.execution.id;
-
-        const actionsClient = await pluginsStart.actions.getActionsClientWithRequest(request);
-        const savedObjectsClient = coreStart.savedObjects.getScopedClient(request);
-        const esClient = coreStart.elasticsearch.client.asScoped(request).asCurrentUser;
-        const inferenceClient = pluginsStart.inference?.getClient({ request });
-
-        // action_type_id arrives as '' from the UI for EIS connectors; asNonEmpty
-        // converts it to undefined so resolveConnectorDetails performs a lookup
-        // instead of short-circuiting with an empty value:
-        const { actionTypeId: resolvedActionTypeId } = await resolveConnectorDetails({
-          actionsClient,
-          actionTypeId: asNonEmpty(apiConfig.action_type_id),
-          connectorId: apiConfig.connector_id,
-          inference: pluginsStart.inference,
-          logger,
-          request,
-        });
-
-        const resolvedApiConfig = {
-          action_type_id: resolvedActionTypeId,
-          connector_id: apiConfig.connector_id,
-          ...(apiConfig.model != null ? { model: apiConfig.model } : {}),
-        };
-
-        if (alerts.length === 0) {
-          context.logger.info(
-            `Skipping graph execution because 0 alerts were provided (execution: ${executionUuid})`
-          );
-
-          return {
-            output: {
-              attack_discoveries: null,
-              execution_uuid: executionUuid,
-              replacements: replacements ?? {},
-            },
-          };
-        }
-
-        const result = await invokeGenerationGraph({
+    handler: createGenerateHandler(async (context) =>
+      prepareGeneration(
+        {
+          apiConfig: context.input.api_config,
+          request: context.contextManager.getFakeRequest(),
+          executionUuid: context.contextManager.getContext().execution.id,
           abortSignal: context.abortSignal,
-          actionsClient,
-          additionalContext,
-          apiConfig: resolvedApiConfig,
-          connectorTimeout,
-          esClient,
-          inferenceClient,
-          langSmithApiKey,
-          langSmithProject,
-          logger,
-          replacements,
-          savedObjectsClient,
-          size,
-          sourceAlerts: alerts,
-        });
-
-        context.logger.info(
-          `Attack Discovery generation completed: ${result.discoveries?.length ?? 0} discoveries`
-        );
-
-        const attackDiscoveriesOutput = transformDiscoveriesOutput(result.discoveries, {
-          executionUuid,
-        });
-
-        return {
-          output: {
-            attack_discoveries: attackDiscoveriesOutput,
-            execution_uuid: executionUuid,
-            replacements: result.replacements,
-          },
-        };
-      } catch (error) {
-        context.logger.error(
-          `Generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          error
-        );
-
-        return {
-          error: new Error(
-            error instanceof Error ? error.message : 'Failed to generate discoveries'
-          ),
-        };
-      }
-    },
+        },
+        { connectorTimeout, getStartServices, langSmithApiKey, langSmithProject, logger }
+      )
+    ),
   });
+
+export { createGenerateHandler } from './generate_handler';

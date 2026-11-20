@@ -18,6 +18,7 @@ project:
   sourceRoot: x-pack/solutions/security/packages/kbn-securitysolution-utils
 dependsOn:
   - '@kbn/i18n'
+  - '@kbn/securitysolution-esql-runtime'
   - '@kbn/esql-utils'
   - '@kbn/datemath'
 tags:

@@ -1,7 +1,8 @@
-# Lane C: context-engine feedback (partial family)
+# Lane C: context-engine and significant-events (partial lane)
 
-Only `context-engine.getFeedbackContext` is carved out. The other five context-engine
-steps and subsequent assigned families remain unfinished. No full-lane completion claim.
+All six context-engine steps and both significant-events steps are routed. Primary placement
+is typed coordinator capability: native handlers are not native business services. Attack-discovery,
+alerting, entityStore and eight flag-enabled extras remain unfinished. No full-lane completion claim.
 
 ## Placement
 
@@ -49,3 +50,40 @@ curves and initial proofs describe a rejected placement, not the final implement
 Only ES/Kibana 9234/5634 are used. Unit fake listeners use OS-assigned loopback ports.
 The total on-disk graph remains reporting-only; native handler counts must not be confused
 with native business-service placement. Full quiet measurements belong to the merged phase.
+
+## Significant events
+
+Both original definitions share their native thin handlers with the worker contributions. Original
+model selection retains scoped inference/SO/uiSettings policy; original classification retains its
+bounded RuleEvents/ESQL probe/baseline domain service. The coordinator receives only named business
+input, obtains its original request and asCurrentUser ES client from the scope, and releases owned
+classification cancellation references. No StepContext/Core proxy or generic handler RPC. The
+classifier's explicit space_id is the original user-authored read target, not workflow provenance.
+
+The original classifier candidate measured 20,206,736–20,210,856 B post-GC on three independent
+engine-only processes after a nonempty first response: rejected under the unchanged 2 MiB ceiling.
+Final thin handlers measure roughly 155–162 KB cold, with the domain service excluded honestly.
+Original dependency-free model errors moved unchanged to the SAME lane-B-owned
+@kbn/significant-events-runtime package; schema root/internal exports preserve constructor identity.
+The complete runtime root has only its three own inputs and zero external dependencies.
+
+`node scripts/jest src/dev/remote_bundles/significant_events_budgets.test.ts --runInBand` checks
+actual compiled first responses and excludes coordinator policy/classifier modules.
+`node scripts/jest x-pack/solutions/observability/plugins/significant_events --runInBand` covers
+the original plugin and the new scope/cancellation/RPC boundary. These tests do not simulate live
+authorization; ignored session4/final artifacts provide actual persisted business evidence.
+
+The final proof compares original in-Kibana, child_process and in_process outcomes, missing-model
+errors, and settled persisted log documents (all stable fields, in order). It also verifies the
+public logs API and each document's nondefault spaceId. This exposed and fixed the shared remote
+logger dropping the original space context; credentials, system-index authorization and the
+best-effort log queue are unchanged. Read system logs only through the original internal identity.
+
+**Tracing gap:** child_process has no active Task Manager/OTEL span; trace/transaction ids and TM
+debug events are absent. In_process inherits the original transaction. Exact tracing-only event
+counts are retained in final-summary.json; all remaining fields/order match after normalizing
+run/step ids, timestamps and durations. Follow-up (multi-tenant PRD decision 10): propagate trace
+context through dispatch and start a child span in the worker. No fabricated APM transaction.
+
+Wait for the final log flush and ES visibility before stopping a proof server; a terminal execution
+document can precede its final best-effort event batch. No stable latency/combined-memory claim.

@@ -7,71 +7,15 @@
 
 import { createServerStepDefinition } from '@kbn/workflows-extensions/server';
 import { updateKiStepCommonDefinition } from '../../common/step_types/update_ki';
-import { omitNullKiAttributes } from '../../common/step_types/ki';
-import { updateKi } from '../ai_indices/ki_write';
 import type { KiStepDependencies } from './helpers';
-import {
-  assertContextEngineEnabled,
-  assertKiWritePrivilege,
-  kiWriterFromContext,
-  resolveAiIndex,
-  withKiWriteTelemetry,
-} from './helpers';
-import { toStepError } from './to_step_error';
+import { createDefaultKiHandlerOperations } from './ki_handler_operations_default';
+import { createUpdateKiHandler } from './update_ki_handler';
 
-export const getUpdateKiStepDefinition = ({
-  getAiIndexService,
-  isContextEngineEnabled,
-  checkWritePrivilege,
-  analyticsService,
-  logger,
-}: KiStepDependencies) =>
+export const getUpdateKiStepDefinition = (dependencies: KiStepDependencies) =>
   createServerStepDefinition({
     ...updateKiStepCommonDefinition,
-    handler: async (context) => {
-      try {
-        const request = context.contextManager.getFakeRequest();
-        const spaceId = context.contextManager.getContext().workflow.spaceId;
-        await assertContextEngineEnabled(isContextEngineEnabled, spaceId);
-
-        const {
-          ai_index_id: aiIndexId,
-          ki_id: kiId,
-          lifecycle,
-          force = false,
-          refresh = false,
-        } = context.input;
-        const ki = omitNullKiAttributes(context.input.ki);
-        return await withKiWriteTelemetry({
-          action: 'update',
-          aiIndexId,
-          analyticsService,
-          logger,
-          run: async (setManaged) => {
-            await assertKiWritePrivilege(checkWritePrivilege, request, spaceId);
-
-            const { dest, managed } = await resolveAiIndex(getAiIndexService, aiIndexId, spaceId);
-            setManaged(managed);
-            const esClient = context.contextManager.getScopedEsClient();
-            const writer = kiWriterFromContext(context.contextManager.getContext());
-
-            const result = await updateKi(esClient, {
-              aiIndexId,
-              dest,
-              kiId,
-              ki,
-              writer,
-              force,
-              lifecycle,
-              refresh,
-              abortSignal: context.abortSignal,
-            });
-
-            return { output: result };
-          },
-        });
-      } catch (error) {
-        throw toStepError(error, 'Failed to update knowledge indicator');
-      }
-    },
+    handler: (context) =>
+      createUpdateKiHandler(createDefaultKiHandlerOperations(context, dependencies, 'update'))(
+        context
+      ),
   });

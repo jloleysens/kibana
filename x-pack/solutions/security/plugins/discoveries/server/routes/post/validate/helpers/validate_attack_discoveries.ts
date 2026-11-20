@@ -13,7 +13,7 @@ import {
   backfillAttackIdsBestEffort,
   buildAlertIdToAttackIdsMap,
 } from '@kbn/attack-discovery-schedules-common';
-import { isEmpty } from 'lodash/fp';
+import isEmpty from 'lodash/fp/isEmpty';
 import { v4 as uuidv4 } from 'uuid';
 import type { BulkResponse } from '@elastic/elasticsearch/lib/api/types';
 import type { estypes } from '@elastic/elasticsearch';

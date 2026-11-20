@@ -82,7 +82,8 @@ it('leases by non-secret settings and releases all state after success', async (
       admittedChildren: new Set(),
     },
     new Map([['agent', 1024]]),
-    new Map([['agent', 'ai.agent']])
+    new Map([['agent', 'ai.agent']]),
+    { workflowVersion: undefined, metadata: undefined, parent: undefined }
   );
   expect(lease.closeScope).toHaveBeenCalledWith('scope-1');
   expect(lease.release).toHaveBeenCalledTimes(1);
@@ -248,4 +249,74 @@ it('authors policies from original compiled IDs for global/step fallback, retrie
   expect(limits?.get('other')).toBe(16384);
   expect(types?.has('forged_step')).toBe(false);
   expect(limits?.has('forged_step')).toBe(false);
+});
+
+it('captures original persisted provenance and ancestry only in coordinator scope facts', async () => {
+  const { lease, params } = setup();
+  const execution =
+    await params.repositories.workflowExecutionRepository.getWorkflowExecutionById();
+  params.repositories.workflowExecutionRepository.getWorkflowExecutionById.mockResolvedValue({
+    ...execution,
+    version: 7,
+    metadata: { ki_verifier_chain: ['trusted'], nested: { value: true } },
+    context: {
+      metadata: { ki_verifier_chain: ['legacy'] },
+      parentWorkflowId: 'parent',
+      parentWorkflowExecutionId: 'parent-run',
+    },
+  });
+  await dispatchWorkflow(params);
+  expect(lease.openScope.mock.calls[0][4]).toEqual({
+    workflowVersion: 7,
+    metadata: { ki_verifier_chain: ['trusted'], nested: { value: true } },
+    parent: { workflowId: 'parent', executionId: 'parent-run' },
+  });
+  expect(Object.keys(lease.openScope.mock.calls[0][1] ?? {})).toEqual([
+    'workflowRunId',
+    'spaceId',
+    'workflowId',
+    'workflowName',
+    'admittedChildren',
+  ]);
+  for (const field of ['metadata', 'parent', 'workflowVersion']) {
+    expect(lease.stub.run.mock.calls[0]).not.toHaveProperty(`0.${field}`);
+  }
+});
+
+it('stamps scheduled attack-discovery persistence from persisted execution inputs only', async () => {
+  const { lease, params } = setup();
+  const execution =
+    await params.repositories.workflowExecutionRepository.getWorkflowExecutionById();
+  params.repositories.workflowExecutionRepository.getWorkflowExecutionById.mockResolvedValue({
+    ...execution,
+    context: { inputs: { source: 'scheduled', forged: true } },
+  });
+  await dispatchWorkflow(params);
+  expect(lease.openScope.mock.calls[0][4]).toEqual(
+    expect.objectContaining({ attackDiscoveryPersistence: 'scheduled' })
+  );
+
+  params.repositories.workflowExecutionRepository.getWorkflowExecutionById.mockResolvedValue({
+    ...execution,
+    context: { inputs: { source: 'manual' } },
+  });
+  await dispatchWorkflow(params);
+  expect(lease.openScope.mock.calls[1][4]).not.toHaveProperty('attackDiscoveryPersistence');
+});
+
+it('retains original legacy metadata fallback and omits invalid workflow versions', async () => {
+  const { lease, params } = setup();
+  const execution =
+    await params.repositories.workflowExecutionRepository.getWorkflowExecutionById();
+  params.repositories.workflowExecutionRepository.getWorkflowExecutionById.mockResolvedValue({
+    ...execution,
+    version: 'not-a-document-version',
+    context: { metadata: { ki_verifier_chain: ['legacy'] }, parentWorkflowId: 'incomplete' },
+  });
+  await dispatchWorkflow(params);
+  expect(lease.openScope.mock.calls[0][4]).toEqual({
+    workflowVersion: undefined,
+    metadata: { ki_verifier_chain: ['legacy'] },
+    parent: undefined,
+  });
 });

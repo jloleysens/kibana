@@ -72,6 +72,7 @@ const setup = () => {
         spaceId: 'default',
         admittedChildren: new Set(),
       }),
+      getRunDefinitionFacts: jest.fn(),
       resolveStepType: jest.fn(),
       resolveStepOutputLimit: jest.fn(),
       admitChild: jest.fn(),

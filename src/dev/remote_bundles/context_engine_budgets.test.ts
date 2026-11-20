@@ -15,7 +15,7 @@ import { build } from 'esbuild';
 import { buildRemoteBundle } from './build';
 import { discoverRemoteManifests } from './discover';
 
-it('bounds the original thin feedback handler without loading the oversized coordinator business service', async () => {
+it('bounds original KI and feedback handlers without loading coordinator registry, revision or verifier services', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'context-engine-budgets-'));
   try {
     const bundle = await buildRemoteBundle({
@@ -44,6 +44,38 @@ it('bounds the original thin feedback handler without loading the oversized coor
     expect(
       bundle.inputs.some((path) => path.endsWith('/context_engine/server/improvements/service.ts'))
     ).toBe(false);
+    for (const coordinatorModule of [
+      '/server/ai_indices/ki_revision.ts',
+      '/server/remote/ki_operations.ts',
+      '/server/step_types/verify_ki.ts',
+      '/server/step_types/record_improvements_operation.ts',
+      '/server/feedback_analysis/record_improvements.ts',
+    ]) {
+      expect(
+        bundle.inputs.some((path) => path.endsWith('/context_engine' + coordinatorModule))
+      ).toBe(false);
+    }
+    const kiProbe = join(directory, 'ki_probe.mjs');
+    await build({
+      entryPoints: [resolve(__dirname, '__fixtures__/context_engine_ki_execution_probe.ts')],
+      bundle: true,
+      platform: 'node',
+      format: 'esm',
+      outfile: kiProbe,
+    });
+    for (const action of ['createKi', 'updateKi', 'deleteKi', 'verifyKi', 'recordImprovements']) {
+      for (let index = 0; index < 3; index++) {
+        const result = JSON.parse(
+          execFileSync(process.execPath, ['--expose-gc', kiProbe, dirname(bundle.entry), action], {
+            encoding: 'utf8',
+          })
+        ) as { events: Array<{ action: string; heapIncrement: number }> };
+        process.stdout.write(JSON.stringify({ contextEngineKiCurve: result }) + '\n');
+        expect(result.events.map(({ action: measuredAction }) => measuredAction)).toEqual([action]);
+        for (const event of result.events)
+          expect(event.heapIncrement).toBeLessThanOrEqual(2 * 1024 * 1024);
+      }
+    }
     for (let index = 0; index < 3; index++) {
       const result = JSON.parse(
         execFileSync(process.execPath, ['--expose-gc', probe, dirname(bundle.entry)], {

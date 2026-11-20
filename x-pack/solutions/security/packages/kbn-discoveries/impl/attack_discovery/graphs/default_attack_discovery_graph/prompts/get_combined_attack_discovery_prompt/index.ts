@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import { isEmpty } from 'lodash/fp';
+import isEmpty from 'lodash/fp/isEmpty';
 
 // NOTE: we ask the LLM to `provide insights`. We do NOT use the feature name, `AttackDiscovery`, in the prompt.
 const getAlertsContextPrompt = ({

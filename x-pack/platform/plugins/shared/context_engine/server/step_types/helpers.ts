@@ -10,7 +10,7 @@ import type { ElasticsearchClient, KibanaRequest } from '@kbn/core/server';
 import type { Logger } from '@kbn/logging';
 import type { StepContext } from '@kbn/workflows';
 import { ExecutionError } from '@kbn/workflows/server';
-import { isIndexPattern, validateAiIndexId } from '../../common/ai_index_dest';
+import { validateAiIndexId } from '../../common/ai_index_dest';
 import type { AiIndexDest } from '../../common/http_api/ai_indices';
 import type { KiWriter } from '../ai_indices/ki_revision';
 import {
@@ -271,12 +271,4 @@ export const resolveOrCreateAiIndex = async (
   return { dest, managed: false };
 };
 
-/** Fails the step when the dest is an index pattern, which cannot be a write target. */
-export const assertWritableDest = (aiIndexId: string, dest: AiIndexDest): void => {
-  if (isIndexPattern(dest.value)) {
-    throw new ExecutionError({
-      type: 'ValidationError',
-      message: `Cannot create a KI in AI index '${aiIndexId}': its dest is an index pattern, not a single write target`,
-    });
-  }
-};
+export { assertWritableDest } from './ki_handler_operations';
