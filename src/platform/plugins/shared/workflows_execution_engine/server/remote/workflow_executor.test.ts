@@ -31,6 +31,53 @@ const GRAPH = 'security.buildAlertEntityGraph';
 const CASE = 'cases.createCase';
 
 describe('WorkflowExecutor', () => {
+  it('stamps every workflow and step event with the original logger context and coordinator-dispatched space', async () => {
+    const document = execution([
+      { name: 'native', type: GRAPH, with: { spaceId: 'worker-input-not-authority' } },
+    ]);
+    document.spaceId = 'trusted-dispatch-space';
+    const store = createStore(document);
+    const events: object[] = [];
+    const logs: WorkflowLogApi = {
+      info: jest.fn(),
+      write: async (batch) => {
+        events.push(...batch);
+      },
+    };
+    const outcome = await new WorkflowExecutor(catalog([]), store.storage, logs).run({
+      dependencyPlan: store.dependencyPlan,
+      scopeId: 'scope',
+      workflowRunId: document.id,
+      spaceId: 'trusted-dispatch-space',
+    });
+    expect(outcome.status).toBe(ExecutionStatus.COMPLETED);
+    expect(events.length).toBeGreaterThan(0);
+    for (const event of events)
+      expect(event).toMatchObject({
+        spaceId: 'trusted-dispatch-space',
+        workflow: {
+          id: document.workflowId,
+          name: document.workflowDefinition.name,
+          execution_id: document.id,
+        },
+      });
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ event: expect.objectContaining({ action: 'workflow-start' }) }),
+        expect.objectContaining({
+          event: expect.objectContaining({ action: 'step-start' }),
+          workflow: expect.objectContaining({ step_id: 'native' }),
+        }),
+        expect.objectContaining({
+          event: expect.objectContaining({ action: 'step-complete' }),
+          workflow: expect.objectContaining({ step_id: 'native' }),
+        }),
+        expect.objectContaining({
+          event: expect.objectContaining({ action: 'workflow-complete' }),
+        }),
+      ])
+    );
+  });
   it('retains the explicit original placement for an uncarved inference backing', async () => {
     const store = createStore(
       execution([{ name: 'infer', type: 'ai.prompt', with: { prompt: 'legacy' } }])
